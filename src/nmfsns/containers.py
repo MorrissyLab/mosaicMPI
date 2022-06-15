@@ -44,4 +44,4 @@ class CnmfResult(AnnData):
         # This is a limitation of AnnData.
         
         AnnData.__init__(self, X=geps["gene_spectra_score"], dtype=np.float32, layers=geps, obsm=meta_h.T)
-        pass
+
