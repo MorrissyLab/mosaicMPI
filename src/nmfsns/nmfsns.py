@@ -1,9 +1,4 @@
-
-
-
-def main():
-    pass
-
-
-if __name__ == "__main__":
+\
+def cli():
     print("Hello World")
+    pass
