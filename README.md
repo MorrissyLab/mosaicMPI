@@ -1,5 +1,5 @@
-# NMF-SNS
-NMF Solution Neighborhood Space
+# cNMF-SNS
+cNMF Solution Neighborhood Space
 
 
 ## Installation
@@ -14,4 +14,69 @@ This technique should work as long as you have your personal access token from G
 
 >> Note: NMF-SNS has not yet been published to PyPI.
 
-`pip install nmfsns`
+`pip install cnmfsns`
+
+
+
+## Workflow
+
+Each step of the workflow is run as separate commands within cnmfsns
+
+### 1. `cnmfsns inspect-inputs`
+
+- Preempt errors by doing QC on the input data matrices
+- (?) Check sample names matching to metadata key columns
+- Check missing data
+- create odgenes plots to guide threshold selection, but do not select genes yet
+- 
+### 2. `cnmfsns select-genes`
+
+- Select marker genes
+- wrap `cnmf prepare` step which creates directory for cnmf outputs
+- prepare data for factorization
+- 
+### 3A. `cnmfsns factorize`
+
+- Use `cnmf`'s methods for parallelization, which is adaptable for any cluster configuration, it defaults to single CPU run so a small test dataset will have very simple commands.
+
+### 3B. `cnmfsns factorize --custom morrissylab`
+
+- Use an optimized one-step script for use by our lab on ARC (3B)
+- Will automatically assess number of jobs and submit jobs to scheduler
+- 
+### 4A. `cnmfsns postprocess`
+
+- will check to ensure all factorizations completed successfully
+- upon completion, `cnmf combine` and `cnmf consensus` steps to get consensus GEPs and usages
+- default local_density_threshold = 2.0
+- create output plots from cnmf, including k selection plot
+- compress cnmf output into h5ad file for exporting to python or R environments
+- by default, deletes all temporary files
+
+### 4B. `cnmfsns import-from-cnmf`
+> Note: Use of this is for backwards compatibility with cNMF runs that were started outside of the cnmfsns framework, and thus, cNMF results are not guaranteed to be complete, or the parameters correct.
+- compress cnmf output into h5ad file for exporting to python or R environments
+- deletes all temporary files (by default, optional)
+
+### 5. `cnmfsns annotate-usages`
+
+- create annotated heatmaps from h5ad
+- _this step can be run any time after_ `cnmfsns postprocess`_, not necessarily in this order_ 
+
+### 6. `cnmfsns explore-thresholds`
+
+- import multiple cnmf outputs for integration
+- specify an output directory for the integration being performed (eg. "gbm_proteomics")
+- plot correlation between cohorts
+- plot to decide range of k?
+- plot to compare integration using spearman and pearson
+
+### 7. `cnmfsns integrate`
+
+- outputs to a subdirectory for this particular set of parameters
+- creates SNS map and all plots without metadata
+
+### 8. `cnmfsns annotate-sns`
+
+- creates spike plots and related data outputs
+- patient 

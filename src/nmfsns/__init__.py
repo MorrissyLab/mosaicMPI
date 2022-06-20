@@ -1,1 +1,0 @@
-from .nmfsns import cli

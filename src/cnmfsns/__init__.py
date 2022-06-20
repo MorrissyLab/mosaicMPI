@@ -1,0 +1,1 @@
+from .cnmfsns import cli
