@@ -4,15 +4,17 @@ cNMF Solution Neighborhood Space
 
 ## Installation
 
-### 1. Using `pip` (development version)
+### 1. Using `pip` to install the latest version from GitHub:
 
-`pip install git+https://github.com/MorrissyLab/NMF-SNS.git`
+If you use SSH authentication for GitHub, use the following:
+`pip install git+ssh://git@github.com/MorrissyLab/cNMF-SNS.git`
 
-This technique should work as long as you have your personal access token from GitHub installed and configured properly.
+If you have a personal access token from GitHub installed and properly configured, you can use:
+`pip install git+https://github.com/MorrissyLab/cNMF-SNS.git`
 
 ### 2. Using `pip` (PyPI version)
 
->> Note: NMF-SNS has not yet been published to PyPI.
+>> Note: This will work only when cNMF-SNS has been published to PyPI.
 
 `pip install cnmfsns`
 
