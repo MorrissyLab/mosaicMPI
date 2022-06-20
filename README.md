@@ -7,10 +7,14 @@ cNMF Solution Neighborhood Space
 ### 1. Using `pip` to install the latest version from GitHub:
 
 If you use SSH authentication for GitHub, use the following:
-`pip install git+ssh://git@github.com/MorrissyLab/cNMF-SNS.git`
+```
+pip install git+ssh://git@github.com/MorrissyLab/cNMF-SNS.git
+```
 
 If you have a personal access token from GitHub installed and properly configured, you can use:
-`pip install git+https://github.com/MorrissyLab/cNMF-SNS.git`
+```
+pip install git+https://github.com/MorrissyLab/cNMF-SNS.git
+```
 
 ### 2. Using `pip` (PyPI version)
 
@@ -41,9 +45,9 @@ Each step of the workflow is run as separate commands within cnmfsns
 
 - Use `cnmf`'s methods for parallelization, which is adaptable for any cluster configuration, it defaults to single CPU run so a small test dataset will have very simple commands.
 
-### 3B. `cnmfsns factorize --custom morrissylab`
+### 3B. `cnmfsns factorize --config morrissylab`
 
-- Use an optimized one-step script for use by our lab on ARC (3B)
+- Use an optimized one-step script for use by our lab on ARC
 - Will automatically assess number of jobs and submit jobs to scheduler
 - 
 ### 4A. `cnmfsns postprocess`
@@ -53,12 +57,12 @@ Each step of the workflow is run as separate commands within cnmfsns
 - default local_density_threshold = 2.0
 - create output plots from cnmf, including k selection plot
 - compress cnmf output into h5ad file for exporting to python or R environments
-- by default, deletes all temporary files
+- optionally deletes cnmf working directory
 
-### 4B. `cnmfsns import-from-cnmf`
+### 4B. `cnmfsns create-h5mu`
 > Note: Use of this is for backwards compatibility with cNMF runs that were started outside of the cnmfsns framework, and thus, cNMF results are not guaranteed to be complete, or the parameters correct.
-- compress cnmf output into h5ad file for exporting to python or R environments
-- deletes all temporary files (by default, optional)
+- Packages cNMF results into a MuData .h5mu file within the parent directory for exporting to python or R environments
+- Optionally deletes cnmf working directory
 
 ### 5. `cnmfsns annotate-usages`
 

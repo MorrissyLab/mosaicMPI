@@ -7,15 +7,13 @@ from glob import glob
 
 class CnmfResult(object):
     
-    def __init__(self, run_name, ldt, geps, usage):
+    def __init__(self, run_name, ldt, gene_list, geps, usage, k_selection):
         self.run_name = run_name
         self.ldt = ldt
-        # # conform GEP matrices to identical axes
-        # gene_union = geps["gene_spectra_tpm"].columns.union(geps["gene_spectra_score"].columns).union(geps["spectra"].columns) # get union of genes in all matrices
-        # gep_union = geps["gene_spectra_tpm"].index.union(geps["gene_spectra_score"].index).union(geps["spectra"].index)
-        # {k: v.reindex(gep_union).reindex(gene_union, axis=1) for k, v in geps.items()}
+        self.gene_list = gene_list
         self.geps = geps
-        self.usage = usage # .reindex(gep_union, axis=1)
+        self.usage = usage
+        self.k_selection = k_selection
     
     def __repr__(self):
         repstr = [
@@ -88,24 +86,32 @@ class CnmfResult(object):
             usage.append(h)
         usage = pd.concat(usage, axis=1).sort_index(axis=1).rename_axis(["k", "gep"], axis=1)
         
-        return cls(run_name, ldt, geps, usage)
+        # Import genes used for factorization
+        with open(os.path.join(cnmf_result_dir, f"{run_name}.overdispersed_genes.txt")) as f:
+            gene_list = f.readlines()
+
+        # Import K-selection stats
+        k_selection = pd.DataFrame(**np.load(os.path.join(cnmf_result_dir, f"{run_name}.k_selection_stats.df.npz"), allow_pickle=True)).set_index("k")[["stability", "prediction_error"]]
+        print(k_selection)
+        
+        return cls(run_name, ldt, gene_list, geps, usage, k_selection)
 
     def to_anndata(self, gep_type="gene_spectra_score"):
         df = self.geps[gep_type]
         varm = {}
         for k in df.index.get_level_values(0).unique():
             subdf = df.loc[k].T.copy()
-            subdf.columns = subdf.columns.astype("str")
+            subdf.columns = str(k) + "." + subdf.columns.astype("str")
         varm[str(k)] = subdf
         obsm = {}
         for k in self.usage.columns.get_level_values(0).unique():
             subdf = self.usage.loc(axis=1)[k].copy()
             subdf.columns = str(k) + "." + subdf.columns.astype("str")
         obsm[str(k)] = subdf
-        uns = {"run_name": self.run_name, "ldt": self.ldt, "gep_type": gep_type}
+        uns = {"run_name": self.run_name, "ldt": self.ldt, "gene_list": self.gene_list, "gep_type": gep_type, "k_selection": self.k_selection}
         return AnnData(X=pd.DataFrame(np.NaN, index=self.usage.index, columns=df.columns), varm=varm, obsm=obsm, uns=uns)
 
     def to_mudata(self):
         mu_dict = {gep_type: self.to_anndata(gep_type) for gep_type in self.geps.keys()}
-        uns = {"run_name": self.run_name, "ldt": self.ldt}
-        return MuData(mu_dict, uns=uns)
+        # uns = {"run_name": self.run_name, "ldt": self.ldt, "gene_list": self.gene_list}
+        return MuData(mu_dict)
