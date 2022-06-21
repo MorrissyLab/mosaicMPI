@@ -44,11 +44,12 @@ def annotate_usages():
     pass
 
 @click.command()
-def explore_thresholds():
+#### BEGIN WORK HERE
+def integrate():
     pass
 
 @click.command()
-def integrate():
+def create_sns():
     pass
 
 @click.command()
@@ -74,8 +75,8 @@ cli.add_command(select_genes)
 cli.add_command(factorize)
 cli.add_command(postprocess)
 cli.add_command(annotate_usages)
-cli.add_command(explore_thresholds)
 cli.add_command(integrate)
+cli.add_command(create_sns)
 cli.add_command(annotate_sns)
 cli.add_command(create_h5mu)
 

@@ -69,7 +69,7 @@ Each step of the workflow is run as separate commands within cnmfsns
 - create annotated heatmaps from h5ad
 - _this step can be run any time after_ `cnmfsns postprocess`_, not necessarily in this order_ 
 
-### 6. `cnmfsns explore-thresholds`
+### 6. `cnmfsns integrate`
 
 - import multiple cnmf outputs for integration
 - specify an output directory for the integration being performed (eg. "gbm_proteomics")
@@ -77,7 +77,7 @@ Each step of the workflow is run as separate commands within cnmfsns
 - plot to decide range of k?
 - plot to compare integration using spearman and pearson
 
-### 7. `cnmfsns integrate`
+### 7. `cnmfsns create-sns`
 
 - outputs to a subdirectory for this particular set of parameters
 - creates SNS map and all plots without metadata

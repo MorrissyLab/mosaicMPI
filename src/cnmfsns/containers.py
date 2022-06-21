@@ -1,4 +1,4 @@
-from mudata import MuData
+import mudata
 from anndata import AnnData
 import pandas as pd
 import numpy as np
@@ -7,13 +7,13 @@ from glob import glob
 
 class CnmfResult(object):
     
-    def __init__(self, run_name, ldt, gene_list, geps, usage, k_selection):
+    def __init__(self, run_name, ldt, gene_list, geps, usage, kvals):
         self.run_name = run_name
         self.ldt = ldt
         self.gene_list = gene_list
         self.geps = geps
         self.usage = usage
-        self.k_selection = k_selection
+        self.kvals = kvals
     
     def __repr__(self):
         repstr = [
@@ -40,8 +40,18 @@ class CnmfResult(object):
         return self.geps["spectra"]
 
     @classmethod
-    def from_h5ad(cls, h5ad_file):
-        pass
+    def from_h5mu(cls, h5mu_file):
+        obj = mudata.read_h5mu(h5mu_file)
+        geps = {}
+        for gep_type, ad in obj.mod.items():
+            meta_w = pd.concat(ad.varm, axis=1)
+            meta_w.columns = pd.MultiIndex.from_tuples([(int(k), int(gep.split(".")[1])) for k, gep in meta_w.columns])
+            geps[gep_type] = meta_w.sort_index(axis=1).T
+
+        usage = pd.concat(obj.mod["gene_spectra_score"].obsm, axis=1)
+        usage.columns = pd.MultiIndex.from_tuples([(int(k), int(gep.split(".")[1])) for k, gep in usage.columns])
+        usage = usage.sort_index(axis=1)
+        return cls(**obj.uns, geps=geps, usage=usage)
 
     @classmethod
     def from_dir(cls, cnmf_result_dir, local_density_threshold: float = None):
@@ -88,30 +98,29 @@ class CnmfResult(object):
         
         # Import genes used for factorization
         with open(os.path.join(cnmf_result_dir, f"{run_name}.overdispersed_genes.txt")) as f:
-            gene_list = f.readlines()
+            gene_list = [line.strip() for line in f.readlines()]
 
         # Import K-selection stats
-        k_selection = pd.DataFrame(**np.load(os.path.join(cnmf_result_dir, f"{run_name}.k_selection_stats.df.npz"), allow_pickle=True)).set_index("k")[["stability", "prediction_error"]]
-        print(k_selection)
+        kvals = pd.DataFrame(**np.load(os.path.join(cnmf_result_dir, f"{run_name}.k_selection_stats.df.npz"), allow_pickle=True)).set_index("k")[["stability", "prediction_error"]]
+        kvals.index = kvals.index.astype(int)
         
-        return cls(run_name, ldt, gene_list, geps, usage, k_selection)
+        return cls(run_name, ldt, gene_list, geps, usage, kvals)
 
     def to_anndata(self, gep_type="gene_spectra_score"):
         df = self.geps[gep_type]
         varm = {}
-        for k in df.index.get_level_values(0).unique():
+        for k in self.kvals.index:
             subdf = df.loc[k].T.copy()
             subdf.columns = str(k) + "." + subdf.columns.astype("str")
-        varm[str(k)] = subdf
+            varm[str(k)] = subdf
         obsm = {}
         for k in self.usage.columns.get_level_values(0).unique():
             subdf = self.usage.loc(axis=1)[k].copy()
             subdf.columns = str(k) + "." + subdf.columns.astype("str")
-        obsm[str(k)] = subdf
-        uns = {"run_name": self.run_name, "ldt": self.ldt, "gene_list": self.gene_list, "gep_type": gep_type, "k_selection": self.k_selection}
-        return AnnData(X=pd.DataFrame(np.NaN, index=self.usage.index, columns=df.columns), varm=varm, obsm=obsm, uns=uns)
+            obsm[str(k)] = subdf
+        return AnnData(X=pd.DataFrame(np.NaN, index=self.usage.index, columns=df.columns), varm=varm, obsm=obsm)
 
     def to_mudata(self):
         mu_dict = {gep_type: self.to_anndata(gep_type) for gep_type in self.geps.keys()}
-        # uns = {"run_name": self.run_name, "ldt": self.ldt, "gene_list": self.gene_list}
-        return MuData(mu_dict)
+        uns = {"run_name": self.run_name, "ldt": self.ldt, "gene_list": self.gene_list, "kvals": self.kvals}
+        return mudata.MuData(mu_dict, uns=uns)
