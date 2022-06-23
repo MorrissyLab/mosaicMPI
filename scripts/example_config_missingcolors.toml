@@ -1,0 +1,66 @@
+# Provide a name for the integration
+
+name = "GBM Proteomics"
+
+
+################################
+# Datasets and Sample Metadata #
+################################
+
+[[datasets]]
+alias = "CPTAC"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/cptac_gbm_imputed_odg1_kl.h5mu"
+color = "royalblue"
+metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/cptac_gbm.metadata.txt"
+
+[[datasets]]
+alias = "UCC"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/gbm_ffpe_proteogenomics_imputed_odg1_kl.h5mu"
+color = "gold"
+metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/gbm_ffpe_proteogenomics.metadata.txt"
+
+[[datasets]]
+alias = "Yonsei"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/yonsei_imputed_odg1_kl.h5mu"
+metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/yonsei.metadata.txt"
+
+[[datasets]]
+alias = "Diamandis"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/diamandis_imputed_odg1_kl.h5mu"
+color = "lightgreen"
+metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/diamandis.metadata.txt"
+
+
+##########################
+# Metadata Color Schemes #
+##########################
+
+[metadata_colors.detailed_category]
+"N" = "#b0e0e6"
+"P" = "#00c000"
+"R" = "#e00000"
+
+[metadata_colors.simple_category]
+"N.Cx" = "#0000e0"
+"P" = "#00c000"
+"R" = "#e00000"
+"CT" = "#006400"
+"MVP" = "#ffff00"
+"IT" = "#90ee90"
+"PAN" = "#808000"
+
+
+[metadata_colors.d_methyl_mnp]
+"A IDH" = "#d4b527"
+"A IDH, HG" = "#c9c22b"
+"GBM, MES" = "#53752b"
+"GBM, RTK I" = "#7bbb2f"
+"GBM, RTK II" = "#9cf867"
+"GBM, RTK III" = "#91e039"
+"GBM, MID" = "#3b6616"
+"Other" = "#dddddd"
+
+[metadata_colors.is_gcimp]
+true = "#310042"
+false = "#ede03c"
+"Other" = "#dddddd"
