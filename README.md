@@ -23,12 +23,40 @@ pip install git+https://github.com/MorrissyLab/cNMF-SNS.git
 `pip install cnmfsns`
 
 
+## Workflows
 
-## Workflow
+Each step of a workflow is run as a separate command within cnmfsns.
 
-Each step of the workflow is run as separate commands within cnmfsns
+### 1. Starting with expression matrix
+```
+cnmfsns 
+```
 
-### 1. `cnmfsns inspect-inputs`
+### 2. Starting with completed cNMF runs
+In the case of integrated already completed cNMF runs, a quick command will generate the h5mu file which will enable importing the data into 
+```
+cnmfsns create-h5mu -d cnmf_result_dir -o cnmf_run.h5mu
+```
+```
+cnmfsns initialize -c config.toml -o output_directory
+```
+After this step, several plots are generated which can help guide parameter selection for the next step:
+```
+cnmfsns create-sns -o output_directory
+```
+
+
+## Metadata
+
+
+## TOML configuration file
+
+Parameters for SNS integration are specified in the TOML configuration file. If none are chosen, default values for each parameter will be used. 
+
+
+## Overview of each cnmfsns command
+
+### 1.`cnmfsns inspect-inputs`
 
 - Preempt errors by doing QC on the input data matrices
 - (?) Check sample names matching to metadata key columns
@@ -69,20 +97,22 @@ Each step of the workflow is run as separate commands within cnmfsns
 - create annotated heatmaps from h5ad
 - _this step can be run any time after_ `cnmfsns postprocess`_, not necessarily in this order_ 
 
-### 6. `cnmfsns integrate`
+### 6. `cnmfsns initialize`
 
 - import multiple cnmf outputs for integration
+    - requires h5mu files from previous runs, or
+    - a config file (spec in progress, see example in 'scripts/example_config.toml')
 - specify an output directory for the integration being performed (eg. "gbm_proteomics")
+- UpSet plot of OD Genes between datasets
 - plot correlation between cohorts
-- plot to decide range of k?
 - plot to compare integration using spearman and pearson
+- plot to decide range of k?
 
 ### 7. `cnmfsns create-sns`
 
-- outputs to a subdirectory for this particular set of parameters
-- creates SNS map and all plots without metadata
+- uses config information from 
+- creates SNS map and all plots without metadata (fast step)
 
 ### 8. `cnmfsns annotate-sns`
 
-- creates spike plots and related data outputs
-- patient 
+- creates spike plots and related data outputs (slower steps)
