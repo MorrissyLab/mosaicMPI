@@ -7,26 +7,22 @@ name = "GBM Proteomics"
 # Datasets and Sample Metadata #
 ################################
 
-[[datasets]]
-alias = "CPTAC"
+[datasets.CPTAC]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/cptac_gbm_imputed_odg1_kl.h5mu"
 color = "royalblue"
 metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/cptac_gbm.metadata.txt"
 
-[[datasets]]
-alias = "UCC"
+[datasets.UCC]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/gbm_ffpe_proteogenomics_imputed_odg1_kl.h5mu"
 color = "gold"
 metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/gbm_ffpe_proteogenomics.metadata.txt"
 
-[[datasets]]
-alias = "Yonsei"
+[datasets.Yonsei]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/yonsei_imputed_odg1_kl.h5mu"
 color = "tomato"
 metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/yonsei.metadata.txt"
 
-[[datasets]]
-alias = "Diamandis"
+[datasets.Diamandis]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/diamandis_imputed_odg1_kl.h5mu"
 color = "lightgreen"
 metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/diamandis.metadata.txt"

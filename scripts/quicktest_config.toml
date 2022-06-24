@@ -1,0 +1,34 @@
+# Provide a name for the integration
+
+name = "Test integration"
+
+
+################################
+# Datasets and Sample Metadata #
+################################
+
+[datasets.UCC]
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/gbm_ffpe_proteogenomics_imputed_odg1_kl.h5mu"
+color = "gold"
+metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/gbm_ffpe_proteogenomics.metadata.txt"
+
+[datasets.Yonsei]
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/yonsei_imputed_odg1_kl.h5mu"
+metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/yonsei.metadata.txt"
+
+##########################
+# Metadata Color Schemes #
+##########################
+
+[metadata_colors.detailed_category]
+"N" = "#b0e0e6"
+"P" = "#00c000"
+"R" = "#e00000"
+
+[metadata_colors.simple_category]
+"N.Cx" = "#0000e0"
+"P" = "#00c000"
+"R" = "#e00000"
+"CT" = "#006400"
+"MVP" = "#ffff00"
+"IT" = "#90ee90"
