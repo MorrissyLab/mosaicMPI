@@ -32,11 +32,26 @@ pip install cnmfsns
 conda install -c conda-forge cnmfsns
 ```
 
+
 ## Workflow
 
 Each step of a workflow is run as a separate command within cNMF-SNS.
 
-### 1. Inspect inputs and plot gene overdispersion
+### 1. (Optional) Create AnnData object from text files with expression and annotations.
+
+If expression and annotation data is in text files, this utility can combine and check them into a .h5ad file for convenience.
+```
+cnmfsns txt-to-h5ad --tpm tpm.txt --counts counts.txt --metadata metadata.txt
+```
+
+### 2. (Optional) Filter Existing AnnData object for problematic cells/spots/samples.
+
+Check h5ad objects for cells, spots, samples, or genes which have missing values, negative values, or are all zeros.
+```
+cnmfsns check_h5ad file.h5ad file_filtered.h5ad
+```
+
+### 3. Model gene overdispersion to select genes for factorization.
 
 The first step of cNMF-SNS is to check inputs for completeness and integrity, as well as to guide the selection of parameters for running cNMF on a particular dataset.
 
@@ -47,27 +62,29 @@ cNMF-SNS will also check sample metadata to ensure matching of sample names betw
 Deconvolution of a gene expression dataset using cNMF requires a set of overdispersed genes which will be used for factorization. GEPs will include all genes after a re-fitting step, but error will only be calculated on overdispersed genes, providing the user the opportunity to decide which genes are most informative.
 
 Since cNMF performs variance scaling on the input matrix, it is important to remove genes whose variance could be attributable to noise. cNMF-SNS supports two methods for overdispersed gene selection:
-    1. method `default` is similar to the method used by STdeconvolve, which identifies genes with high variance relative to other genes with similar mean. This method is useful on many types of gene expression datasets as it makes no assumptions about whether lower or higher genes have more reliable mean and variance estimates.
-    2. method `poisson` is cNMF's default method, which in addition to the default method, assumes that the input data is count data. This method models the expression using a Poisson distribution to exclude genes with low total counts, and is suitable for (especially single-cell) RNA-Seq based methods.
+    Model gene overdispersion and plot calibration plots for selection of overdispersed genes, using two methods:
+    
+    - `cnmf`: v-score and minimum expression threshold (cNMF method: Kotliar, et al. eLife, 2019). This method is only suitable for count data.
+    - `default`: residual standard deviation after modeling mean-variance dependence. (STdeconvolve method: Miller, et al. Nat. Comm. 2022) This method makes fewer assumptions about the input data but requires a visual check since the optimal threshold depends on the data type.
 
-To inspect input files for missing data and produce plots to guide selection of overdispersed genes, run the following command: 
+To produce plots to guide selection of overdispersed genes, run the following command:
 
 ```
-cnmfsns inspect-inputs
+cnmfsns model-odg --name example_run --output_dir . --input file_filtered.h5ad
 ```
 
 ### 2. Select overdispersed genes
 
 
 ```
-cnmfsns prepare
+cnmfsns select-odg
 ```
 
 
 ### 3. Perform cNMF factorization
 
 ```
-cnmfsns factorization
+cnmfsns factorize
 ```
 
 
@@ -81,7 +98,7 @@ In the case of integrated already completed cNMF runs, a quick command will gene
 
 ```
 cnmfsns create-h5mu -d cnmf_result_dir -o cnmf_run.h5mu
-```
+``` 
 
 ### 2. Initialize the cNMF-SNS integration using configuration
 
@@ -117,7 +134,7 @@ Parameters for SNS integration are specified in the TOML configuration file. If 
 
 ## Overview of each cnmfsns command
 
-### 1.`cnmfsns inspect-inputs`
+### 1.`cnmfsns model_odg`
 
 - Preempt errors by doing QC on the input data matrices
 - (?) Check sample names matching to metadata key columns

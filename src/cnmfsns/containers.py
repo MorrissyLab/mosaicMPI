@@ -12,7 +12,7 @@ from cnmfsns.config import Config
 logging.captureWarnings(True)
 
 class CnmfResult(object):
-    
+
     def __init__(self, run_name, ldt, gene_list, geps, usage, kvals):
         self.run_name = run_name
         self.ldt = ldt
