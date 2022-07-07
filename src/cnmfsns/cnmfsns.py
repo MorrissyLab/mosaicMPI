@@ -12,7 +12,7 @@ from typing import Optional, Mapping
 from anndata import AnnData, read_h5ad
 from cnmfsns.containers import CnmfResult, Integration
 from cnmfsns.config import Config
-from cnmfsns.odg import model_overdispersion
+from cnmfsns.odg import model_overdispersion, create_diagnostic_plots
 
 def start_logging(output_dir):
     logging.captureWarnings(True)
@@ -93,47 +93,36 @@ def txt_to_h5ad(counts, tpm, metadata, output):
     help="Output .h5ad file.")
 def check_h5ad(input, output):
     
-    ## TODO: implement
     adata = read_h5ad(input)
     adata.write(output)
-    # Check for missing values in counts matrix.
-    if counts.isnull().sum().sum() > 0:
-        logging.warning("Counts matrix contains missing (NaN) data .")
-    # Check for missing values in counts matrix.
-    if tpm.isnull().sum().sum() > 0:
-        logging.warning("TPM matrix contains missing (NaN) data.")
-    # if counts is None and tpm is None:
-    #     logging.error("Either a counts matrix or normalized (TPM) matrix of gene expression must be supplied.")
-    #     sys.exit(1)
-    # elif counts and tpm is None:
-    #     counts = pd.read_table(counts, index_col=0)
-    #     tpm = counts * 1e6 / counts.sum(axis=1) # compute TPM
-    # elif tpm and counts is None:
-    #     tpm = pd.read_table(tpm, index_col=0)
-    #     counts = tpm
-    # elif tpm and counts:
-    #     counts = pd.read_table(counts, index_col=0)
-    #     tpm = pd.read_table(tpm, index_col=0)
-    pass
+    if np.isnan(adata.X).sum() > 0:
+        logging.error("TPM matrix (adata.X) contains missing (NaN) data.")
+        sys.exit(1)
+    
+    # - check for tpm and count matrices existence - otherwise calculate as in txt_to_h5ad()
+
+    # - check for genes/samples with all zeros
+    # - warn if tpm matrix is not perfectly correlated with count matrix - not recommended for cNMF
+
 
 @click.command()
 @click.option(
     "-n", "--name", type=str, required=True, 
     help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
 @click.option(
-    "-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(),
-    help="Output directory. Defaults to current directory. All output will be placed in [output_dir]/[name]/... ")
+    "-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
+    help="Output directory. All output will be placed in [output_dir]/[name]/... ")
 @click.option(
     "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=False,
     help="h5ad file containing expression data (adata.X=normalized (TPM) and adata.raw.X = count) as well as any cell/sample metadata (adata.obs).")
 @click.option(
-    "--odg_default_spline_degree", type=int, default=3,
+    "--odg_default_spline_degree", type=int, default=3, show_default=True,
     help="Degree for BSplines for the Generalized Additive Model (default method). For example, a constant spline would be 0, linear would be 1, and cubic would be 3.")
 @click.option(
-    "--odg_default_dof", type=int, default=8,
+    "--odg_default_dof", type=int, default=8, show_default=True,
     help="Degrees of Freedom (number of components) for the Generalized Additive Model (default method).")
 @click.option(
-    "--odg_cnmf_mean_threshold", type=float, default=0.5,
+    "--odg_cnmf_mean_threshold", type=float, default=0.5, show_default=True,
     help="Minimum mean for overdispersed genes (cnmf method).")
 def model_odg(name, output_dir, input, odg_default_spline_degree, odg_default_dof, odg_cnmf_mean_threshold):
     """
@@ -141,30 +130,43 @@ def model_odg(name, output_dir, input, odg_default_spline_degree, odg_default_do
     
     - `cnmf`: v-score and minimum expression threshold for count data (cNMF method: Kotliar, et al. eLife, 2019) 
     - `default`: residual standard deviation after modeling mean-variance dependence. (STdeconvolve method: Miller, et al. Nat. Comm. 2022)
+    
+    Examples:
 
+        # use default parameters, suitable for most datasets
+        cnmfsns model-odg -n test -i test.h5ad
+
+        # Explicitly use a linear model instead of a BSpline Generalized Additive Model
+        cnmfsns model-odg -n test -i test.h5ad --odg_default_spline_degree 0 --odg_default_dof 1
     """
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
     adata = read_h5ad(input)
     os.makedirs(os.path.normpath(os.path.join(output_dir, name, "odgenes")), exist_ok=True)
     shutil.copy(input, os.path.join(output_dir, name, "input.h5ad"))
     # Create diagnostic plots
-    df, figs = model_overdispersion(
+    df = model_overdispersion(
             adata=adata,
             odg_default_spline_degree=odg_default_spline_degree,
             odg_default_dof=odg_default_dof,
             odg_cnmf_mean_threshold=odg_cnmf_mean_threshold
             )
-    for fig_id, fig in figs.items():
+    for fig_id, fig in create_diagnostic_plots(df).items():
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
 
     # output table with gene overdispersion measures
-    df.to_csv(os.path.join(output_dir, name, "odgenes", "all.tsv"), sep="\t")
-
+    df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
+    
 
 @click.command()
 @click.option(
-    "-m", "--method",
+    "-n", "--name", type=str, required=True, 
+    help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
+@click.option(
+    "-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
+    help="Output directory. All output will be placed in [output_dir]/[name]/... ")
+@click.option(
+    "-m", "--odg_method",
     type=click.Choice([
         "default_topn",
         "default_minscore",
@@ -173,39 +175,108 @@ def model_odg(name, output_dir, input, odg_default_spline_degree, odg_default_do
         "cnmf_minscore",
         "cnmf_quantile",
         "genes_file"
-        ]), default="default_minscore",
+        ]), default="default_minscore", show_default=True,
     help="Select the model and method of overdispersed gene selection.")
-@click.argument("parameter", default=1.0)
-def select_odg(name, output_dir, method, parameter):
+@click.option(
+    "-p", '--odg_param', default="1.0", show_default=True,
+    help="Parameter for odg_method.")
+@click.option(
+    '--k_range', show_default=True, default=(2, 10, 1), nargs=3,
+    help="Specify a range of components for factorization, using three numbers: first, last, step_size. Eg. '4 23 4' means `k`=4,8,12,16,20")
+@click.option(
+    "-k", type=int, multiple=True,
+    help="Specify individual components for factorization. Multiple may be selected like this: -k 2 -k 4")
+@click.option(
+    '--n_iter', type=int, show_default=True, default=100,
+    help="Number of iterations for factorization. If several `k` are specified, this many iterations will be run for each value of `k`")
+@click.option(
+    '--seed', type=int,
+    help="Seed for sklearn random state.")
+@click.option(
+    '--beta_loss', type=click.Choice(["frobenius", "kullback-leibler"]), default="kullback-leibler",
+    help="Measure of Beta divergence to be minimized.")
+
+def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, seed, beta_loss):
     """
-    Select overdispersed genes for factorization. Overdispersed genes can be modelled using the `default` or `cnmf` models, and thresholds
+    Set parameters for factorization, including selecting overdispersed genes.
+    
+    Overdispersed genes can be modelled using the `default` or `cnmf` models, and thresholds
     can be specified based on the top N, score threshold, or quantile. Alternatively, a text file with one gene per line can be used to specify the genes manually.
-    The default arguments are equivalent to:
-        -m default_minscore 1.0
     
     For `top_n` methods, select an integer number of genes. For `min_score`, specify a score threshold. For `quantile` methods, specify the quantile of 
     genes to include (eg., the top 25% would be 0.75).
     
+    Examples:
+
+        # default behaviour does this
+        cnmfsns select-odg -n test -m default_minscore -p 1.0
+
+        # to reproduce cNMF default behaviour (Kotliar et al., 2019, eLife)
+        cnmfsns select-odg -n test -m cnmf_topn -p 2000          
+
+        # select top 20% of genes when ranked by od-score
+        cnmfsns select-odg -n test -m default_quantile -p 0.8
+
+        # input a gene list from text file
+        cnmfsns select-odg -n test -m genes_file -p path/to/genesfile.txt
     """
-    df = pd.read_table(os.path.join(output_dir, name, "odgenes", "all.tsv"), sep="\t")
-    print(df)
-    if method == "default_topn":
-        pass
-    elif method == "default_minscore":
-        pass
-    elif method == "default_quantile":
-        pass
-    elif method == "cnmf_topn":
-        pass
-    elif method == "cnmf_minscore":
-        pass
-    elif method == "cnmf_quantile":
-        pass
-    elif method == "genes_file":
-        pass
+    cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
+    df = pd.read_table(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t", index_col=0)
+
+    # Convert parameter to expected type
+    if odg_method.endswith("topn"):
+        odg_param = int(odg_param)
+    elif odg_method.endswith("minscore"):
+        odg_param = float(odg_param)
+    elif odg_method.endswith("quantile"):
+        odg_param = float(odg_param)
+    elif odg_method == "genes_file":
+        odg_param = click.Path(exists=True, dir_okay=False)(odg_param)
+    else:
+        raise RuntimeError
+
+    if odg_method == "default_topn":
+        # top N genes ranked by od-score
+        genes = df["odscore"].sort_values(ascending=False).head(odg_param).index
+    elif odg_method == "default_minscore":
+        # filters genes by od-score
+        genes = df[(df["odscore"] >= odg_param)]["odscore"].sort_values(ascending=False).index
+    elif odg_method == "default_quantile":
+        # takes the specified quantile of genes after removing NaNs
+        genes = df["odscore"].sort_values(ascending=False).head(int(odg_param * df["odscore"].notnull().sum())).index
+    elif odg_method == "cnmf_topn":
+        # top N genes ranked by v-score
+        genes = df["vscore"].sort_values(ascending=False).head(odg_param).index
+    elif odg_method == "cnmf_minscore":
+        # filters genes by v-score
+        genes = df[(df["vscore"] >= odg_param)]["vscore"].sort_values(ascending=False).index
+    elif odg_method == "cnmf_quantile":
+        # takes the specified quantile of genes after removing NaNs
+        genes = df["vscore"].sort_values(ascending=False).head(int(odg_param * df["vscore"].notnull().sum())).index
+    elif odg_method == "genes_file":
+        genes = open(odg_param).read().rstrip().split(os.linesep)
+
+    df["selected"] = df.index.isin(genes)
+
+    # update plots with threshold information
+    for fig_id, fig in create_diagnostic_plots(df).items():
+        fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
+        fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
+
+    # output table with gene overdispersion measures
+    df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
+
+
+
 
 @click.command()
-def factorize():
+@click.option(
+    "-n", "--name", type=str, required=True, 
+    help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
+@click.option(
+    "-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
+    help="Output directory. All output will be placed in [output_dir]/[name]/... ")
+def factorize(name, output_dir):
     pass
 
 @click.command()
@@ -300,7 +371,7 @@ def create_h5mu(cnmf_result_dir, local_density_threshold, output_file, delete):
 cli.add_command(txt_to_h5ad)
 cli.add_command(check_h5ad)
 cli.add_command(model_odg)
-cli.add_command(select_odg)
+cli.add_command(set_parameters)
 cli.add_command(factorize)
 cli.add_command(postprocess)
 cli.add_command(annotate_usages)
@@ -308,7 +379,6 @@ cli.add_command(initialize)
 cli.add_command(create_sns)
 cli.add_command(annotate_sns)
 cli.add_command(create_h5mu)
-
 
 if __name__ == "__main__":
     cli()
