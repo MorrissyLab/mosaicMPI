@@ -1,7 +1,6 @@
 # cNMF-SNS
 cNMF Solution Neighborhood Space
 
-
 ## Installation
 
 ### 1. Using `pip` to install the latest version from GitHub:
@@ -32,21 +31,34 @@ pip install cnmfsns
 conda install -c conda-forge cnmfsns
 ```
 
-
 ## Workflow
 
-Each step of a workflow is run as a separate command within cNMF-SNS.
+Each step of a workflow is run as a separate command within cNMF-SNS. You can see which subcommands are available using:
+```
+cnmfsns --help
+```
+
+Easily get help for each subcommand using, for example:
+
+```
+cnmfsns model-odg --help
+```
 
 ### 1. (Optional) Create AnnData object from text files with expression and annotations.
 
 If expression and annotation data is in text files, this utility can combine and check them into a .h5ad file for convenience.
+
+TPM and count matrices must have identical axes (ie., row names and column names). The metadata file must be 
 ```
 cnmfsns txt-to-h5ad --tpm tpm.txt --counts counts.txt --metadata metadata.txt
 ```
 
-### 2. (Optional) Filter Existing AnnData object for problematic cells/spots/samples.
+### 2. (Optional) Check existing h5ad files for minimum requirements for cNMF.
 
-Check h5ad objects for cells, spots, samples, or genes which have missing values, negative values, or are all zeros.
+Check h5ad objects for cells, spots, samples, or genes which have missing values, negative values, or sum of 0.
+
+cNMF  supports input data that is sparse (i.e. with zeros), but not with missing values. When missing values are present (eg. from concatenation of datasets with partially overlapping features), the default behaviour is to subset the input matrix to shared features/genes only, but it is recommended to either run each dataset separately or use a dense, imputed data matrix. cNMF will warn the user if missing data is present.
+
 ```
 cnmfsns check_h5ad file.h5ad file_filtered.h5ad
 ```
@@ -55,9 +67,6 @@ cnmfsns check_h5ad file.h5ad file_filtered.h5ad
 
 The first step of cNMF-SNS is to check inputs for completeness and integrity, as well as to guide the selection of parameters for running cNMF on a particular dataset.
 
-cNMF currently supports input data that is sparse (i.e. with zeros), but not with missing values. When missing values are present (eg. from integration of partially overlapping datasets), the default behaviour is to subset the input matrix to shared features/genes only, but it is recommended to either run each dataset separately or use a dense, imputed data matrix. cNMF will warn the user if missing data is present.
-
-cNMF-SNS will also check sample metadata to ensure matching of sample names between data and metadata inputs, and will describe the data types of each metadata layer so that the user can confirm they are interpreted correctly, and thus will result in correctly annotated figures.
 
 Deconvolution of a gene expression dataset using cNMF requires a set of overdispersed genes which will be used for factorization. GEPs will include all genes after a re-fitting step, but error will only be calculated on overdispersed genes, providing the user the opportunity to decide which genes are most informative.
 
@@ -70,24 +79,39 @@ Since cNMF performs variance scaling on the input matrix, it is important to rem
 To produce plots to guide selection of overdispersed genes, run the following command:
 
 ```
-cnmfsns model-odg --name example_run --output_dir . --input file_filtered.h5ad
+cnmfsns model-odg --name example_run --input file_filtered.h5ad
 ```
 
 ### 2. Select overdispersed genes
 
+A simple command sets the parameters for the factorization using default parameters:
+  - overdispersed genes: od-score >= 1
+  - k = 2 - 10 inclusive
+  - beta-loss metric: kullback-leibler
 
 ```
-cnmfsns select-odg
+cnmfsns set_parameters --name example_run
 ```
-
 
 ### 3. Perform cNMF factorization
 
+Use `cnmf`'s parallelization, which is adaptable for any cluster configuration. This command defaults to single CPU run so a small test dataset can be run like this:
 ```
-cnmfsns factorize
+cnmfsns factorize --name example_run
 ```
 
 
+### 4. Postprocessing
+
+This step will check to ensure that all factorizations completed successfully, and then will create consensus GEPs and usages
+
+- will check to ensure all factorizations completed successfully
+- upon completion, `cnmf combine` and `cnmf consensus` steps to get consensus GEPs and usages
+- call marker genes
+- default local_density_threshold = 2.0
+- create output plots from cnmf, including k selection plot
+- compress cnmf output into h5ad file for exporting to python or R environments
+- optionally deletes cnmf working directory
 
 ## Workflow for starting with outputs from cNMF
 
@@ -123,48 +147,10 @@ After this step, several plots are generated which can help guide parameter sele
 cnmfsns create-sns -o output_directory
 ```
 
-
-## Metadata
-
-
 ## TOML configuration file
 
 Parameters for SNS integration are specified in the TOML configuration file. If none are chosen, default values for each parameter will be used. 
 
-
-## Overview of each cnmfsns command
-
-### 1.`cnmfsns model_odg`
-
-- Preempt errors by doing QC on the input data matrices
-- (?) Check sample names matching to metadata key columns
-- Check missing data
-- create odgenes plots to guide threshold selection, but do not select genes yet
-- 
-### 2. `cnmfsns prepare`
-
-- Select marker genes
-- wrap `cnmf prepare` step which creates directory for cnmf outputs
-- prepare data for factorization
-
-### 3A. `cnmfsns factorize`
-
-- Use `cnmf`'s methods for parallelization, which is adaptable for any cluster configuration, it defaults to single CPU run so a small test dataset will have very simple commands.
-
-### 3B. `cnmfsns factorize --config morrissylab`
-
-- an optimized one-step script for use by our lab on ARC
-- Will automatically submit jobs to scheduler
-
-### 4A. `cnmfsns postprocess`
-
-- will check to ensure all factorizations completed successfully
-- upon completion, `cnmf combine` and `cnmf consensus` steps to get consensus GEPs and usages
-- call marker genes
-- default local_density_threshold = 2.0
-- create output plots from cnmf, including k selection plot
-- compress cnmf output into h5ad file for exporting to python or R environments
-- optionally deletes cnmf working directory
 
 ### 4B. `cnmfsns create-h5mu`
 > Note: Use of this is for backwards compatibility with cNMF runs that were started outside of the cnmfsns framework, and thus, cNMF results are not guaranteed to be complete, or the parameters correct.
