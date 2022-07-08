@@ -10,7 +10,7 @@ If you use SSH authentication for GitHub, use the following:
 pip install git+ssh://git@github.com/MorrissyLab/cNMF-SNS.git
 ```
 
-If you have installed a personal access token from GitHub (https://github.com/settings/tokens), you can use:
+If you have installed a [personal access token from GitHub](https://github.com/settings/tokens), you can use:
 ```
 pip install git+https://<token>@github.com/MorrissyLab/cNMF-SNS.git
 ```
@@ -82,7 +82,7 @@ To produce plots to guide selection of overdispersed genes, run the following co
 cnmfsns model-odg --name example_run --input file_filtered.h5ad
 ```
 
-### 2. Select overdispersed genes
+### 4. Select overdispersed genes and parameters for factorization
 
 A simple command sets the parameters for the factorization using default parameters:
   - overdispersed genes: od-score >= 1
@@ -93,15 +93,20 @@ A simple command sets the parameters for the factorization using default paramet
 cnmfsns set_parameters --name example_run
 ```
 
-### 3. Perform cNMF factorization
+### 5. Perform cNMF factorization
 
 Use `cnmf`'s parallelization, which is adaptable for any cluster configuration. This command defaults to single CPU run so a small test dataset can be run like this:
 ```
 cnmfsns factorize --name example_run
 ```
+For submitting jobs to the SLURM job scheduler, you can download a sample job submission script [here](https://github.com/MorrissyLab/cNMF-SNS/tree/main/scripts/slurm.sh).
 
+After editing the script to ensure it is suitable for your compute cluster, you can massively parallelize your run using:
+```
+cnmfsns factorize --name example_run --slurm-script /path/to/slurm.sh
+```
 
-### 4. Postprocessing
+### 6. Postprocessing
 
 This step will check to ensure that all factorizations completed successfully, and then will create consensus GEPs and usages
 

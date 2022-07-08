@@ -1,6 +1,7 @@
 import os
 import logging
 import shutil
+import subprocess
 import click
 import cnmf
 import sys
@@ -55,9 +56,7 @@ def cli():
          "If not provided, TPM normalization will be calculated from the count matrix.")
 @click.option(
     "-m", "--metadata", type=click.Path(dir_okay=False, exists=True), required=False,
-    help="Pre-computed (cell/sample x gene) TPM matrix as .df.npz or tab delimited text file. "
-         "This is the matrix which is used to select overdispersed genes and to which final GEPs will be scaled. "
-         "If not provided, TPM normalization will be calculated from the count matrix.")
+    help="Tab-separated text file with metadata for samples/cells/spots with one row each. Columns are annotation layers.")
 @click.option(
     "-o", '--output', type=click.Path(dir_okay=False, exists=False), required=True,
     help="Path to output .h5ad file.")
@@ -156,7 +155,7 @@ def model_odg(name, output_dir, input, odg_default_spline_degree, odg_default_do
 
     # output table with gene overdispersion measures
     df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
-    
+
 
 @click.command()
 @click.option(
@@ -181,11 +180,11 @@ def model_odg(name, output_dir, input, odg_default_spline_degree, odg_default_do
     "-p", '--odg_param', default="1.0", show_default=True,
     help="Parameter for odg_method.")
 @click.option(
-    '--k_range', show_default=True, default=(2, 10, 1), nargs=3,
+    '--k_range', type=int, nargs=3,
     help="Specify a range of components for factorization, using three numbers: first, last, step_size. Eg. '4 23 4' means `k`=4,8,12,16,20")
 @click.option(
     "-k", type=int, multiple=True,
-    help="Specify individual components for factorization. Multiple may be selected like this: -k 2 -k 4")
+    help="Specify individual components for factorization. Multiple may be selected like this: -k 2 -k 3")
 @click.option(
     '--n_iter', type=int, show_default=True, default=100,
     help="Number of iterations for factorization. If several `k` are specified, this many iterations will be run for each value of `k`")
@@ -266,22 +265,85 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
     # output table with gene overdispersion measures
     df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
 
+    # write TPM (normalized) data to 
+    adata = read_h5ad(os.path.join(output_dir, name, "input.h5ad"))
+    input_counts = AnnData(X=adata.raw.X, obs=adata.obs, var=adata.var)
+    tpm = AnnData(X=adata.X, obs=adata.obs, var=adata.var)
+    tpm.write_h5ad(cnmf_obj.paths["tpm"])
 
+    gene_tpm_mean = np.array(tpm.X.mean(axis=0)).reshape(-1)
+    gene_tpm_stddev = np.array(tpm.X.std(axis=0, ddof=0)).reshape(-1)
+    input_tpm_stats = pd.DataFrame([gene_tpm_mean, gene_tpm_stddev], index = ['__mean', '__std']).T
+    cnmf.cnmf.save_df_to_npz(input_tpm_stats, cnmf_obj.paths['tpm_stats'])
+    norm_counts = cnmf_obj.get_norm_counts(input_counts, tpm, high_variance_genes_filter=genes)
+    if norm_counts.X.dtype != np.float64:
+        norm_counts.X = norm_counts.X.astype(np.float64)
+    cnmf_obj.save_norm_counts(norm_counts)
 
-
+    kvals = set(k)
+    if k_range is not None:
+        kvals |= set(range(k_range[0], k_range[1] + 1, k_range[2]))
+    kvals = sorted(list(kvals))
+    # save parameters for factorizatoin step
+    cnmf_obj.save_nmf_iter_params(*cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss))
+    
+    
 @click.command()
 @click.option(
     "-n", "--name", type=str, required=True, 
     help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
 @click.option(
-    "-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
+    "-o", '--output_dir', type=click.Path(file_okay=False), default=os.getcwd(), show_default=True,
     help="Output directory. All output will be placed in [output_dir]/[name]/... ")
-def factorize(name, output_dir):
-    pass
+@click.option(
+    '--worker_index', type=int, default=0, show_default=True,
+    help="Index of current worker (the first worker should have index 0) if --slurm_script is not specified.")
+@click.option(
+    '--total_workers', type=int, default=1, show_default=True,
+    help="Total number of workers to distribute jobs to if --slurm_script is not specified.")
+@click.option(
+    '--slurm_script', type=click.Path(dir_okay=False, exists=True),
+    help="Submit jobs to SLURM scheduler using this job submission script. Sample scripts are located in `scripts/slurm.sh`.")
 
+def factorize(name, output_dir, worker_index, total_workers, slurm_script):
+    """
+    Performs factorization according to parameters specified using `cnmfsns set-parameters`.
+    """
+    cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
+    if slurm_script is None:
+        cnmf_obj.factorize(worker_i=worker_index, total_workers=total_workers)
+    else:
+        command1 = subprocess.Popen(['sbatch', slurm_script, os.getcwd(), output_dir, name])
+    
 @click.command()
-def postprocess():
-    pass
+@click.option(
+    "-n", "--name", type=str, required=True, 
+    help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
+@click.option(
+    "-o", '--output_dir', type=click.Path(file_okay=False), default=os.getcwd(), show_default=True,
+    help="Output directory. All output will be placed in [output_dir]/[name]/... ")
+@click.option(
+    '--local_density_threshold', type=float, default=2.0, show_default=True,
+    help="")
+@click.option(
+    '--local_neighborhood_size', type=float, default=0.3, show_default=True,
+    help="Total number of workers to distribute jobs to if --slurm_script is not specified.")
+def postprocess(name, output_dir, local_density_threshold, local_neighborhood_size):
+    """
+
+    """
+    cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
+    
+    # Check if all output files and iterations exist
+
+    # combine and consensus steps
+    cnmf_obj.combine()
+    run_params = cnmf.cnmf.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
+    for k in sorted(set(run_params.n_components)):
+        merged_spectra = cnmf.cnmf.load_df_from_npz(cnmf_obj.paths['merged_spectra'] % k)
+        cnmf_obj.consensus(k, local_density_threshold, local_neighborhood_size, True,
+                            close_clustergram_fig=True)
+
 
 @click.command()
 def annotate_usages():
