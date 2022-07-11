@@ -8,6 +8,7 @@ from datetime import datetime
 import distinctipy
 import os
 from types import SimpleNamespace
+import mudata
 
 class Config(SimpleNamespace):
 
@@ -49,7 +50,7 @@ class Config(SimpleNamespace):
         # merge metadata from all datasets
         # TODO: check that colors in config are valid
 
-        metadata = {name: pd.read_table(d["metadata"], index_col=0) for name, d in self.datasets.items()}
+        metadata = {name: mudata.read_h5mu(d["filename"]).obs for name, d in self.datasets.items()}
         metadata = pd.concat(metadata).iloc[:, 1:]
         metadata = metadata.replace({True:"true", False: "false"}) # converts bool to strings
         metadata = metadata.loc[:,(metadata.dtypes == 'object')] # excludes int and float metadata, which should use a continuous scale
@@ -72,7 +73,32 @@ class Config(SimpleNamespace):
                         value = "Other"
                     self.metadata_colors[layer][value] = color
 
-    def check_integrity(self):
-        pass
-        # check overlapping dataset names
-        # check complete metadata colors
+    def add_missing_colors_from(self, metadata):
+        """
+        Identify missing colors based on attached metadata dataframe.
+        """
+        if not hasattr(self, "metadata_colors"):
+            self.metadata_colors = {}
+        
+        if not "missing_data" in self.metadata_colors:
+            self.metadata_colors["missing_data"] = "#dddddd"
+
+        metadata = metadata.select_dtypes(include=["category", "object"]) # excludes int and float metadata, which should use a continuous scale
+        # fill in missing values with random colors distinct from existing colors
+        for layer, allvalues in metadata.items():
+            if layer in self.metadata_colors:
+                existing_values = set(self.metadata_colors[layer].keys())
+                existing_colors = set(colors.to_rgb(self.metadata_colors[layer][val]) for val in existing_values)
+            else:
+                existing_values = set()
+                existing_colors = set()
+            if np.NaN in allvalues:
+                existing_colors.add(self.metadata_colors["missing_data"])
+            missing_values = set(allvalues.dropna().unique()) - existing_values
+            if missing_values:
+                if layer not in self.metadata_colors:
+                    self.metadata_colors[layer] = {}
+                new_colors = distinctipy.get_colors(len(missing_values), exclude_colors=list(existing_colors))
+                new_colors = [colors.to_hex(c) for c in new_colors]
+                for value, color in zip(missing_values, new_colors):
+                    self.metadata_colors[layer][value] = color

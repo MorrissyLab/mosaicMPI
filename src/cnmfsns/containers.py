@@ -1,6 +1,6 @@
 import mudata
 import logging
-from anndata import AnnData
+from anndata import AnnData, read_h5ad
 import seaborn as sns
 import pandas as pd
 import numpy as np
@@ -13,13 +13,14 @@ logging.captureWarnings(True)
 
 class CnmfResult(object):
 
-    def __init__(self, run_name, ldt, gene_list, geps, usage, kvals):
+    def __init__(self, run_name, ldt, gene_list, geps, usage, kvals, metadata):
         self.run_name = run_name
         self.ldt = ldt
         self.gene_list = gene_list
         self.geps = geps
         self.usage = usage
         self.kvals = kvals
+        self.metadata = metadata
     
     def __repr__(self):
         repstr = [
@@ -47,18 +48,18 @@ class CnmfResult(object):
 
     @classmethod
     def from_h5mu(cls, h5mu_file):
-        print(f"Reading {h5mu_file}")
-        obj = mudata.read_h5mu(h5mu_file)
+        logging.info(f"Reading {h5mu_file}")
+        muobj = mudata.read_h5mu(h5mu_file)
         geps = {}
-        for gep_type, ad in obj.mod.items():
+        for gep_type, ad in muobj.mod.items():
             meta_w = pd.concat(ad.varm, axis=1)
             meta_w.columns = pd.MultiIndex.from_tuples([(int(k), int(gep.split(".")[1])) for k, gep in meta_w.columns])
             geps[gep_type] = meta_w.sort_index(axis=1).T
 
-        usage = pd.concat(obj.mod["gene_spectra_score"].obsm, axis=1)
+        usage = pd.concat(muobj.mod["gene_spectra_score"].obsm, axis=1)
         usage.columns = pd.MultiIndex.from_tuples([(int(k), int(gep.split(".")[1])) for k, gep in usage.columns])
         usage = usage.sort_index(axis=1)
-        return cls(**obj.uns, geps=geps, usage=usage)
+        return cls(**muobj.uns, geps=geps, usage=usage, metadata=muobj.obs)
 
     @classmethod
     def from_dir(cls, cnmf_result_dir, local_density_threshold: float = None):
@@ -110,8 +111,10 @@ class CnmfResult(object):
         # Import K-selection stats
         kvals = pd.DataFrame(**np.load(os.path.join(cnmf_result_dir, f"{run_name}.k_selection_stats.df.npz"), allow_pickle=True)).set_index("k")[["stability", "prediction_error"]]
         kvals.index = kvals.index.astype(int)
-        
-        return cls(run_name, ldt, gene_list, geps, usage, kvals)
+
+        # Import annotations from anndata
+        metadata = read_h5ad(os.path.join(cnmf_result_dir, run_name + ".h5ad")).obs
+        return cls(run_name, ldt, gene_list, geps, usage, kvals, metadata)
 
     def to_anndata(self, gep_type="gene_spectra_score"):
         df = self.geps[gep_type]
@@ -125,7 +128,7 @@ class CnmfResult(object):
             subdf = self.usage.loc(axis=1)[k].copy()
             subdf.columns = str(k) + "." + subdf.columns.astype("str")
             obsm[str(k)] = subdf
-        return AnnData(X=pd.DataFrame(np.NaN, index=self.usage.index, columns=df.columns), varm=varm, obsm=obsm)
+        return AnnData(X=pd.DataFrame(np.NaN, index=self.usage.index, columns=df.columns), varm=varm, obsm=obsm, obs=self.metadata)
 
     def to_mudata(self):
         mu_dict = {gep_type: self.to_anndata(gep_type) for gep_type in self.geps.keys()}

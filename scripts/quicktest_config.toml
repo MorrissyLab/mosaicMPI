@@ -20,6 +20,9 @@ metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sam
 # Metadata Color Schemes #
 ##########################
 
+[metadata_colors]
+missing_data_color = #dddddd
+
 [metadata_colors.detailed_category]
 "N" = "#b0e0e6"
 "P" = "#00c000"

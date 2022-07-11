@@ -10,7 +10,7 @@
 #SBATCH --job-name=cnmfsns
 #SBATCH --output=%x_%A_%a.out
 
-# source activate cnmf
-echo $1 "/" $2 "/" $3
+# source activate cnmf  # uncomment this if cnmfsns requires a particular conda environment
+echo $1 "/" $2 "/" $3   # cnmfsns uses $1 as the working directory, $2 as the output_directory relative to the working directory, and $3 as the cnmf run name
 cd "$1"
 cnmfsns factorize --output_dir $2 --name $3 --total_workers 20 --worker_index $SLURM_ARRAY_TASK_ID

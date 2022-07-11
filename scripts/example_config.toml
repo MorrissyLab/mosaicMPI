@@ -1,6 +1,6 @@
 # Provide a name for the integration
 
-name = "GBM Proteomics"
+name = "GBM_Proteomics"
 
 
 ################################
@@ -10,27 +10,28 @@ name = "GBM Proteomics"
 [datasets.CPTAC]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/cptac_gbm_imputed_odg1_kl.h5mu"
 color = "royalblue"
-metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/cptac_gbm.metadata.txt"
 
 [datasets.UCC]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/gbm_ffpe_proteogenomics_imputed_odg1_kl.h5mu"
 color = "gold"
-metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/gbm_ffpe_proteogenomics.metadata.txt"
 
 [datasets.Yonsei]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/yonsei_imputed_odg1_kl.h5mu"
 color = "tomato"
-metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/yonsei.metadata.txt"
 
 [datasets.Diamandis]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/diamandis_imputed_odg1_kl.h5mu"
 color = "lightgreen"
-metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/diamandis.metadata.txt"
 
 
 ##########################
 # Metadata Color Schemes #
 ##########################
+
+# The `#` sign is a comment in TOML, so make sure you quote hex-formatted colors
+
+[metadata_colors]
+missing_data = "#dddddd"
 
 [metadata_colors.detailed_category]
 "N" = "#b0e0e6"
@@ -70,21 +71,18 @@ metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sam
 "MVP" = "#ffff00"
 "IT" = "#90ee90"
 "PAN" = "#808000"
-"Other" = "#dddddd"
 
 [metadata_colors.multiomic]
 "nmf1" = "#c25e84"
 "nmf2" = "#c89e28"
 "nmf3" = "#67adde"
 "IDH mutant" = "#508a5a"
-"Other" = "#dddddd"
 
 [metadata_colors.r_wang_cancer_cell_2017]
 "Proneural" = "#c25e84"
 "Classical" = "#67adde"
 "Mesenchymal" = "#c89e28"
 "IDH mutant" = "#508a5a"
-"Other" = "#dddddd"
 
 [metadata_colors.d_methyl]
 "dm1" = "#d76f90"
@@ -93,7 +91,6 @@ metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sam
 "dm4" = "#68bda6"
 "dm5" = "#63a0f9"
 "dm6" = "#c66bf6"
-"Other" = "#dddddd"
 
 [metadata_colors.d_methyl_mnp]
 "A IDH" = "#d4b527"
@@ -103,19 +100,16 @@ metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sam
 "GBM, RTK II" = "#9cf867"
 "GBM, RTK III" = "#91e039"
 "GBM, MID" = "#3b6616"
-"Other" = "#dddddd"
 
 [metadata_colors.is_gcimp]
 true = "#310042"
 false = "#ede03c"
-"Other" = "#dddddd"
 
 [metadata_colors.immune]
 "im1" = "#66122a"
 "im2" = "#a94a1c"
 "im3" = "#e4c763"
 "im4" = "#68589f"
-"Other" = "#dddddd"
 
 [metadata_colors.mir]
 "mi1" = "#d76f90"
@@ -123,5 +117,4 @@ false = "#ede03c"
 "mi3" = "#63bc60"
 "mi4" = "#66b2e3"
 "mi5" = "#b774f8"
-"Other" = "#dddddd"
 
