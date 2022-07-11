@@ -1,4 +1,5 @@
 # cNMF-SNS
+
 cNMF Solution Neighborhood Space
 
 ## Installation
@@ -33,6 +34,8 @@ conda install -c conda-forge cnmfsns
 
 ## Workflow
 
+cNMF-SNS is a command line tool for deconvoluting and integrating gene expression and other high-dimensional data.
+
 Each step of a workflow is run as a separate command within cNMF-SNS. You can see which subcommands are available using:
 ```
 cnmfsns --help
@@ -56,20 +59,21 @@ cnmfsns txt-to-h5ad --tpm tpm.txt --counts counts.txt --metadata metadata.txt -o
 
 Expression (normalized and count) data must be indexed as follows:
   - The first column must be sample/cell/spot IDs
-  - the first row must be genes or other features.
+  - The first row must be genes or other features.
 
 Metadata must be indexed as follows:
   - The first column must be sample/cell/spot IDs
-  - Other columns can be numerical, boolean, or categorical types.
+  - Other columns are metadata 'layers' and must be labelled. Values can be numerical, boolean, or categorical types.
   - Missing values are acceptable. For categorical data, these will be plotted as an "Other" category. For numerical data, these will be ignored.
 
 ### 2. Check existing h5ad files for minimum requirements for cNMF.
+
+> Warning: Not completely implemented yet!
 
 Check h5ad objects for cells, spots, samples, or genes which have missing values, negative values, or sum of 0.
 
 cNMF  supports input data that is sparse (i.e. with zeros), but not with missing values. When missing values are present (eg. from concatenation of datasets with partially overlapping features), the default behaviour is to subset the input matrix to shared features/genes only, but it is recommended to either run each dataset separately or use a dense, imputed data matrix. cNMF will warn the user if missing data is present.
 
-> Warning: Not completely implemented yet!
 
 ```
 cnmfsns check_h5ad file.h5ad file_filtered.h5ad
@@ -77,7 +81,7 @@ cnmfsns check_h5ad file.h5ad file_filtered.h5ad
 
 ### 3. Model gene overdispersion to select genes for factorization.
 
-Deconvolution of a gene expression dataset using cNMF requires a set of overdispersed genes which will be used for factorization. GEPs will include all genes after a re-fitting step, but cNMF will only optimize the fit for overdispersed genes, providing the user the opportunity to decide which genes are most informative.
+Deconvolution of a gene expression dataset using cNMF requires a set of overdispersed genes/features which will be used for factorization. GEPs will include all genes after a re-fitting step, but cNMF will only optimize the fit for overdispersed genes, providing the user the opportunity to decide which genes are most informative.
 
 Since cNMF performs variance scaling on the input matrix, it is important to remove genes whose variance could be attributable to noise. cNMF-SNS supports two methods for overdispersed gene selection:
     Model gene overdispersion and plot calibration plots for selection of overdispersed genes, using two methods:
