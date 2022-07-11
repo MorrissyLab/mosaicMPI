@@ -3,6 +3,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from statsmodels.gam.api import GLMGam, BSplines
+from statsmodels.distributions.empirical_distribution import ECDF
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 import cnmf
@@ -75,9 +76,9 @@ def create_diagnostic_plots(df):
     
     ax.set_title("od-score Distribution")
     sns.histplot(df, x="odscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
-    sns.ecdfplot(df, x="odscore", ax=ax2, color="black", complementary=True)
+    sns.ecdfplot(df, x="odscore", ax=ax2, color="black", stat="count", complementary=True)
     ax.set_xlabel("od-score")
-    ax2.set_ylabel("Complementary ECDF")
+    ax2.set_ylabel("Total Gene Count")
     plt.tight_layout()
     plot_id = ("default",)
     figs[plot_id] = fig
@@ -98,35 +99,11 @@ def create_diagnostic_plots(df):
     ax2=ax.twinx()
     ax.set_title("v-score Distribution")
     sns.histplot(df, x="vscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
-    sns.ecdfplot(df, x="vscore", ax=ax2, color="black", complementary=True)
+    sns.ecdfplot(df, x="vscore", ax=ax2, color="black", stat="count", complementary=True)
     ax.set_xlabel("v-score")
-    ax2.set_ylabel("Complementary ECDF")
+    ax2.set_ylabel("Total Gene Count")
     plt.tight_layout()
     plot_id = ("cnmf",)
-    figs[plot_id] = fig
-
-    top2000_default = df["odscore"].sort_values(ascending=False).head(2000).index
-    top2000_cnmf = df["vscore"].sort_values(ascending=False).head(2000).index
-    def categorize_genes(gene):
-        if gene in top2000_default and gene in top2000_cnmf:
-            return "both"
-        elif gene in top2000_default:
-            return "default"
-        elif gene in top2000_cnmf:
-            return "cNMF"
-        else:
-            return "neither"
-
-    df["top2000"] = df.index.map(categorize_genes)
-    fig, ax = plt.subplots(figsize=[12,12])
-    sns.scatterplot(
-        data=df, x="log_mean", y="log_variance", hue="top2000", linewidth=0,
-        hue_order=["default", "cNMF", "both", "neither"],
-        palette = {'default': 'blue', 'cNMF': "green", 'both': 'red', 'neither': 'grey'})
-    ax.set_xlabel("log10(mean)")
-    ax.set_ylabel("log10(variance)")
-    plt.tight_layout()
-    plot_id = ("top2000",)
     figs[plot_id] = fig
 
     fig, ax = plt.subplots(figsize=[12,12])

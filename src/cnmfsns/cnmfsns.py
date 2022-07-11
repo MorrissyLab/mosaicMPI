@@ -407,7 +407,7 @@ def postprocess(name, output_dir, local_density_threshold, local_neighborhood_si
 @click.command()
 @click.option(
     "-n", "--name", type=str, required=True, 
-    help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
+    help="Name for cNMF analysis. All output will be placed in [output_ir]/[name]/...")
 #TODO: move to h5mu input instead of directories
 @click.option(
     "-o", '--output_dir', type=click.Path(file_okay=False), default=os.getcwd(), show_default=True,
@@ -420,7 +420,7 @@ def postprocess(name, output_dir, local_density_threshold, local_neighborhood_si
     help="TOML file with metadata_colors specification. See README for more information. If not provided, visually distinct colors will be chosen automatically.")
 @click.option(
     '--max_categories_per_layer', type=int,
-    help="Filter metadata layers for plotting by the number of categories. This parameter is useful to simplify heatmaps with too many annotations.")
+    help="Filter metadata layers by the number of categories. This parameter is useful to simplify heatmaps with too many annotations.")
 def create_annotated_heatmaps(name, output_dir, metadata_colors_toml, max_categories_per_layer, local_density_threshold):
     """
     Create heatmaps of usages with annotation tracks.
@@ -436,7 +436,7 @@ def create_annotated_heatmaps(name, output_dir, metadata_colors_toml, max_catego
         
     cfg.add_missing_colors_from(cnmfresult.metadata)
     cfg.to_toml(os.path.join(output_dir, name, "metadata_colors.toml"))
-    exclude_maxcat = cnmfresult.metadata.select_dtypes(include=["object", "category"]).apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
+    exclude_maxcat = cnmfresult.metadata.select_dtypes(include=["object", "catdegory"]).apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
     metadata = cnmfresult.metadata.drop(columns=exclude_maxcat[exclude_maxcat].index)
     # create annotated plots
     for k in sorted(set(run_params.n_components)):

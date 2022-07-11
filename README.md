@@ -2,6 +2,8 @@
 
 cNMF Solution Neighborhood Space
 
+![](https://img.shields.io/badge/version-0.1.0-blue)
+
 ## Installation
 
 ### 1. Using `pip` to install the latest version from GitHub:
