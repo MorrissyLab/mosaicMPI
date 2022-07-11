@@ -13,7 +13,7 @@ from typing import Optional, Mapping
 from anndata import AnnData, read_h5ad
 from cnmfsns.containers import CnmfResult, Integration
 from cnmfsns.config import Config
-from cnmfsns.odg import model_overdispersion, create_diagnostic_plots
+from cnmfsns.odg import model_overdispersion, create_diagnostic_plots, fetch_hgnc_protein_coding_genes
 from cnmfsns.plots import create_annotated_heatmaps, plot_annotated_usages
 
 def start_logging(output_dir):
@@ -137,7 +137,11 @@ def check_h5ad(input, output):
 @click.option(
     "--cnmf_mean_threshold", type=float, default=0.5, show_default=True,
     help="Minimum mean for overdispersed genes (cnmf method).")
-def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_mean_threshold):
+@click.option(
+    "--annotate_hgnc_protein_coding", is_flag=True,
+    help="Fetch HGNC locus type assuming that features are HGNC symbols"
+)
+def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_mean_threshold, annotate_hgnc_protein_coding):
     """
     Model gene overdispersion and plot calibration plots for selection of overdispersed genes, using two methods:
     
@@ -168,6 +172,9 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
 
     # output table with gene overdispersion measures
+    if annotate_hgnc_protein_coding:
+        protein_coding_genes = fetch_hgnc_protein_coding_genes()
+        df["HGNC protein-coding"] = df.index.isin(protein_coding_genes)
     df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
 
 
