@@ -125,7 +125,7 @@ cnmfsns factorize --name example_run --slurm-script /path/to/slurm.sh
 This step will check to ensure that all factorizations completed successfully, and then will create consensus GEPs and usages, as well as the `.h5mu` file containing the cNMF solution.
 
 ```
-cnmfsns create-h5mu -d cnmf_result_dir -o cnmf_run.h5mu
+cnmfsns postprocess -d cnmf_result_dir -o cnmf_run.h5mu
 ```
 ### 7. Created annotated heatmaps of GEP usages
 
