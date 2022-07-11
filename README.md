@@ -44,20 +44,32 @@ Easily get help for each subcommand using, for example:
 cnmfsns model-odg --help
 ```
 
-### 1. (Optional) Create AnnData object from text files with expression and annotations.
+### 1. Create AnnData object from text files with expression and annotations.
 
-If expression and annotation data is in text files, this utility can combine and check them into a .h5ad file for convenience.
+If expression and annotation data is in text files, this utility can combine them into a .h5ad file for downstream tools.
 
-TPM and count matrices must have identical axes (ie., row names and column names). The metadata file must be 
 ```
-cnmfsns txt-to-h5ad --tpm tpm.txt --counts counts.txt --metadata metadata.txt
+cnmfsns txt-to-h5ad --tpm tpm.txt --counts counts.txt --metadata metadata.txt -o dataset.h5ad
 ```
 
-### 2. (Optional) Check existing h5ad files for minimum requirements for cNMF.
+#### Input semantics
+
+Expression (normalized and count) data must be indexed as follows:
+  - The first column must be sample/cell/spot IDs
+  - the first row must be genes or other features.
+
+Metadata must be indexed as follows:
+  - The first column must be sample/cell/spot IDs
+  - Other columns can be numerical, boolean, or categorical types.
+  - Missing values are acceptable. For categorical data, these will be plotted as an "Other" category. For numerical data, these will be ignored.
+
+### 2. Check existing h5ad files for minimum requirements for cNMF.
 
 Check h5ad objects for cells, spots, samples, or genes which have missing values, negative values, or sum of 0.
 
 cNMF  supports input data that is sparse (i.e. with zeros), but not with missing values. When missing values are present (eg. from concatenation of datasets with partially overlapping features), the default behaviour is to subset the input matrix to shared features/genes only, but it is recommended to either run each dataset separately or use a dense, imputed data matrix. cNMF will warn the user if missing data is present.
+
+> Warning: Not completely implemented yet!
 
 ```
 cnmfsns check_h5ad file.h5ad file_filtered.h5ad
@@ -65,10 +77,7 @@ cnmfsns check_h5ad file.h5ad file_filtered.h5ad
 
 ### 3. Model gene overdispersion to select genes for factorization.
 
-The first step of cNMF-SNS is to check inputs for completeness and integrity, as well as to guide the selection of parameters for running cNMF on a particular dataset.
-
-
-Deconvolution of a gene expression dataset using cNMF requires a set of overdispersed genes which will be used for factorization. GEPs will include all genes after a re-fitting step, but error will only be calculated on overdispersed genes, providing the user the opportunity to decide which genes are most informative.
+Deconvolution of a gene expression dataset using cNMF requires a set of overdispersed genes which will be used for factorization. GEPs will include all genes after a re-fitting step, but cNMF will only optimize the fit for overdispersed genes, providing the user the opportunity to decide which genes are most informative.
 
 Since cNMF performs variance scaling on the input matrix, it is important to remove genes whose variance could be attributable to noise. cNMF-SNS supports two methods for overdispersed gene selection:
     Model gene overdispersion and plot calibration plots for selection of overdispersed genes, using two methods:
@@ -95,41 +104,50 @@ cnmfsns set_parameters --name example_run
 
 ### 5. Perform cNMF factorization
 
-Use `cnmf`'s parallelization, which is adaptable for any cluster configuration. This command defaults to single CPU run so a small test dataset can be run like this:
+Factorize the input data. While parameters can be provided which allow for custom parallelization, by default cnmfsns uses a single CPU:
+
 ```
 cnmfsns factorize --name example_run
 ```
 For submitting jobs to the SLURM job scheduler, you can download a sample job submission script [here](https://github.com/MorrissyLab/cNMF-SNS/tree/main/scripts/slurm.sh).
 
-After editing the script to ensure it is suitable for your compute cluster, you can massively parallelize your run using:
+After editing the script to ensure it is suitable for your compute cluster, you can maximally parallelize your run using:
 ```
 cnmfsns factorize --name example_run --slurm-script /path/to/slurm.sh
 ```
 
 ### 6. Postprocessing
 
-This step will check to ensure that all factorizations completed successfully, and then will create consensus GEPs and usages
-
-- will check to ensure all factorizations completed successfully
-- upon completion, `cnmf combine` and `cnmf consensus` steps to get consensus GEPs and usages
-- call marker genes
-- default local_density_threshold = 2.0
-- create output plots from cnmf, including k selection plot
-- compress cnmf output into h5ad file for exporting to python or R environments
-- optionally deletes cnmf working directory
-
-## Workflow for starting with outputs from cNMF
-
-> Warning: This method does not enforce common cNMF parameters/methods between datasets/runs. Proceed at your own risk!
-
-### 1. Package cNMF runs into `.h5mu` file
-In the case of integrated already completed cNMF runs, a quick command will generate the h5mu file, which encodes the cNMF results in a cross-platform object readable in R and Python.
+This step will check to ensure that all factorizations completed successfully, and then will create consensus GEPs and usages, as well as the `.h5mu` file containing the cNMF solution.
 
 ```
 cnmfsns create-h5mu -d cnmf_result_dir -o cnmf_run.h5mu
-``` 
+```
+### 7. Created annotated heatmaps of GEP usages
 
-### 2. Initialize the cNMF-SNS integration using configuration
+This step will create annotated heatmaps of GEP usages from cNMF outputs
+
+```
+cnmfsns create-annotated_heatmaps --name example_run
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Incomplete documentation >>>
+
+
+### Initialize the cNMF-SNS integration using configuration
 
 A [TOML](https://toml.io/en/) configuration file is the most flexible way to configure cNMF-SNS. An example is found in `scripts/example_config.toml`.
 
@@ -152,22 +170,11 @@ After this step, several plots are generated which can help guide parameter sele
 cnmfsns create-sns -o output_directory
 ```
 
-## TOML configuration file
+### TOML configuration file
 
 Parameters for SNS integration are specified in the TOML configuration file. If none are chosen, default values for each parameter will be used. 
 
-
-### 4B. `cnmfsns create-h5mu`
-> Note: Use of this is for backwards compatibility with cNMF runs that were started outside of the cnmfsns framework, and thus, cNMF results are not guaranteed to be complete, or the parameters correct.
-- Packages cNMF results into a MuData .h5mu file within the parent directory for exporting to python or R environments
-- Optionally deletes cnmf working directory
-
-### 5. `cnmfsns annotate-usages`
-
-- create annotated heatmaps from h5ad
-- _this step can be run any time after_ `cnmfsns postprocess`_, not necessarily in this order_ 
-
-### 6. `cnmfsns initialize`
+### `cnmfsns initialize`
 
 - import multiple cnmf outputs for integration
     - requires h5mu files from previous runs, or
@@ -176,7 +183,7 @@ Parameters for SNS integration are specified in the TOML configuration file. If 
 - UpSet plot of OD Genes between datasets
 - plot correlation between cohorts
 
-### 7. `cnmfsns optimize-integration`
+### `cnmfsns optimize-integration`
 
 - plot to compare integration using spearman and pearson
 - plot to decide range of k?
@@ -185,11 +192,11 @@ Parameters for SNS integration are specified in the TOML configuration file. If 
 - metrics for integration / shannon index?
 - metrics for communities 
 
-### 7. `cnmfsns create-sns`
+### `cnmfsns create-sns`
 
 - uses config information from 
 - creates SNS map and all plots without metadata (fast step)
 
-### 8. `cnmfsns annotate-sns`
+### `cnmfsns annotate-sns`
 
 - creates spike plots and related data outputs (slower steps)

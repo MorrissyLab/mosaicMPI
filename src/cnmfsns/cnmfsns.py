@@ -131,15 +131,15 @@ def check_h5ad(input, output):
     "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=True,
     help="h5ad file containing expression data (adata.X=normalized (TPM) and adata.raw.X = count) as well as any cell/sample metadata (adata.obs).")
 @click.option(
-    "--odg_default_spline_degree", type=int, default=3, show_default=True,
+    "--default_spline_degree", type=int, default=3, show_default=True,
     help="Degree for BSplines for the Generalized Additive Model (default method). For example, a constant spline would be 0, linear would be 1, and cubic would be 3.")
 @click.option(
-    "--odg_default_dof", type=int, default=8, show_default=True,
+    "--default_dof", type=int, default=8, show_default=True,
     help="Degrees of Freedom (number of components) for the Generalized Additive Model (default method).")
 @click.option(
-    "--odg_cnmf_mean_threshold", type=float, default=0.5, show_default=True,
+    "--cnmf_mean_threshold", type=float, default=0.5, show_default=True,
     help="Minimum mean for overdispersed genes (cnmf method).")
-def model_odg(name, output_dir, input, odg_default_spline_degree, odg_default_dof, odg_cnmf_mean_threshold):
+def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_mean_threshold):
     """
     Model gene overdispersion and plot calibration plots for selection of overdispersed genes, using two methods:
     
@@ -161,9 +161,9 @@ def model_odg(name, output_dir, input, odg_default_spline_degree, odg_default_do
     # Create diagnostic plots
     df = model_overdispersion(
             adata=adata,
-            odg_default_spline_degree=odg_default_spline_degree,
-            odg_default_dof=odg_default_dof,
-            odg_cnmf_mean_threshold=odg_cnmf_mean_threshold
+            odg_default_spline_degree=default_spline_degree,
+            odg_default_dof=default_dof,
+            odg_cnmf_mean_threshold=cnmf_mean_threshold
             )
     for fig_id, fig in create_diagnostic_plots(df).items():
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
