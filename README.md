@@ -125,28 +125,26 @@ cnmfsns factorize --name example_run --slurm-script /path/to/slurm.sh
 This step will check to ensure that all factorizations completed successfully, and then will create consensus GEPs and usages, as well as the `.h5mu` file containing the cNMF solution.
 
 ```
-cnmfsns postprocess -d cnmf_result_dir -o cnmf_run.h5mu
+cnmfsns postprocess --name example_run
 ```
 ### 7. Created annotated heatmaps of GEP usages
 
-This step will create annotated heatmaps of GEP usages from cNMF outputs
+This step will create annotated heatmaps of GEP usages from cNMF-SNS outputs:
 
 ```
 cnmfsns create-annotated_heatmaps --name example_run
 ```
 
+To provide custom colors for the metadata layers, you can specify a TOML-formatted file with a `metadata_colors` mapping (see `scripts/example_config.toml`) 
 
-
-
-
-
-
-
-
-
-
-
-
+> ### Working with cNMF results generated outside of cNMF-SNS:
+> 
+> If you want to generate annotated heatmaps for usage matrices from the standard cNMF tool, you will need to do the following:
+>   1. run up to and including the `cnmf factorize` step.
+> Take note of the `output_dir` and `name` parameters that you used with cNMF. Then, you can run the following cNMF commands, using the same data you used to input into cNMF:
+>   2. run `cnmfsns txt-to-h5ad` to create a file with input data/metadata and output it to `<output_dir>/<name>/name.h5ad`.
+>   3. run `cnmfsns postprocess --output_dir output_dir --name name` to run cNMF-SNS postprocessing steps
+>   4. run `cnmfsns create_annotated_heatmaps --output_dir output_dir --name name` to create annotated heatmaps.
 
 ## Incomplete documentation >>>
 
