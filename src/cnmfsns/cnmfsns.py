@@ -1,13 +1,11 @@
 import os
 import logging
-from re import M
 import shutil
 import subprocess
 import click
 import cnmf
 import sys
 import warnings
-from importlib_metadata import metadata
 import numpy as np
 import pandas as pd
 from collections import OrderedDict
