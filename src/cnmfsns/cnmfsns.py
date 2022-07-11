@@ -139,7 +139,7 @@ def check_h5ad(input, output):
     help="Minimum mean for overdispersed genes (cnmf method).")
 @click.option(
     "--annotate_hgnc_protein_coding", is_flag=True,
-    help="Fetch HGNC locus type assuming that features are HGNC symbols"
+    help="Annotate whether features have a protein-coding locus type from HGNC, assuming that features are HGNC symbols"
 )
 def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_mean_threshold, annotate_hgnc_protein_coding):
     """

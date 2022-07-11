@@ -171,4 +171,4 @@ def fetch_hgnc_protein_coding_genes():
         print('Error detected: ' + response['status'])
 
     protein_coding_genes = {entry["symbol"] for entry in data["response"]["docs"]}
-    return protein_coding_geness
+    return protein_coding_genes
