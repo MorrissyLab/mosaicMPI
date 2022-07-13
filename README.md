@@ -2,7 +2,7 @@
 
 cNMF Solution Neighborhood Space
 
-![](https://img.shields.io/badge/version-0.1.0-blue)
+![](https://img.shields.io/badge/version-0.2.0-blue)
 
 ## Installation
 
@@ -124,7 +124,7 @@ cnmfsns factorize --name example_run --slurm-script /path/to/slurm.sh
 
 ### 6. Postprocessing
 
-This step will check to ensure that all factorizations completed successfully, and then will create consensus GEPs and usages, as well as the `.h5mu` file containing the cNMF solution.
+This step will check to ensure that all factorizations completed successfully, and then will create consensus GEPs and usages, updating the `.h5ad` file with the cNMF solution.
 
 ```
 cnmfsns postprocess --name example_run

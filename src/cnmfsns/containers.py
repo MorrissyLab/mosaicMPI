@@ -1,5 +1,6 @@
 import mudata
 import logging
+import sys
 from anndata import AnnData, read_h5ad
 import seaborn as sns
 import pandas as pd
@@ -9,7 +10,69 @@ import os
 from glob import glob
 from cnmfsns.config import Config
 
-logging.captureWarnings(True)
+def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_density_threshold: float = None, force=False):
+    adata = read_h5ad(h5ad_path)
+    adata.uns["cnmf_name"] = cnmf_name
+    cnmf_data_loaded =  "cnmf_usage" in adata.obsm or\
+                        "cnmf_gep_score" in adata.varm or\
+                        "cnmf_gep_tpm" in adata.varm or\
+                        "cnmf_gep_raw" in adata.varm
+    if cnmf_data_loaded and not force:
+        logging.error(f"Error: {h5ad_path} already contains cNMF results. Use --force_h5ad_update to overwrite.")
+        sys.exit(1)
+
+    # infer from filenames which local density threshold was used
+    sensed_ldts = set()
+    for fn in glob(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}*.*spectra*.k_*")):
+        ldt_str = os.path.basename(fn).split(".")[3]
+        ldt = float(ldt_str.replace("dt_", "").replace("_", "."))
+        sensed_ldts.add((ldt_str, ldt))
+    if local_density_threshold is None and len(sensed_ldts) == 1:
+        ldt_str, ldt = sensed_ldts.pop()
+    elif local_density_threshold in (ldt[1] for ldt in sensed_ldts):
+        ldt_str, ldt = [(ldt_str, ldt) for ldt_str, ldt in sensed_ldts if ldt == local_density_threshold].pop()
+    else:
+        logging.error(f"local_density_threshold of {local_density_threshold} does not match what is in the cNMF result directory: {sensed_ldts}")
+        sys.exit(1)
+    adata.uns["ldt"] = ldt
+        
+    # Import GEPs
+    result_types = {
+        "gene_spectra_score": "cnmf_gep_score",
+        "gene_spectra_tpm": "cnmf_gep_tpm",
+        "spectra": "cnmf_gep_raw"
+        }
+    for matchstr, result_type in result_types.items():
+        meta_w = []
+        for fn in glob(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}*.{matchstr}.k_*.{ldt_str}.*txt")):
+            k = int(os.path.basename(fn).split(".")[2].replace("k_", ""))
+            w = pd.read_table(fn, index_col=0)
+            w.index = str(k) + "." + w.index.astype(str)
+            meta_w.append(w)
+        meta_w = pd.concat(meta_w, axis=0).T.reindex(adata.var.index).rename_axis(["k.gep"], axis=1)
+        adata.varm[result_type] = meta_w
+
+    # Import Usages
+    usage = []
+    for fn in glob(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}*.usages.k_*.{ldt_str}.*txt")):
+        k = int(os.path.basename(fn).split(".")[2].replace("k_", ""))
+        h = pd.read_table(fn, index_col=0)
+        h.columns = str(k) + "." + h.columns.astype(str)
+        usage.append(h)
+    adata.obsm["cnmf_usage"] = pd.concat(usage, axis=1).sort_index(axis=1).rename_axis(["k.gep"], axis=1)
+    
+    # Import gene list used for factorization
+    with open(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}.overdispersed_genes.txt")) as f:
+        adata.uns["gene_list"] = [line.strip() for line in f.readlines()]
+
+    # Import K-selection stats
+    kvals = pd.DataFrame(**np.load(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}.k_selection_stats.df.npz"), allow_pickle=True)).set_index("k")[["stability", "prediction_error"]]
+    kvals.index = kvals.index.astype(int)
+    adata.uns["kvals"] = kvals
+
+    adata.write_h5ad(h5ad_path)
+
+
 
 class CnmfResult(object):
 
@@ -116,19 +179,19 @@ class CnmfResult(object):
         metadata = read_h5ad(os.path.join(cnmf_result_dir, run_name + ".h5ad")).obs
         return cls(run_name, ldt, gene_list, geps, usage, kvals, metadata)
 
-    def to_anndata(self, gep_type="gene_spectra_score"):
-        df = self.geps[gep_type]
-        varm = {}
-        for k in self.kvals.index:
-            subdf = df.loc[k].T.copy()
-            subdf.columns = str(k) + "." + subdf.columns.astype("str")
-            varm[str(k)] = subdf
+    def to_anndata(self, input_h5ad):
+        input_adata = read_h5ad(input_h5ad)
         obsm = {}
-        for k in self.usage.columns.get_level_values(0).unique():
-            subdf = self.usage.loc(axis=1)[k].copy()
-            subdf.columns = str(k) + "." + subdf.columns.astype("str")
-            obsm[str(k)] = subdf
-        return AnnData(X=pd.DataFrame(np.NaN, index=self.usage.index, columns=df.columns), varm=varm, obsm=obsm, obs=self.metadata)
+        obsm["cnmf_usage"] = self.usage
+        varm = {}
+        varm["cnmf_gep_score"] = self.gep_score.T
+        varm["cnmf_gep_tpm"] = self.gep_tpm.T
+        varm["cnmf_gep_raw"] = self.gep_raw.T
+        uns = {"run_name": self.run_name, "ldt": self.ldt, "gene_list": self.gene_list, "kvals": self.kvals}
+        if input_adata:
+            return AnnData(x=input_adata.X, raw=input_adata.raw, )
+        else:
+            return AnnData(X=pd.DataFrame(np.NaN, index=self.usage.index, columns=varm["cnmf_gep_score"].index), varm=varm, obsm=obsm, obs=self.metadata, uns=uns)
 
     def to_mudata(self):
         mu_dict = {gep_type: self.to_anndata(gep_type) for gep_type in self.geps.keys()}

@@ -11,7 +11,7 @@ import pandas as pd
 from collections import OrderedDict
 from typing import Optional, Mapping
 from anndata import AnnData, read_h5ad
-from cnmfsns.containers import CnmfResult, Integration
+from cnmfsns.containers import Integration, add_cnmf_results_to_h5ad
 from cnmfsns.config import Config
 from cnmfsns.odg import model_overdispersion, create_diagnostic_plots, fetch_hgnc_protein_coding_genes
 from cnmfsns.plots import create_annotated_heatmaps, plot_annotated_usages
@@ -352,14 +352,16 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
 @click.option(
     '--keep_individual_iterations', is_flag=True,
     help="If specified, individual iteration files will be retained even after merging.")
-def postprocess(name, output_dir, local_density_threshold, local_neighborhood_size, keep_individual_iterations):
+@click.option(
+    '--force_h5ad_update', is_flag=True,
+    help="If specified, overwrites cNMF results already saved to the .h5ad file.")
+def postprocess(name, output_dir, local_density_threshold, local_neighborhood_size, keep_individual_iterations, force_h5ad_update):
     """
     Perform post-processing routines on cNMF after factorization. This includes checking factorization outputs for completeness, combining individual
     iterations, calculating consensus GEPs and usage matrices, and creating the k-selection and annotated usage plots.
     """
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
     run_params = cnmf.cnmf.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
-    
     # first check for combined outputs:
     missing_combined = []
     for k in sorted(set(run_params.n_components)):
@@ -368,13 +370,11 @@ def postprocess(name, output_dir, local_density_threshold, local_neighborhood_si
             missing_combined.append(merged_result)
     if missing_combined:
         failed = []
-
         # Check if all output files and iterations exist
         for _, row in run_params.iterrows():
             iter_result = cnmf_obj.paths['iter_spectra'] % (row['n_components'], row['iter'])
             if not os.path.exists(iter_result) or os.path.getsize(iter_result) == 0:
                 failed.append(iter_result)
-    
         if failed:
             logging.error(
                 f"Postprocessing could not proceed because {(len(failed))} files from the factorization step are missing or empty:\n  - " + 
@@ -386,7 +386,6 @@ def postprocess(name, output_dir, local_density_threshold, local_neighborhood_si
             logging.info(f"Factorization outputs (individual iterations) were found for all values of k.")
             for k in sorted(set(run_params.n_components)):
                 cnmf_obj.combine_nmf(k, remove_individual_iterations=(not keep_individual_iterations))
-
     else:
         logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
     # calculate consensus GEPs and usages
@@ -395,53 +394,50 @@ def postprocess(name, output_dir, local_density_threshold, local_neighborhood_si
                             close_clustergram_fig=True)
     # create k-selection plot
     cnmf_obj.k_selection_plot(close_fig=True)
-    
-    # create h5mu object
-    output_path = os.path.join(output_dir, name, name + ".h5mu")
-    cnmfresult = CnmfResult.from_dir(os.path.join(output_dir, name), local_density_threshold=local_density_threshold)
-    with warnings.catch_warnings():  # suppress warnings from MuData
-        warnings.simplefilter("ignore")
-        cnmfresult.to_mudata().write(output_path)
-
+   
+    # update h5ad file with cnmf results
+    input_h5ad = os.path.join(output_dir, name, name + ".h5ad")
+    add_cnmf_results_to_h5ad(output_dir, name, input_h5ad, local_density_threshold, force=force_h5ad_update)
 
 @click.command()
 @click.option(
-    "-n", "--name", type=str, required=True, 
-    help="Name for cNMF analysis. All output will be placed in [output_ir]/[name]/...")
-#TODO: move to h5mu input instead of directories
+    "-i", "--input_h5ad", type=click.Path(exists=True, dir_okay=False), help="Path to AnnData (.h5ad) input file")
 @click.option(
     "-o", '--output_dir', type=click.Path(file_okay=False), default=os.getcwd(), show_default=True,
-    help="Output directory. All output will be placed in [output_dir]/[name]/... ")
-@click.option(
-    '--local_density_threshold', type=float, default=2.0, show_default=True,
-    help="Threshold for the local density filtering prior to GEP consensus. Acceptable thresholds are > 0 and <= 2 (2.0 is no filtering).")
+    help="Output directory for annotated heatmaps.")
 @click.option(
     '-m', '--metadata_colors_toml', type=click.Path(dir_okay=False, exists=True),
     help="TOML file with metadata_colors specification. See README for more information. If not provided, visually distinct colors will be chosen automatically.")
 @click.option(
     '--max_categories_per_layer', type=int,
     help="Filter metadata layers by the number of categories. This parameter is useful to simplify heatmaps with too many annotations.")
-def create_annotated_heatmaps(name, output_dir, metadata_colors_toml, max_categories_per_layer, local_density_threshold):
+def create_annotated_heatmaps(input_h5ad, output_dir, metadata_colors_toml, max_categories_per_layer):
     """
     Create heatmaps of usages with annotation tracks.
     """
-    cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
-    run_params = cnmf.cnmf.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
-    cnmfresult = CnmfResult.from_dir(os.path.join(output_dir, name), local_density_threshold=local_density_threshold)
+    os.makedirs(output_dir, exist_ok=True)
+    adata = read_h5ad(input_h5ad)
     # annotate usage plots
     if metadata_colors_toml:
         cfg = Config.from_toml(metadata_colors_toml)
     else:
         cfg = Config()
         
-    cfg.add_missing_colors_from(cnmfresult.metadata)
-    cfg.to_toml(os.path.join(output_dir, name, "metadata_colors.toml"))
-    exclude_maxcat = cnmfresult.metadata.select_dtypes(include=["object", "catdegory"]).apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
-    metadata = cnmfresult.metadata.drop(columns=exclude_maxcat[exclude_maxcat].index)
+    cfg.add_missing_colors_from(adata.obs)
+    cfg.to_toml(os.path.join(output_dir, "metadata_colors.toml"))
+    exclude_maxcat = adata.obs.select_dtypes(include=["object", "category"]).apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
+    metadata = adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index)
+    usage = adata.obsm["cnmf_usage"]
+    usage.columns=pd.MultiIndex.from_tuples(usage.columns.str.split(".").to_list())
+
     # create annotated plots
-    for k in sorted(set(run_params.n_components)):
-        usage_path = cnmf_obj.paths["consensus_usages__txt"] % (k, str(local_density_threshold).replace(".", "_"))
-        plot_annotated_usages(usage_path=usage_path, metadata=metadata, metadata_colors=cfg.metadata_colors)
+    for k in usage.columns.levels[0]:
+        k_usage = usage.loc[:, k]
+        cnmf_name = adata.uns["cnmf_name"]
+        ldt = adata.uns["ldt"]
+        title = f"{cnmf_name} k={k} ldt={ldt}"
+        filename = os.path.join(output_dir, cnmf_name + f".k{(int(k)):03}.pdf")
+        plot_annotated_usages(df=k_usage, metadata=metadata, metadata_colors=cfg.metadata_colors, title=title, filename=filename)
 
 @click.command()
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS")

@@ -92,13 +92,12 @@ def create_annotated_heatmaps(
     ax.set_axis_off()
     return fig
 
-def plot_annotated_usages(usage_path, metadata, metadata_colors):
-    df = pd.read_table(usage_path, index_col=0)
+def plot_annotated_usages(df, metadata, metadata_colors, title, filename):
     samples = df.index.to_series()
     df = df.div(df.sum(axis=1), axis=0)
     annotations = metadata.loc[samples]
     annotations = annotations[[c for c in annotations.columns if c in metadata_colors]]
-    fig = create_annotated_heatmaps(data=df, metadata=annotations, metadata_colors=metadata_colors, title=usage_path)
-    fig.savefig(usage_path.replace(".txt", ".pdf"), transparent=False, bbox_inches = "tight")
+    fig = create_annotated_heatmaps(data=df, metadata=annotations, metadata_colors=metadata_colors, title=title)
+    fig.savefig(filename, transparent=False, bbox_inches = "tight")
     plt.close(fig)  
     return fig
