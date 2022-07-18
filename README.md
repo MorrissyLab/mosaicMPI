@@ -51,11 +51,13 @@ cnmfsns model-odg --help
 
 ### 1. Create AnnData object from text files with expression and annotations.
 
-If expression and annotation data is in text files, this utility can combine them into a .h5ad file for downstream tools.
+If expression and annotation data is in text files, this utility can combine them into a .h5ad file for downstream tools. If you have normalized and count data as text files, use the following command:
 
 ```
-cnmfsns txt-to-h5ad --tpm tpm.txt --counts counts.txt --metadata metadata.txt -o dataset.h5ad
+cnmfsns txt-to-h5ad --normalized normalized.txt --counts counts.txt --metadata metadata.txt -o dataset.h5ad
 ```
+
+Only one of the `--normalized` and `--counts` options are required. When only count data is provided, TPM normalization is automatically performed and this is used for overdispersed gene selection. If only normalized data is provided, then the normalized data is used for factorization and for overdispersed gene selection.
 
 #### Input semantics
 
@@ -78,7 +80,7 @@ cNMF  supports input data that is sparse (i.e. with zeros), but not with missing
 
 
 ```
-cnmfsns check_h5ad file.h5ad file_filtered.h5ad
+cnmfsns check-h5ad file.h5ad file_filtered.h5ad
 ```
 
 ### 3. Model gene overdispersion to select genes for factorization.
@@ -105,7 +107,7 @@ A simple command sets the parameters for the factorization using default paramet
   - beta-loss metric: kullback-leibler
 
 ```
-cnmfsns set_parameters --name example_run
+cnmfsns set-parameters --name example_run
 ```
 
 ### 5. Perform cNMF factorization

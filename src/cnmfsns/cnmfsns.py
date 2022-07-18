@@ -267,25 +267,25 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
     adata = read_h5ad(input)
     
-    # Create diagnostic plots
+    # Create gene stats table
     df = model_overdispersion(
             adata=adata,
             odg_default_spline_degree=default_spline_degree,
             odg_default_dof=default_dof,
             odg_cnmf_mean_threshold=cnmf_mean_threshold
             )
-    
-    # add protein coding status
     if annotate_hgnc_protein_coding:
         protein_coding_genes = fetch_hgnc_protein_coding_genes()
         df["HGNC protein-coding"] = df.index.isin(protein_coding_genes)
-
-    # create od genes outputs
     os.makedirs(os.path.normpath(os.path.join(output_dir, name, "odgenes")), exist_ok=True)
+    df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
+
+    # create od genes plots
     for fig_id, fig in create_diagnostic_plots(df).items():
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
-    df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
+
+    # update/copy h5ad
     uns_odg = {
         "default_spline_degree": default_spline_degree,
         "default_dof": default_dof,
