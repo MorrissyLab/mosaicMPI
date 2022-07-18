@@ -8,7 +8,6 @@ from datetime import datetime
 import distinctipy
 import os
 from types import SimpleNamespace
-import mudata
 
 class Config(SimpleNamespace):
 

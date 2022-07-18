@@ -1,4 +1,3 @@
-import mudata
 import logging
 import sys
 from anndata import AnnData, read_h5ad

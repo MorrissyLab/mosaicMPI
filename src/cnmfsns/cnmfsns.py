@@ -346,16 +346,16 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
     Examples:
 
         # default behaviour does this
-        cnmfsns select-odg -n test -m default_minscore -p 1.0
+        cnmfsns set_parameters -n test -m default_minscore -p 1.0
 
         # to reproduce cNMF default behaviour (Kotliar et al., 2019, eLife)
-        cnmfsns select-odg -n test -m cnmf_topn -p 2000          
+        cnmfsns set_parameters -n test -m cnmf_topn -p 2000          
 
         # select top 20% of genes when ranked by od-score
-        cnmfsns select-odg -n test -m default_quantile -p 0.8
+        cnmfsns set_parameters -n test -m default_quantile -p 0.8
 
         # input a gene list from text file
-        cnmfsns select-odg -n test -m genes_file -p path/to/genesfile.txt
+        cnmfsns set_parameters -n test -m genes_file -p path/to/genesfile.txt
     """
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
     adata = read_h5ad(os.path.join(output_dir, name, name + ".h5ad"))

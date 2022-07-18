@@ -34,7 +34,7 @@ pip install cnmfsns
 conda install -c conda-forge cnmfsns
 ```
 
-## Workflow
+## Workflow Part 1: Factorization for individual datasets
 
 cNMF-SNS is a command line tool for deconvoluting and integrating gene expression and other high-dimensional data.
 
@@ -96,16 +96,23 @@ To produce plots to guide selection of overdispersed genes, run the following co
 cnmfsns model-odg --name example_run --input file_filtered.h5ad
 ```
 
+This command will create a directory with the name of the run inside the output directory (defaults to current working directory).
+
 ### 4. Select overdispersed genes and parameters for factorization
 
-A simple command sets the parameters for the factorization using default parameters:
-  - overdispersed genes: od-score >= 1
-  - k = 2 - 10 inclusive
-  - beta-loss metric: kullback-leibler
-
+Once you have decided on a method for selecting overdispersed genes and are ready for factorization, you can set all the necessary parameters as follows:
 ```
 cnmfsns set-parameters --name example_run
 ```
+Since no parameters were specified, the defaults would be used:
+  - overdispersed genes: od-score >= 1.0  (SD >=1.0)
+  - k = 2-10 inclusive
+  - beta-loss metric: kullback-leibler
+  - number of iterations per rank = 100
+
+You can also choose from a number of different methods for selecting overdispersed_genes, for example:
+  - `cnmfsns set-parameters --name example_run -m cnmf_topn -p 2000`: select top 2000 genes using cNMF's default behaviour (Kotliar et al., 2019, eLife)
+  - 
 
 ### 5. Perform cNMF factorization
 
@@ -128,6 +135,7 @@ This step will check to ensure that all factorizations completed successfully, a
 ```
 cnmfsns postprocess --name example_run
 ```
+
 ### 7. Created annotated heatmaps of GEP usages
 
 This step will create annotated heatmaps of GEP usages from cNMF-SNS outputs:
@@ -149,10 +157,11 @@ To provide custom colors for the metadata layers, you can specify a TOML-formatt
 
 
 
-## Incomplete documentation >>>
+## Workflow Part 2: Integration of multiple datasets
+>> Note: the following workflow is under active development and may change.
 
 
-### Initialize the cNMF-SNS integration using configuration
+### 1. Identify datasets for integration
 
 A [TOML](https://toml.io/en/) configuration file is the most flexible way to configure cNMF-SNS. An example is found in `scripts/example_config.toml`.
 
@@ -160,9 +169,9 @@ A [TOML](https://toml.io/en/) configuration file is the most flexible way to con
 cnmfsns initialize -c config.toml -o output_directory
 ```
 
-cNMF-SNS can also initializae an integration by providing a set of h5mu files to integrate:
+cNMF-SNS can also initialize an integration by providing a set of h5ad files  to integrate:
 ```
-cnmfsns initialize -o output_directory -i file1.h5mu file2.h5mu file3.h5mu file4.h5mu
+cnmfsns initialize -i file1.h5ad file2.h5ad file3.h5ad file4.h5ad -o output_directory
 ```
 
 After this step, several plots are generated which can help guide parameter selection for the next step. Parameters that are required for the integration include:
