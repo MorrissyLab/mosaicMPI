@@ -181,7 +181,7 @@ Parameters for SNS integration are specified in the TOML configuration file. If 
 ### `cnmfsns initialize`
 
 - import multiple cnmf outputs for integration
-    - requires h5mu files from previous runs, or
+    - requires h5ad files from previous runs, or
     - a config file (spec in progress, see example in 'scripts/example_config.toml')
 - specify an output directory for the integration being performed (eg. "gbm_proteomics")
 - UpSet plot of OD Genes between datasets

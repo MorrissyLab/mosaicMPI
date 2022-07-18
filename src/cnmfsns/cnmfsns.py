@@ -2,7 +2,6 @@ import os
 import logging
 import shutil
 import subprocess
-import weakref
 import click
 import cnmf
 import sys
@@ -70,6 +69,7 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
     """
     Create .h5ad file with normalized and raw expression data, as well as metadata.
     """
+    print(counts, normalized)
     if counts is None and normalized is None:
         logging.error("Either a counts matrix or normalized matrix of gene expression must be supplied.")
         sys.exit(1)
@@ -97,7 +97,15 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
             print("Column:", col)
             for value_type, count in metadata[col].dropna().map(type).value_counts().items():
                 print(f"   {value_type}:", count)
+        missing_samples_in_X = metadata.index.difference(normalized.index).astype(str).to_list()
+        if missing_samples_in_X:
+            logging.warning("The following samples in the metadata were not present in the data (`adata.X`):\n  - " + "\n  - ".join(missing_samples_in_X))
+        missing_samples_in_md = normalized.index.difference(metadata.index).astype(str).to_list()
+        if missing_samples_in_md:
+            logging.warning("The following samples in the data (`adata.X`) were absent in the metadata:\n  - " + "\n  - ".join(missing_samples_in_md))
         
+        metadata = metadata.reindex(normalized.index)
+
     if sparsify:
         adata = AnnData(X=sp.csr_matrix(normalized.values), raw=AnnData(X=sp.csr_matrix(counts)), obs=metadata)
     else:
@@ -116,7 +124,7 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
     help="Path to output .h5ad file. If none are provided, input file will be overwritten.")
 def update_h5ad_metadata(input_h5ad, metadata, output_h5ad):
     """
-    At any point in the cNMF-SNS workflow, metadata in the h5ad file can be updated. This will overwrite the AnnData object's `obs` attribute.
+    Update metadata in a .h5ad file at any point in the cNMF-SNS workflow. New metadata will overwrite (`adata.obs`).
     """
 
     metadata = pd.read_table(metadata, index_col=0)
@@ -521,7 +529,7 @@ def postprocess(name, output_dir, local_density_threshold, local_neighborhood_si
 
 @click.command()
 @click.option(
-    "-i", "--input_h5ad", type=click.Path(exists=True, dir_okay=False), help="Path to AnnData (.h5ad) input file")
+    "-i", "--input_h5ad", type=click.Path(exists=True, dir_okay=False), required=True, help="Path to AnnData (.h5ad) file containing cNMF results.")
 @click.option(
     "-o", '--output_dir', type=click.Path(file_okay=False), default=os.getcwd(), show_default=True,
     help="Output directory for annotated heatmaps.")
@@ -547,6 +555,9 @@ def create_annotated_heatmaps(input_h5ad, output_dir, metadata_colors_toml, max_
     cfg.to_toml(os.path.join(output_dir, "metadata_colors.toml"))
     exclude_maxcat = adata.obs.select_dtypes(include=["object", "category"]).apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
     metadata = adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index)
+    if "cnmf_usage" not in adata.obsm:
+        logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `cnmfsns postprocess` before creating annotated usage heatmaps.")
+        sys.exit(1)
     usage = adata.obsm["cnmf_usage"]
     usage.columns=pd.MultiIndex.from_tuples(usage.columns.str.split(".").to_list())
 
@@ -556,17 +567,17 @@ def create_annotated_heatmaps(input_h5ad, output_dir, metadata_colors_toml, max_
         cnmf_name = adata.uns["cnmf_name"]
         ldt = adata.uns["ldt"]
         title = f"{cnmf_name} k={k} ldt={ldt}"
-        filename = os.path.join(output_dir, cnmf_name + f".k{(int(k)):03}.pdf")
+        filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{(int(k)):03}.pdf")
         plot_annotated_usages(df=k_usage, metadata=metadata, metadata_colors=cfg.metadata_colors, title=title, filename=filename)
 
 @click.command()
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_file', type=click.Path(exists=True, dir_okay=False), help="TOML config file")
-@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad input file")
+@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad input file containing")
 def initialize(output_dir, config_file, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.
-    Although -i can be used multiple times to add .h5mu files directly, it is recommended to use a .toml file which allows for full customization.
+    Although -i can be used multiple times to add .h5ad files directly, it is recommended to use a .toml file which allows for full customization.
     Using the .toml configuration file, datasets can be giving aliases and colors for use in downstream plots.
     """
     start_logging(output_dir)
