@@ -2,12 +2,14 @@ import os
 import logging
 import shutil
 import subprocess
+import weakref
 import click
 import cnmf
 import sys
 import warnings
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 from collections import OrderedDict
 from typing import Optional, Mapping
 from anndata import AnnData, read_h5ad
@@ -47,75 +49,173 @@ def cli():
 @click.command()
 @click.option(
     "-c", "--counts", type=click.Path(dir_okay=False, exists=True), required=False,
-    help="Input (cell/sample x gene) counts matrix as .df.npz or tab-delimited text file. "
+    help="Input (cell/sample x gene) counts matrix as tab-delimited text file. "
          "This is the matrix which will be variance normalized and used for factorization. "
-         "If not provided, the TPM matrix will be used instead.")
+         "If not provided, the normalized matrix will be used instead.")
 @click.option(
-    "-t", "--tpm", type=click.Path(dir_okay=False, exists=True), required=False,
-    help="Pre-computed (cell/sample x gene) TPM matrix as .df.npz or tab delimited text file. "
+    "-n", "--normalized", type=click.Path(dir_okay=False, exists=True), required=False,
+    help="Pre-computed (cell/sample x gene) normalized matrix as tab delimited text file. "
          "This is the matrix which is used to select overdispersed genes and to which final GEPs will be scaled. "
          "If not provided, TPM normalization will be calculated from the count matrix.")
 @click.option(
     "-m", "--metadata", type=click.Path(dir_okay=False, exists=True), required=False,
     help="Tab-separated text file with metadata for samples/cells/spots with one row each. Columns are annotation layers.")
 @click.option(
+    "--sparsify", is_flag=True,
+    help="Save resulting data in sparse format. Recommended for sparse datasets such as scRNA-Seq, scATAC-Seq, and 10X Visium, but not for bulk expression data.")
+@click.option(
     "-o", '--output', type=click.Path(dir_okay=False, exists=False), required=True,
     help="Path to output .h5ad file.")
-def txt_to_h5ad(counts, tpm, metadata, output):
+def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
     """
     Create .h5ad file with normalized and raw expression data, as well as metadata.
     """
-    if counts is None and tpm is None:
-        logging.error("Either a counts matrix or normalized (TPM) matrix of gene expression must be supplied.")
+    if counts is None and normalized is None:
+        logging.error("Either a counts matrix or normalized matrix of gene expression must be supplied.")
         sys.exit(1)
-    elif counts is not None and tpm is None:
+    elif counts is not None and normalized is None:
         counts = pd.read_table(counts, index_col=0)
-        tpm = counts * 1e6 / counts.sum(axis=1) # compute TPM
-    elif tpm and counts is None:
-        tpm = pd.read_table(tpm, index_col=0)
-        counts = tpm
-    elif tpm and counts:
+        normalized = counts * 1e6 / counts.sum(axis=1) # compute TPM
+    elif normalized and counts is None:
+        normalized = pd.read_table(normalized, index_col=0)
+        counts = normalized
+    elif normalized and counts:
         counts = pd.read_table(counts, index_col=0)
-        tpm = pd.read_table(tpm, index_col=0)
-    if (counts.index != tpm.index).all() or (counts.columns != tpm.columns).all():
-        logging.error("Index and Columns of counts and tpm matrices are not the same")
+        normalized = pd.read_table(normalized, index_col=0)
+    if (counts.index != normalized.index).all() or (counts.columns != normalized.columns).all():
+        logging.error("Index and Columns of counts and normalized matrices are not the same")
         sys.exit(1)
     if metadata is not None:
         metadata = pd.read_table(metadata, index_col=0)
-        logging.info("Data types for non-missing values in each layer of metadata: ")
         # convert 'object' dtype to categorical, converting bool values to strings as these are not supported by AnnData on-disk format
         for col in metadata.select_dtypes(include="object").columns:
             metadata[col] = metadata[col].replace({True: "True", False: "False"}).astype("category")
         
-        # print final summary for review before saving to *.h5ad file
+        # print final summary for review before saving to *.h5ad file]
+        logging.info("Data types for non-missing values in each layer of metadata: ")
         for col in metadata.columns:
             print("Column:", col)
             for value_type, count in metadata[col].dropna().map(type).value_counts().items():
                 print(f"   {value_type}:", count)
         
-    adata = AnnData(X=tpm, raw=AnnData(X=counts), obs=metadata)
-
-    # TODO: Implement check for overwriting existing file. If overwriting, warn about whether changes will be made to data or metadata or both
+    if sparsify:
+        adata = AnnData(X=sp.csr_matrix(normalized.values), raw=AnnData(X=sp.csr_matrix(counts)), obs=metadata)
+    else:
+        adata = AnnData(X=normalized, raw=AnnData(X=counts), obs=metadata)
     adata.write_h5ad(output)
+
+@click.command()
+@click.option(
+    "-m", "--metadata", type=click.Path(dir_okay=False, exists=True), required=True,
+    help="Tab-separated text file with metadata for samples/cells/spots with one row each. Columns are annotation layers.")
+@click.option(
+    "-i", '--input_h5ad', type=click.Path(dir_okay=False, exists=True), required=True,
+    help="Path to input .h5ad file.")
+@click.option(
+    "-o", '--output_h5ad', type=click.Path(dir_okay=False, exists=False), required=False,
+    help="Path to output .h5ad file. If none are provided, input file will be overwritten.")
+def update_h5ad_metadata(input_h5ad, metadata, output_h5ad):
+    """
+    At any point in the cNMF-SNS workflow, metadata in the h5ad file can be updated. This will overwrite the AnnData object's `obs` attribute.
+    """
+
+    metadata = pd.read_table(metadata, index_col=0)
+    # convert 'object' dtype to categorical, converting bool values to strings as these are not supported by AnnData on-disk format
+    for col in metadata.select_dtypes(include="object").columns:
+        metadata[col] = metadata[col].replace({True: "True", False: "False"}).astype("category")
+    
+    # print final summary for review before saving to *.h5ad file]
+    logging.info("Data types for non-missing values in each layer of metadata: ")
+    for col in metadata.columns:
+        print("Column:", col)
+        for value_type, count in metadata[col].dropna().map(type).value_counts().items():
+            print(f"   {value_type}:", count)
+
+    if output_h5ad is None:
+        output_h5ad = input_h5ad
+    adata = read_h5ad(input_h5ad)
+    adata.obs = metadata
+    adata.write_h5ad(output_h5ad)
+
 
 @click.command()
 @click.option(
     "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=True,
     help="Input .h5ad file.")
 @click.option(
-    "-o", "--output", type=click.Path(dir_okay=False, exists=False), required=True,
-    help="Output .h5ad file.")
+    "-o", "--output", type=click.Path(dir_okay=False, exists=False), required=False,
+    help="Output .h5ad file. If not specified, no output file will be written.")
 def check_h5ad(input, output):
     adata = read_h5ad(input)
-    adata.write(output)
-    if np.isnan(adata.X).sum() > 0:
-        logging.error("TPM matrix (adata.X) contains missing (NaN) data.")
+    if adata.raw is None:
+        logging.error(f".h5ad file is missing count data (`adata.raw.X`).")
+        sys.exit(1)
+    if adata.X is None:
+        logging.error(f".h5ad file is missing normalized data (`adata.X`).")
+        sys.exit(1)
+
+    # convert sparse to dense matrices
+    if sp.issparse(adata.X):
+        X = adata.X.toarray()
+    else:
+        X = adata.X
+    if sp.issparse(adata.raw.X):
+        raw = adata.raw.X.toarray()
+    else:
+        raw = adata.raw.X
+    normalized = pd.DataFrame(data=X, index=adata.obs.index, columns=adata.var.index)
+    counts = pd.DataFrame(data=raw, index=adata.obs.index, columns=adata.var.index)
+    if adata.X is None and adata.raw.X is not None:
+        logging.warning("Normalized data matrix (`adata.X`) is empty.")
+        if output:
+            logging.warning("Normalized data matrix being generated from count matrix (`adata.raw.X`) using TPM normalization.")
+            normalized = counts * 1e6 / counts.sum(axis=1) # compute TPM
+    elif adata.raw.X is None and adata.X is not None:
+        logging.warning("Count data matrix (`adata.raw.X`) is empty.")
+        if output:
+            logging.warning("Normalized data matrix (`adata.X`) will be used instead.")
+            counts = normalized
+    elif adata.raw.X is None and adata.X is None:
+        logging.error(".h5ad file must contain a counts matrix (`adata.raw.X`) and/or a normalized matrix (`adata.X`).")
         sys.exit(1)
     
-    # - check for tpm and count matrices existence - otherwise calculate as in txt_to_h5ad()
-
-    # - check for genes/samples with all zeros
-    # - warn if tpm matrix is not perfectly correlated with count matrix - not recommended for cNMF
+    # Check counts for variables with missing values
+    genes_with_missingvalues = counts.isnull().any().sum()
+    if genes_with_missingvalues:
+        logging.warning(f"{genes_with_missingvalues} of {adata.n_vars} variables are missing values in counts data (`adata.raw.X`).")
+        if output:
+            logging.warning(f"Subsetting variables to those with no missing values.")
+            counts = counts.dropna(how="any", axis=1)
+    # Check normalized for variables with missing values
+    genes_with_missingvalues = normalized.isnull().any().sum()
+    if genes_with_missingvalues:
+        logging.warning(f"{genes_with_missingvalues} of {adata.n_vars} variables are missing values in normalized data (`adata.X`).")
+        if output:
+            logging.warning(f"Subsetting variables to those with no missing values.")
+            normalized = normalized.dropna(how="any", axis=1)
+    # Check for genes with zero variance
+    zerovargenes = (counts.var() == 0).sum()
+    if zerovargenes:
+        logging.warning(f"{zerovargenes} of {adata.n_vars} variables have a variance of zero in counts data (`adata.raw.X`).")
+        if output:
+            logging.warning(f"Subsetting variables to those with nonzero data.")
+            counts = counts[counts.var() > 0]
+    # Check for genes with zero variance
+    zerovargenes = (normalized.var() == 0).sum()
+    if zerovargenes:
+        logging.warning(f"{zerovargenes} of {adata.n_vars} variables have a variance of zero in normalized data (`adata.X`).")
+        if output:
+            logging.warning(f"Subsetting variables to those with nonzero data.")
+            normalized = normalized[normalized.var() > 0]
+    
+    # check for linear scaling of counts to normalized matrix (eg. TPM) for cNMF
+    is_nonlinear_scaling = (np.abs(normalized.corrwith(counts, axis=1, method="pearson") - 1) > 0.01).any()  # Uses pearson correlation to detect non-linear relationships
+    if is_nonlinear_scaling:
+        logging.warning(f"Normalized data (`adata.X`) does not appear to be a linear scaling of counts (`adata.raw.X`) data. Linear scaling such as TPM is recommended for cNMF.")
+    
+    # Save output to new h5ad file
+    if output is not None:
+        adata.write(output)
 
 
 @click.command()
@@ -156,10 +256,9 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
         # Explicitly use a linear model instead of a BSpline Generalized Additive Model
         cnmfsns model-odg -n test -i test.h5ad --odg_default_spline_degree 0 --odg_default_dof 1
     """
-    cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
+    cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
     adata = read_h5ad(input)
-    os.makedirs(os.path.normpath(os.path.join(output_dir, name, "odgenes")), exist_ok=True)
-    shutil.copy(input, os.path.join(output_dir, name, name + ".h5ad"))
+    
     # Create diagnostic plots
     df = model_overdispersion(
             adata=adata,
@@ -167,6 +266,7 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
             odg_default_dof=default_dof,
             odg_cnmf_mean_threshold=cnmf_mean_threshold
             )
+    
     for fig_id, fig in create_diagnostic_plots(df).items():
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
@@ -175,7 +275,18 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
     if annotate_hgnc_protein_coding:
         protein_coding_genes = fetch_hgnc_protein_coding_genes()
         df["HGNC protein-coding"] = df.index.isin(protein_coding_genes)
+
+    # write files
+    os.makedirs(os.path.normpath(os.path.join(output_dir, name, "odgenes")), exist_ok=True)
     df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
+    uns_odg = {
+        "default_spline_degree": default_spline_degree,
+        "default_dof": default_dof,
+        "cnmf_mean_threshold": cnmf_mean_threshold,
+        "gene_stats": df
+    }
+    adata.uns["odg"] = uns_odg
+    adata.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
 
 
 @click.command()
@@ -241,7 +352,8 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
         cnmfsns select-odg -n test -m genes_file -p path/to/genesfile.txt
     """
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
-    df = pd.read_table(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t", index_col=0)
+    adata = read_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
+    df = adata.uns["odg"]["gene_stats"]
 
     # Convert parameter to expected type
     if odg_method.endswith("topn"):
@@ -286,7 +398,7 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
     # output table with gene overdispersion measures
     df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
 
-    # write TPM (normalized) data to 
+    # write TPM (normalized) data
     adata = read_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     input_counts = AnnData(X=adata.raw.X, obs=adata.obs, var=adata.var, dtype=np.float64)
     tpm = AnnData(X=adata.X, obs=adata.obs, var=adata.var, dtype=np.float64)
@@ -305,8 +417,16 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
     if k_range is not None:
         kvals |= set(range(k_range[0], k_range[1] + 1, k_range[2]))
     kvals = sorted(list(kvals))
-    # save parameters for factorizatoin step
+    # save parameters for factorization step
     cnmf_obj.save_nmf_iter_params(*cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss))
+
+    # save parameters in AnnData object
+    adata.uns["odg"]["genestats"] = df
+    adata.uns["odg"]["method"] = odg_method
+    adata.uns["odg"]["param"] = odg_param
+    adata.uns["cnmf"] = cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss)[1]  # dict of cnmf parameters
+    adata.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
+
     
     
 @click.command()
@@ -397,7 +517,7 @@ def postprocess(name, output_dir, local_density_threshold, local_neighborhood_si
    
     # update h5ad file with cnmf results
     input_h5ad = os.path.join(output_dir, name, name + ".h5ad")
-    add_cnmf_results_to_h5ad(output_dir, name, input_h5ad, local_density_threshold, force=force_h5ad_update)
+    add_cnmf_results_to_h5ad(output_dir, name, input_h5ad, local_density_threshold, local_neighborhood_size, force=force_h5ad_update)
 
 @click.command()
 @click.option(
@@ -440,10 +560,10 @@ def create_annotated_heatmaps(input_h5ad, output_dir, metadata_colors_toml, max_
         plot_annotated_usages(df=k_usage, metadata=metadata, metadata_colors=cfg.metadata_colors, title=title, filename=filename)
 
 @click.command()
-@click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS")
+@click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_file', type=click.Path(exists=True, dir_okay=False), help="TOML config file")
-@click.option('-i', '--input_h5mu', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5mu input file")
-def initialize(output_dir, config_file, input_h5mu):
+@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad input file")
+def initialize(output_dir, config_file, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.
     Although -i can be used multiple times to add .h5mu files directly, it is recommended to use a .toml file which allows for full customization.
@@ -452,10 +572,12 @@ def initialize(output_dir, config_file, input_h5mu):
     start_logging(output_dir)
     logging.info("cnmfsns initialize")
 
-    if config_file is not None and input_h5mu:
+    if config_file is not None and input_h5ad:
         logging.error("A TOML config file can be specified, or 1 or more h5mu files can be specified, but not both.")
-    if not all(fn.endswith(".h5mu") for fn in input_h5mu):
-        logging.error("Input files must be h5mu mudata files.")
+        sys.exit(1)
+    if not all(fn.endswith(".h5ad") for fn in input_h5ad):
+        logging.error("Input files must be AnnData .h5ad files.")
+        sys.exit(1)
     
     # create directory structure, warn if overwriting
     output_dir = os.path.normpath(output_dir)
@@ -505,6 +627,7 @@ def annotate_sns():
     pass
 
 cli.add_command(txt_to_h5ad)
+cli.add_command(update_h5ad_metadata)
 cli.add_command(check_h5ad)
 cli.add_command(model_odg)
 cli.add_command(set_parameters)
