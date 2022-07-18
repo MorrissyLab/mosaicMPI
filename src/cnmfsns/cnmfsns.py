@@ -275,17 +275,16 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
             odg_cnmf_mean_threshold=cnmf_mean_threshold
             )
     
-    for fig_id, fig in create_diagnostic_plots(df).items():
-        fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
-        fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
-
-    # output table with gene overdispersion measures
+    # add protein coding status
     if annotate_hgnc_protein_coding:
         protein_coding_genes = fetch_hgnc_protein_coding_genes()
         df["HGNC protein-coding"] = df.index.isin(protein_coding_genes)
 
-    # write files
+    # create od genes outputs
     os.makedirs(os.path.normpath(os.path.join(output_dir, name, "odgenes")), exist_ok=True)
+    for fig_id, fig in create_diagnostic_plots(df).items():
+        fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
+        fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
     df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
     uns_odg = {
         "default_spline_degree": default_spline_degree,
@@ -572,9 +571,9 @@ def create_annotated_heatmaps(input_h5ad, output_dir, metadata_colors_toml, max_
 
 @click.command()
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
-@click.option('-c', '--config_file', type=click.Path(exists=True, dir_okay=False), help="TOML config file")
+@click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), help="TOML config file")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad input file containing")
-def initialize(output_dir, config_file, input_h5ad):
+def initialize(output_dir, config_toml, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.
     Although -i can be used multiple times to add .h5ad files directly, it is recommended to use a .toml file which allows for full customization.
@@ -583,7 +582,7 @@ def initialize(output_dir, config_file, input_h5ad):
     start_logging(output_dir)
     logging.info("cnmfsns initialize")
 
-    if config_file is not None and input_h5ad:
+    if config_toml is not None and input_h5ad:
         logging.error("A TOML config file can be specified, or 1 or more h5mu files can be specified, but not both.")
         sys.exit(1)
     if not all(fn.endswith(".h5ad") for fn in input_h5ad):
@@ -599,10 +598,10 @@ def initialize(output_dir, config_file, input_h5ad):
     os.makedirs(os.path.join(output_dir, "output", "overdispersed_genes"), exist_ok=True)
     
     # create config
-    if config_file is not None:
-        config = Config.from_toml(config_file)
-    elif input_h5mu:
-        config = Config.from_h5mu_files(input_h5mu)
+    if config_toml is not None:
+        config = Config.from_toml(config_toml)
+    elif input_h5ad:
+        config = Config.from_h5ad_files(input_h5ad)
     logging.info("Copying data to output directory...")
     # copy files to output directory
     for name, d in config.datasets.items():
