@@ -100,19 +100,18 @@ This command will create a directory with the name of the run inside the output 
 
 ### 4. Select overdispersed genes and parameters for factorization
 
-Once you have decided on a method for selecting overdispersed genes and are ready for factorization, you can set all the necessary parameters as follows:
-```
-cnmfsns set-parameters --name example_run
-```
-Since no parameters were specified, the defaults would be used:
-  - overdispersed genes: od-score >= 1.0  (SD >=1.0)
-  - k = 2-10 inclusive
-  - beta-loss metric: kullback-leibler
-  - number of iterations per rank = 100
+Once you have decided on a method for selecting overdispersed genes and are ready for factorization, you can easily use the default parameters and select values of k as follows:
 
-You can also choose from a number of different methods for selecting overdispersed_genes, for example:
-  - `cnmfsns set-parameters --name example_run -m cnmf_topn -p 2000`: select top 2000 genes using cNMF's default behaviour (Kotliar et al., 2019, eLife)
-  - 
+```
+cnmfsns set-parameters --name example_run -k 2 -k 3
+```
+
+A more complex range of k values can also be set up using the `--k_range` parameter. For example, to perform cNMF using a range of k values from 5 to 60, with a step of 5 (ie.: 5, 10, 15, ... 60), you would specify `--k_range 5 60 5`.
+
+The default behaviour is to select overdispersed genes using an od-score > 1.0. You can also choose from a number of different methods for selecting overdispersed_genes, for example:
+  - `cnmfsns set-parameters --name example_run -m cnmf_topn -p 2000`: select top 2000 genes using cNMF's model and minimal mean threshold (Kotliar et al., 2019, eLife)
+  - `cnmfsns select-odg -n test -m default_quantile -p 0.8`: Select top 20% of genes when ranked by od-score
+  - `cnmfsns set-parameters --name example_run -n test -m genes_file -p path/to/genesfile.txt`: use a custom list of genes
 
 ### 5. Perform cNMF factorization
 
@@ -121,9 +120,10 @@ Factorize the input data. While parameters can be provided which allow for custo
 ```
 cnmfsns factorize --name example_run
 ```
+
 For submitting jobs to the SLURM job scheduler, you can download a sample job submission script [here](https://github.com/MorrissyLab/cNMF-SNS/tree/main/scripts/slurm.sh).
 
-After editing the script to ensure it is suitable for your compute cluster, you can maximally parallelize your run using:
+After editing the script to ensure it is suitable for your HPC cluster, cNMF-SNS will submit jobs using SLURM's `sbatch` command to parallelize factorization.
 ```
 cnmfsns factorize --name example_run --slurm-script /path/to/slurm.sh
 ```
@@ -135,6 +135,8 @@ This step will check to ensure that all factorizations completed successfully, a
 ```
 cnmfsns postprocess --name example_run
 ```
+
+For downstream analyses, the output AnnData object is in `./example_run/example_run.h5ad`.
 
 ### 7. Created annotated heatmaps of GEP usages
 
