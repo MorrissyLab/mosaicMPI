@@ -8,19 +8,19 @@ name = "GBM_Proteomics"
 ################################
 
 [datasets.CPTAC]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/cptac_gbm_imputed_odg1_kl.h5mu"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/cptac_gbm_imputed_odg1_kl.h5ad"
 color = "royalblue"
 
 [datasets.UCC]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/gbm_ffpe_proteogenomics_imputed_odg1_kl.h5mu"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/gbm_ffpe_proteogenomics_imputed_odg1_kl.h5ad"
 color = "gold"
 
 [datasets.Yonsei]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/yonsei_imputed_odg1_kl.h5mu"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/yonsei_imputed_odg1_kl.h5ad"
 color = "tomato"
 
 [datasets.Diamandis]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/diamandis_imputed_odg1_kl.h5mu"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/diamandis_imputed_odg1_kl.h5ad"
 color = "lightgreen"
 
 

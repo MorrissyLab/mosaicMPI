@@ -3,11 +3,13 @@ import tomli_w
 import pandas as pd
 import numpy as np
 import sys
+import logging
 from matplotlib import colors
 from datetime import datetime
 import distinctipy
 import os
 from types import SimpleNamespace
+from anndata import read_h5ad
 
 class Config(SimpleNamespace):
 
@@ -17,10 +19,10 @@ class Config(SimpleNamespace):
             return cls(**tomli.load(f))
     
     @classmethod
-    def from_h5mu_files(cls, h5mu_files):
+    def from_h5ad_files(cls, h5ad_files):
         c = {
             "name": datetime.now().strftime("cnmfsns_%Y%m%d-%H%M%S"),
-            "datasets": {os.path.basename(fn).replace(".h5mu",""): {"filename": fn} for fn in h5mu_files}
+            "datasets": {os.path.basename(fn).replace(".h5ad",""): {"filename": fn} for fn in h5ad_files}
         }
         return cls(c)
 
@@ -28,63 +30,48 @@ class Config(SimpleNamespace):
         with open(toml_file, "wb") as f:
             tomli_w.dump(self.__dict__, f)
 
-
-    def add_missing_colors(self):
-        
+    def add_missing_dataset_colors(self):
         # check provided dataset colors
         invalid_colors = []
         for name, d in self.datasets.items():
             if "color" in d and not colors.is_color_like(d["color"]):
                 invalid_colors.append(d["color"])
         if invalid_colors:
-            print(f"Error: Datasets were given these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
+            logging.error(f"Datasets were given these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
             sys.exit(1)
 
-        # fill in missing dataset colors
-        existing_colors = set(d["color"] for name, d in self.datasets.items() if "color" in d)
-        uncolored_datasets = [name for name, d in self.datasets.items() if "color" not in d]
-        for d, rgb in zip(uncolored_datasets, distinctipy.get_colors(len(uncolored_datasets))):
-            self.datasets[d]["color"] = colors.to_hex(rgb)
-
-        # merge metadata from all datasets
-        # TODO: check that colors in config are valid
-
-        metadata = {name: mudata.read_h5mu(d["filename"]).obs for name, d in self.datasets.items()}
-        metadata = pd.concat(metadata).iloc[:, 1:]
-        metadata = metadata.replace({True:"true", False: "false"}) # converts bool to strings
-        metadata = metadata.loc[:,(metadata.dtypes == 'object')] # excludes int and float metadata, which should use a continuous scale
-        # fill in missing values with random colors distinct from existing colors
-        for layer, allvalues in metadata.items():
-            if layer in self.metadata_colors:
-                existing_values = set(self.metadata_colors[layer].keys())
-                existing_colors = set(colors.to_rgb(self.metadata_colors[layer][val]) for val in existing_values)
-            else:
-                existing_values = set()
-                existing_colors = set()
-            missing_values = set(allvalues.fillna("Other").unique()) - existing_values
-            if missing_values:
-                if layer not in self.metadata_colors:
-                    self.metadata_colors[layer] = {}
-                new_colors = distinctipy.get_colors(len(missing_values), exclude_colors=list(existing_colors))
-                new_colors = [colors.to_hex(c) for c in new_colors]
-                for value, color in zip(missing_values, new_colors):
-                    if pd.isnull(value):
-                        value = "Other"
-                    self.metadata_colors[layer][value] = color
-
-    def add_missing_colors_from(self, metadata):
+    def add_missing_metadata_colors(self, metadata_df=None):
         """
         Identify missing colors based on attached metadata dataframe.
         """
+        # color for missing data
         if not hasattr(self, "metadata_colors"):
             self.metadata_colors = {}
         
         if not "missing_data" in self.metadata_colors:
             self.metadata_colors["missing_data"] = "#dddddd"
 
-        metadata = metadata.select_dtypes(include=["category", "object"]) # excludes int and float metadata, which should use a continuous scale
+        # get categorical data for which colors should match
+        if metadata_df is None:
+            # read from h5ad files
+            metadata_df = pd.concat({name: read_h5ad(d["filename"]).obs for name, d in self.datasets.items()})
+        metadata_df = metadata_df.replace({True:"true", False: "false"}) # converts bool to strings
+        metadata_df  = metadata_df.select_dtypes(include=["category", "object"]) # excludes int and float metadata, which should use a continuous scale
+
+        # check provided metadata colors
+        invalid_colors = []
+        for layer, colors in self.metadata_colors.items():
+            if isinstance(colors, dict):
+                for value, color in colors.items():
+                    if not colors.is_color_like(color):
+                        invalid_colors.append(color)
+        if invalid_colors:
+            logging.error(f"Metadata colors included these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
+            sys.exit(1)
+
+
         # fill in missing values with random colors distinct from existing colors
-        for layer, allvalues in metadata.items():
+        for layer, allvalues in metadata_df.items():
             if layer in self.metadata_colors:
                 existing_values = set(self.metadata_colors[layer].keys())
                 existing_colors = set(colors.to_rgb(self.metadata_colors[layer][val]) for val in existing_values)
