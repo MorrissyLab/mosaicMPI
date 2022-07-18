@@ -69,7 +69,6 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
     """
     Create .h5ad file with normalized and raw expression data, as well as metadata.
     """
-    print(counts, normalized)
     if counts is None and normalized is None:
         logging.error("Either a counts matrix or normalized matrix of gene expression must be supplied.")
         sys.exit(1)

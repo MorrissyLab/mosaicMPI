@@ -75,8 +75,9 @@ def create_diagnostic_plots(df):
     ax2=ax.twinx()
     
     ax.set_title("od-score Distribution")
-    sns.histplot(df, x="odscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
-    sns.ecdfplot(df, x="odscore", ax=ax2, color="black", stat="count", complementary=True)
+    if df["odscore"].notnull().any():
+        sns.histplot(df, x="odscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
+        sns.ecdfplot(df, x="odscore", ax=ax2, color="black", stat="count", complementary=True)
     ax.set_xlabel("od-score")
     ax2.set_ylabel("Total Gene Count")
     plt.tight_layout()
@@ -98,8 +99,9 @@ def create_diagnostic_plots(df):
     ax=axes[2]  # thresholds
     ax2=ax.twinx()
     ax.set_title("v-score Distribution")
-    sns.histplot(df, x="vscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
-    sns.ecdfplot(df, x="vscore", ax=ax2, color="black", stat="count", complementary=True)
+    if df["vscore"].notnull().any():
+        sns.histplot(df, x="vscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
+        sns.ecdfplot(df, x="vscore", ax=ax2, color="black", stat="count", complementary=True)
     ax.set_xlabel("v-score")
     ax2.set_ylabel("Total Gene Count")
     plt.tight_layout()
