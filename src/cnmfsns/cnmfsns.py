@@ -17,15 +17,22 @@ from cnmfsns.config import Config
 from cnmfsns.odg import model_overdispersion, create_diagnostic_plots, fetch_hgnc_protein_coding_genes
 from cnmfsns.plots import create_annotated_heatmaps, plot_annotated_usages
 
-def start_logging(output_dir):
-    logging.captureWarnings(True)
-    logging.basicConfig(
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        handlers=[
-            logging.FileHandler(os.path.join(output_dir, "logfile.txt"), mode="a"),
-            logging.StreamHandler()
-        ]
-    )
+def start_logging(output_path=None):
+    if output_path is None:
+        logging.basicConfig(
+            format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO,
+            handlers=[
+                logging.StreamHandler()
+            ]
+        )
+    else:
+        logging.basicConfig(
+            format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO,
+            handlers=[
+                logging.FileHandler(output_path, mode="a"),
+                logging.StreamHandler()
+            ]
+        )
     return
 
 class OrderedGroup(click.Group):
@@ -69,12 +76,13 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
     """
     Create .h5ad file with normalized and raw expression data, as well as metadata.
     """
+    start_logging()
     if counts is None and normalized is None:
         logging.error("Either a counts matrix or normalized matrix of gene expression must be supplied.")
         sys.exit(1)
     elif counts is not None and normalized is None:
         counts = pd.read_table(counts, index_col=0)
-        normalized = counts * 1e6 / counts.sum(axis=1) # compute TPM
+        normalized = counts.div(counts.sum(axis=1), axis=0) * 1e6 # compute TPM
     elif normalized and counts is None:
         normalized = pd.read_table(normalized, index_col=0)
         counts = normalized
@@ -91,11 +99,13 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
             metadata[col] = metadata[col].replace({True: "True", False: "False"}).astype("category")
         
         # print final summary for review before saving to *.h5ad file]
-        logging.info("Data types for non-missing values in each layer of metadata: ")
+        msg = ""
         for col in metadata.columns:
-            print("Column:", col)
+            msg += "Column: " + col + "\n"
             for value_type, count in metadata[col].dropna().map(type).value_counts().items():
-                print(f"   {value_type}:", count)
+                msg += f"   {value_type}: {count}\n"
+        
+        logging.info("Data types for non-missing values in each layer of metadata:\n" + msg)
         missing_samples_in_X = metadata.index.difference(normalized.index).astype(str).to_list()
         if missing_samples_in_X:
             logging.warning("The following samples in the metadata were not present in the data (`adata.X`):\n  - " + "\n  - ".join(missing_samples_in_X))
@@ -125,6 +135,7 @@ def update_h5ad_metadata(input_h5ad, metadata, output_h5ad):
     """
     Update metadata in a .h5ad file at any point in the cNMF-SNS workflow. New metadata will overwrite (`adata.obs`).
     """
+    start_logging()
 
     metadata = pd.read_table(metadata, index_col=0)
     # convert 'object' dtype to categorical, converting bool values to strings as these are not supported by AnnData on-disk format
@@ -153,6 +164,7 @@ def update_h5ad_metadata(input_h5ad, metadata, output_h5ad):
     "-o", "--output", type=click.Path(dir_okay=False, exists=False), required=False,
     help="Output .h5ad file. If not specified, no output file will be written.")
 def check_h5ad(input, output):
+    start_logging()
     adata = read_h5ad(input)
     if adata.raw is None:
         logging.error(f".h5ad file is missing count data (`adata.raw.X`).")
@@ -263,6 +275,7 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
         # Explicitly use a linear model instead of a BSpline Generalized Additive Model
         cnmfsns model-odg -n test -i test.h5ad --odg_default_spline_degree 0 --odg_default_dof 1
     """
+    start_logging(os.path.join(output_dir, name, "logfile.txt"))
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
     adata = read_h5ad(input)
     
@@ -357,6 +370,7 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
         # input a gene list from text file
         cnmfsns set_parameters -n test -m genes_file -p path/to/genesfile.txt
     """
+    start_logging(os.path.join(output_dir, name, "logfile.txt"))
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
     adata = read_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     df = adata.uns["odg"]["gene_stats"]
@@ -456,6 +470,7 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
     """
     Performs factorization according to parameters specified using `cnmfsns set-parameters`.
     """
+    start_logging(os.path.join(output_dir, name, "logfile.txt"))
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
     if slurm_script is None:
         cnmf_obj.factorize(worker_i=worker_index, total_workers=total_workers)
@@ -486,6 +501,7 @@ def postprocess(name, output_dir, local_density_threshold, local_neighborhood_si
     Perform post-processing routines on cNMF after factorization. This includes checking factorization outputs for completeness, combining individual
     iterations, calculating consensus GEPs and usage matrices, and creating the k-selection and annotated usage plots.
     """
+    start_logging(os.path.join(output_dir, name, "logfile.txt"))
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
     run_params = cnmf.cnmf.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
     # first check for combined outputs:
@@ -541,6 +557,7 @@ def create_annotated_heatmaps(input_h5ad, output_dir, metadata_colors_toml, max_
     """
     Create heatmaps of usages with annotation tracks.
     """
+    start_logging()
     os.makedirs(output_dir, exist_ok=True)
     adata = read_h5ad(input_h5ad)
     # annotate usage plots
@@ -578,7 +595,7 @@ def initialize(output_dir, config_toml, input_h5ad):
     Although -i can be used multiple times to add .h5ad files directly, it is recommended to use a .toml file which allows for full customization.
     Using the .toml configuration file, datasets can be giving aliases and colors for use in downstream plots.
     """
-    start_logging(output_dir)
+    start_logging(os.path.join(output_dir, "logfile.txt"))
     logging.info("cnmfsns initialize")
 
     if config_toml is not None and input_h5ad:
