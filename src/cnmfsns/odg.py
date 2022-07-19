@@ -58,7 +58,7 @@ def create_diagnostic_plots(df, show_selected):
             Line2D([0], [0], color='green', label="model")
         ], title="selected")
     else:
-        sns.histplot(df, x="log_mean", y="log_variance", bins=[100,100], ax=ax, cmap="Blues")
+        sns.histplot(df, x="log_mean", y="log_variance", bins=[100,100], ax=ax, color="blue")
     ax.plot(df["log_mean"], df["gam_fittedvalues"], color="green")
     ax.set_title("Mean-Variance")
     ax.set_xlabel("log10(mean)")
@@ -73,7 +73,7 @@ def create_diagnostic_plots(df, show_selected):
             Line2D([0], [0], color='green', label="model")
         ], title="selected")
     else:
-        sns.histplot(df, x="log_mean", y="odscore", bins=[100,100], ax=ax, cmap="Blues")
+        sns.histplot(df, x="log_mean", y="odscore", bins=[100,100], ax=ax, color="blue")
     ax.hlines(1, xmin=df["log_mean"].min(), xmax=df["log_mean"].max(), color="green")
     ax.set_title("Mean-Overdispersion (Default)")
     ax.set_xlabel("log10(mean)")
@@ -91,7 +91,7 @@ def create_diagnostic_plots(df, show_selected):
                 Patch(color="red", alpha=0.5, label="True")
             ], title="selected")
         else:
-            sns.histplot(df, x="odscore", bins=100, linewidth=0, ax=ax, cmap="Blues")
+            sns.histplot(df, x="odscore", bins=100, linewidth=0, ax=ax, color="blue")
         sns.ecdfplot(df, x="odscore", ax=ax2, color="black", stat="count", complementary=True)
     ax.set_xlabel("od-score")
     ax2.set_ylabel("Total Gene Count")
@@ -105,7 +105,7 @@ def create_diagnostic_plots(df, show_selected):
     if show_selected:
         sns.histplot(df, x="log_mean", y="log_variance", hue="selected", bins=[100,100], ax=ax, alpha=0.5, palette={True: "red", False: "blue"})
     else:
-        sns.histplot(df, x="log_mean", y="log_variance", bins=[100,100], ax=ax, cmap="Blues")
+        sns.histplot(df, x="log_mean", y="log_variance", bins=[100,100], ax=ax, color="blue")
     ax.set_title("Mean-Variance")
     ax.set_xlabel("log10(mean)")
     ax.set_ylabel("log10(variance)")
@@ -113,7 +113,7 @@ def create_diagnostic_plots(df, show_selected):
     if show_selected:
         sns.histplot(df, x="log_mean", y="vscore", hue="selected", bins=[100,100], ax=ax, palette={True: "red", False: "blue"})
     else:
-        sns.histplot(df, x="log_mean", y="vscore", bins=[100,100], ax=ax, cmap="Blues")
+        sns.histplot(df, x="log_mean", y="vscore", bins=[100,100], ax=ax, color="blue")
     ax.set_title("Mean-Overdispersion (cnmf)")
     ax.set_xlabel("log10(mean)")
     ax.set_ylabel("v-score")
@@ -128,7 +128,7 @@ def create_diagnostic_plots(df, show_selected):
                 Patch(color="red", alpha=0.5, label="True")
             ], title="selected")
         else:
-            sns.histplot(df, x="vscore", bins=100, linewidth=0, ax=ax, cmap="Blues")
+            sns.histplot(df, x="vscore", bins=100, linewidth=0, ax=ax, color="blue")
         sns.ecdfplot(df, x="vscore", ax=ax2, color="black", stat="count", complementary=True)
     ax.set_xlabel("v-score")
     ax2.set_ylabel("Total Gene Count")

@@ -251,7 +251,7 @@ def check_h5ad(input, output):
     "--default_spline_degree", type=int, default=3, show_default=True,
     help="Degree for BSplines for the Generalized Additive Model (default method). For example, a constant spline would be 0, linear would be 1, and cubic would be 3.")
 @click.option(
-    "--default_dof", type=int, default=8, show_default=True,
+    "--default_dof", type=int, default=20, show_default=True,
     help="Degrees of Freedom (number of components) for the Generalized Additive Model (default method).")
 @click.option(
     "--cnmf_mean_threshold", type=float, default=0.5, show_default=True,
@@ -275,8 +275,8 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
         # Explicitly use a linear model instead of a BSpline Generalized Additive Model
         cnmfsns model-odg -n test -i test.h5ad --odg_default_spline_degree 0 --odg_default_dof 1
     """
-    start_logging(os.path.join(output_dir, name, "logfile.txt"))
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
+    start_logging(os.path.join(output_dir, name, "logfile.txt"))
     adata = read_h5ad(input)
     
     # Create gene stats table
@@ -293,7 +293,7 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
     df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
 
     # create od genes plots
-    for fig_id, fig in create_diagnostic_plots(df).items():
+    for fig_id, fig in create_diagnostic_plots(df, show_selected=False).items():
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
 
@@ -370,8 +370,8 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
         # input a gene list from text file
         cnmfsns set_parameters -n test -m genes_file -p path/to/genesfile.txt
     """
-    start_logging(os.path.join(output_dir, name, "logfile.txt"))
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
+    start_logging(os.path.join(output_dir, name, "logfile.txt"))
     adata = read_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     df = adata.uns["odg"]["gene_stats"]
 
@@ -411,7 +411,7 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
     df["selected"] = df.index.isin(genes)
 
     # update plots with threshold information
-    for fig_id, fig in create_diagnostic_plots(df).items():
+    for fig_id, fig in create_diagnostic_plots(df, show_selected=True).items():
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
 
