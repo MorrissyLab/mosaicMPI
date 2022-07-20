@@ -60,9 +60,9 @@ class Config(SimpleNamespace):
 
         # check provided metadata colors
         invalid_colors = []
-        for layer, colors in self.metadata_colors.items():
-            if isinstance(colors, dict):
-                for value, color in colors.items():
+        for layer, layer_colors in self.metadata_colors.items():
+            if isinstance(layer_colors, dict):
+                for value, color in layer_colors.items():
                     if not colors.is_color_like(color):
                         invalid_colors.append(color)
         if invalid_colors:

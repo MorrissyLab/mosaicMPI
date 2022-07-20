@@ -217,15 +217,15 @@ def check_h5ad(input, output):
     if zerovargenes:
         logging.warning(f"{zerovargenes} of {adata.n_vars} variables have a variance of zero in counts data (`adata.raw.X`).")
         if output:
-            logging.warning(f"Subsetting variables to those with nonzero data.")
-            counts = counts[counts.var() > 0]
+            logging.warning(f"Subsetting variables to those with nonzero variance.")
+            counts = counts.loc[:, counts.var() > 0]
     # Check for genes with zero variance
     zerovargenes = (normalized.var() == 0).sum()
     if zerovargenes:
         logging.warning(f"{zerovargenes} of {adata.n_vars} variables have a variance of zero in normalized data (`adata.X`).")
         if output:
-            logging.warning(f"Subsetting variables to those with nonzero data.")
-            normalized = normalized[normalized.var() > 0]
+            logging.warning(f"Subsetting variables to those with nonzero variance.")
+            normalized = normalized.loc[:, normalized.var() > 0]
     
     # check for linear scaling of counts to normalized matrix (eg. TPM) for cNMF
     is_nonlinear_scaling = (np.abs(normalized.corrwith(counts, axis=1, method="pearson") - 1) > 0.01).any()  # Uses pearson correlation to detect non-linear relationships
@@ -470,8 +470,8 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
     """
     Performs factorization according to parameters specified using `cnmfsns set-parameters`.
     """
-    start_logging(os.path.join(output_dir, name, "logfile.txt"))
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
+    start_logging(os.path.join(output_dir, name, "logfile.txt"))
     if slurm_script is None:
         cnmf_obj.factorize(worker_i=worker_index, total_workers=total_workers)
     else:
@@ -588,13 +588,22 @@ def create_annotated_heatmaps(input_h5ad, output_dir, metadata_colors_toml, max_
 @click.command()
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), help="TOML config file")
-@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad input file containing")
+@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results")
 def initialize(output_dir, config_toml, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.
     Although -i can be used multiple times to add .h5ad files directly, it is recommended to use a .toml file which allows for full customization.
     Using the .toml configuration file, datasets can be giving aliases and colors for use in downstream plots.
     """
+    output_dir = os.path.normpath(output_dir)
+    
+    # create directory structure, warn if overwriting
+    if os.path.isdir(output_dir):
+        logging.warn(f"Integration directory {output_dir} already exists. Files may be overwritten.")
+    os.makedirs(os.path.join(output_dir, "input", "datasets"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "output", "correlation_distributions"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "output", "overdispersed_genes"), exist_ok=True)
+
     start_logging(os.path.join(output_dir, "logfile.txt"))
     logging.info("cnmfsns initialize")
 
@@ -605,14 +614,6 @@ def initialize(output_dir, config_toml, input_h5ad):
         logging.error("Input files must be AnnData .h5ad files.")
         sys.exit(1)
     
-    # create directory structure, warn if overwriting
-    output_dir = os.path.normpath(output_dir)
-    if os.path.isdir(output_dir):
-        warnings.warn(f"Integration directory {output_dir} already exists. Files may be overwritten.")
-    os.makedirs(os.path.join(output_dir, "input", "datasets"), exist_ok=True)
-    os.makedirs(os.path.join(output_dir, "output", "correlation_distributions"), exist_ok=True)
-    os.makedirs(os.path.join(output_dir, "output", "overdispersed_genes"), exist_ok=True)
-    
     # create config
     if config_toml is not None:
         config = Config.from_toml(config_toml)
@@ -621,11 +622,11 @@ def initialize(output_dir, config_toml, input_h5ad):
     logging.info("Copying data to output directory...")
     # copy files to output directory
     for name, d in config.datasets.items():
-        shutil.copy(d["filename"], os.path.join(output_dir, "input", "datasets", name + ".h5mu"))
-        shutil.copy(d["metadata"], os.path.join(output_dir, "input", "datasets", name + ".metadata.txt"))
+        shutil.copy(d["filename"], os.path.join(output_dir, "input", "datasets", name + ".h5ad"))
 
     # add missing colors to config
-    config.add_missing_colors()
+    config.add_missing_dataset_colors()
+    config.add_missing_metadata_colors()
 
     # test if variables already exist for SNS steps, otherwise create defaults that can be edited
     pass
@@ -633,16 +634,10 @@ def initialize(output_dir, config_toml, input_h5ad):
     # save config file to output directory
     config.to_toml(os.path.join(output_dir, "config.toml"))
 
-    # Import data from h5mu files
-    data_pearson = Integration(config, output_dir, corr_method="pearson", min_corr=-1)
-    data_spearman = Integration(config, output_dir, corr_method="spearman", min_corr=-1)
-
-    # overdispersed gene UpSet plots
-    data_pearson.plot_genelist_upset()
-
-    # Create plot of correlation distributions for pearson and spearman
-    data_pearson.plot_pairwise_corr(show_threshold=False)
-    data_spearman.plot_pairwise_corr(show_threshold=False)
+    geps = {}
+    for dataset_name, dataset in config.datasets.items():
+        adata = read_h5ad(dataset["filename"])
+        
 
 @click.command()
 def create_sns():

@@ -8,20 +8,18 @@ name = "Test integration"
 ################################
 
 [datasets.UCC]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/gbm_ffpe_proteogenomics_imputed_odg1_kl.h5mu"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/gbm_ffpe_proteogenomics_1_kl/gbm_ffpe_proteogenomics_1_kl.h5ad"
 color = "gold"
-metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/gbm_ffpe_proteogenomics.metadata.txt"
 
 [datasets.Yonsei]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF/output/yonsei_imputed_odg1_kl.h5mu"
-metadata = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/sample_metadata/cnmfsns_metadata/yonsei.metadata.txt"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/yonsei_1_kl/yonsei_1_kl.h5ad"
 
 ##########################
 # Metadata Color Schemes #
 ##########################
 
 [metadata_colors]
-missing_data_color = #dddddd
+missing_data_color = "#dddddd"
 
 [metadata_colors.detailed_category]
 "N" = "#b0e0e6"
