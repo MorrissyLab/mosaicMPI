@@ -143,7 +143,7 @@ For downstream analyses, the output AnnData object is in `./example_run/example_
 This step will create annotated heatmaps of GEP usages from cNMF-SNS outputs:
 
 ```
-cnmfsns create-annotated-heatmaps --output_dir ./example_run/ -i ./example_run/example_run.h5ad
+cnmfsns annotated-heatmap --output_dir ./example_run/ -i ./example_run/example_run.h5ad
 ```
 
 To provide custom colors for the metadata layers, you can specify a TOML-formatted file with a `metadata_colors` section (see `scripts/example_config.toml`) 
@@ -160,7 +160,7 @@ If you want to generate annotated heatmaps for usage matrices from the standard 
     - `--seed`
     - `--beta_loss`
   5. run `cnmfsns postprocess --output_dir output_dir --name name` to run cNMF-SNS postprocessing steps and amend the h5ad file with pre-computed cNMF results.
-  6. run `cnmfsns create_annotated_heatmaps --input_h5ad `<output_dir>/<name>/name.h5ad` --output_dir output_dir/name/` to create annotated heatmaps within the cnmf output directory.
+  6. run `cnmfsns annotated-heatmap --input_h5ad `<output_dir>/<name>/name.h5ad` --output_dir output_dir/name/` to create annotated heatmaps within the cnmf output directory.
 
 
 ## Workflow Part 2: Integration of multiple datasets
