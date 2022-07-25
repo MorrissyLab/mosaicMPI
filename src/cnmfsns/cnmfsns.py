@@ -587,7 +587,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
     else:
         cfg = Config()
         
-    cfg.add_missing_colors_from(adata.obs)
+    cfg.add_missing_metadata_colors(metadata_df=adata.obs)
     cfg.to_toml(os.path.join(output_dir, "metadata_colors.toml"))
     exclude_maxcat = adata.obs.select_dtypes(include=["object", "category"]).apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
     metadata = adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index)
