@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import sys
 import logging
+import collections.abc
 from matplotlib import colors
 from datetime import datetime
 import distinctipy
@@ -11,17 +12,41 @@ import os
 from types import SimpleNamespace
 from anndata import read_h5ad
 
+config_defaults = {
+    "integration": {
+        "name": datetime.now().strftime("cnmfsns_%Y%m%d-%H%M%S"),
+        "corr_method": "pearson",
+        "max_median_corr": 0.01,
+        "negative_corr_quantile": 0.95,
+        "layout_algorithm": "neato"
+        },
+    "metadata_colors": {"missing_data": "#dddddd"}
+}
+
+
+def recursive_update(d, u):
+    for k, v in u.items():
+        if isinstance(v, collections.abc.Mapping):
+            d[k] = recursive_update(d.get(k, {}), v)
+        else:
+            d[k] = v
+    return d
+
+
+
 class Config(SimpleNamespace):
+
+    def __init__(self, /, **kwargs):
+        self.__dict__.update(recursive_update(config_defaults, kwargs))
 
     @classmethod
     def from_toml(cls, toml_file):
-        with open(toml_file) as f:
+        with open(toml_file, 'rb') as f:
             return cls(**tomli.load(f))
     
     @classmethod
     def from_h5ad_files(cls, h5ad_files):
         c = {
-            "name": datetime.now().strftime("cnmfsns_%Y%m%d-%H%M%S"),
             "datasets": {os.path.basename(fn).replace(".h5ad",""): {"filename": fn} for fn in h5ad_files}
         }
         return cls(c)
@@ -42,21 +67,13 @@ class Config(SimpleNamespace):
 
     def add_missing_metadata_colors(self, metadata_df=None):
         """
-        Identify missing colors based on attached metadata dataframe.
+        Identify missing colors based on metadata. If metadata_df is provided, categorical columns are used; otherwise, metadata_df is derived from the config datasets.
         """
-        # color for missing data
-        if not hasattr(self, "metadata_colors"):
-            self.metadata_colors = {}
-        
-        if not "missing_data" in self.metadata_colors:
-            self.metadata_colors["missing_data"] = "#dddddd"
 
         # get categorical data for which colors should match
         if metadata_df is None:
             # read from h5ad files
-            metadata_df = pd.concat({name: read_h5ad(d["filename"]).obs for name, d in self.datasets.items()})
-        metadata_df = metadata_df.replace({True:"true", False: "false"}) # converts bool to strings
-        metadata_df  = metadata_df.select_dtypes(include=["category", "object"]) # excludes int and float metadata, which should use a continuous scale
+            metadata_df = pd.concat({name: read_h5ad(d["filename"]).obs.select_dtypes(include="category") for name, d in self.datasets.items()})
 
         # check provided metadata colors
         invalid_colors = []
@@ -81,6 +98,7 @@ class Config(SimpleNamespace):
             if np.NaN in allvalues:
                 existing_colors.add(self.metadata_colors["missing_data"])
             missing_values = set(allvalues.dropna().unique()) - existing_values
+            logging.info(f"Defining distinct colors for metadata layer {layer}")
             if missing_values:
                 if layer not in self.metadata_colors:
                     self.metadata_colors[layer] = {}

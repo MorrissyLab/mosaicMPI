@@ -1,5 +1,5 @@
 # Provide a name for the integration
-
+[integration]
 name = "Test integration"
 
 
@@ -19,7 +19,7 @@ filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNM
 ##########################
 
 [metadata_colors]
-missing_data_color = "#dddddd"
+missing_data = "#dddddd"
 
 [metadata_colors.detailed_category]
 "N" = "#b0e0e6"

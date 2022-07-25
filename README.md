@@ -2,7 +2,7 @@
 
 cNMF Solution Neighborhood Space
 
-![](https://img.shields.io/badge/version-0.2.2-blue)
+![](https://img.shields.io/badge/version-0.2.3-blue)
 
 ## Installation
 
@@ -34,7 +34,7 @@ pip install cnmfsns
 conda install -c conda-forge cnmfsns
 ```
 
-## Workflow Part 1: Factorization for individual datasets
+## Workflow 1A: Factorization for individual datasets
 
 cNMF-SNS is a command line tool for deconvoluting and integrating gene expression and other high-dimensional data.
 
@@ -143,40 +143,44 @@ For downstream analyses, the output AnnData object is in `./example_run/example_
 This step will create annotated heatmaps of GEP usages from cNMF-SNS outputs:
 
 ```
-cnmfsns create-annotated-heatmaps --name example_run
+cnmfsns create-annotated-heatmaps --output_dir ./example_run/ -i ./example_run/example_run.h5ad
 ```
 
 To provide custom colors for the metadata layers, you can specify a TOML-formatted file with a `metadata_colors` section (see `scripts/example_config.toml`) 
 
-> ### Working with cNMF results generated outside of cNMF-SNS:
-> 
-> If you want to generate annotated heatmaps for usage matrices from the standard cNMF tool, you will need to do the following:
->   1. run up to and including the `cnmf factorize` step.
-> Take note of the `output_dir` and `name` parameters that you used with cNMF. Then, you can run the following cNMF commands, using the same data you used to input into cNMF:
->   2. run `cnmfsns txt-to-h5ad` to create a file with input data/metadata and output it to `<output_dir>/<name>/name.h5ad`.
->   3. run `cnmfsns postprocess --output_dir output_dir --name name` to run cNMF-SNS postprocessing steps
->   4. run `cnmfsns create_annotated_heatmaps --output_dir output_dir --name name` to create annotated heatmaps.
+## Workflow 1B (for cNMF results generated outside of cNMF-SNS)
 
+If you want to generate annotated heatmaps for usage matrices from the standard cNMF tool. You will need to do the following:
+  1. Ensure that you have run up to and including the `cnmf factorize` step. Take note of the `output_dir` and `name` parameters that you used with cNMF. Then, you can run the following cNMF-SNS commands, using the same data you used to input into cNMF.
+  2. run `cnmfsns txt-to-h5ad` to create a file with input data/metadata and output it to `<output_dir>/<name>/name.h5ad`.
+  3. run `cnmfsns model-odg --output_dir output_dir --name name -i <output_dir>/<name>/name.h5ad`.
+  4. run `cnmfsns set-parameters --output_dir output_dir --name name -m genes_file -p <output_dir>/<name>/name.overdispersed_genes.txt` as well as the same parameters used to run cNMF, including:
+    - _k_ values using `-k` or `--k_range` parameters
+    - `--n_iter`
+    - `--seed`
+    - `--beta_loss`
+  5. run `cnmfsns postprocess --output_dir output_dir --name name` to run cNMF-SNS postprocessing steps and amend the h5ad file with pre-computed cNMF results.
+  6. run `cnmfsns create_annotated_heatmaps --input_h5ad `<output_dir>/<name>/name.h5ad` --output_dir output_dir/name/` to create annotated heatmaps within the cnmf output directory.
 
 
 ## Workflow Part 2: Integration of multiple datasets
 >> Note: the following workflow is under active development and may change.
 
-
 ### 1. Identify datasets for integration
 
-A [TOML](https://toml.io/en/) configuration file is the most flexible way to configure cNMF-SNS. An example is found in `scripts/example_config.toml`.
+A [TOML](https://toml.io/en/) configuration file is the most flexible way to configure cNMF-SNS. An example is found in `scripts/example_config.toml`. For each
+dataset, you can specify the AnnData object for 
 
 ```
-cnmfsns initialize -c config.toml -o output_directory
+cnmfsns prepare-datasets -c config.toml -o output_directory
 ```
 
-cNMF-SNS can also initialize an integration by providing a set of h5ad files  to integrate:
+Alternatively, you can can also initialize a cNMF-SNS integration by providing a set of h5ad files from [`cnmfsns postprocess`](#6.-postprocessing) to integrate:
 ```
-cnmfsns initialize -i file1.h5ad file2.h5ad file3.h5ad file4.h5ad -o output_directory
+cnmfsns prepare-datasets -i file1.h5ad file2.h5ad file3.h5ad file4.h5ad -o output_directory
 ```
 
-After this step, several plots are generated which can help guide parameter selection for the next step. Parameters that are required for the integration include:
+Parameters that are required for the integration include:
     1. range(s) of k (decide based on # of samples?)
     2. Specific values of k (eg. 5, 10, 15, 20)
     3. Community resolution

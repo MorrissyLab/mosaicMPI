@@ -1,15 +1,34 @@
 # Provide a name for the integration
 
+###############
+# Integration #
+###############
+
+[integration]
 name = "GBM Proteomics"
+
+# Correlation methods: spearman, pearson
+corr_method = "pearson"
+# highest k-values will be eliminated until median correlation is below this value
+max_median_corr = 0
+# Quantile from the negative half of the correlation distribution from which to derive the correlation threshold.
+# Lower values result in more edges, higher values result in fewer edges.
+negative_corr_quantile = 0.95
+# Layout options include: neato
+layout_algorithm = "neato"
 
 
 ################################
 # Datasets and Sample Metadata #
 ################################
 
+# Specify a dataset name (eg. CPTAC) to be used for this dataset in plots
 [datasets.CPTAC]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/cptac_gbm_1_kl/cptac_gbm_1_kl.h5ad"
 color = "royalblue"
+
+# k_range = 10 90 20  # k = 10, 30, 50, 70, 90
+# k = [10, 30, 50, 70, 90]  # same result, but this way you can specify unevenly spaced values
 
 [datasets.UCC]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/gbm_ffpe_proteogenomics_1_kl/gbm_ffpe_proteogenomics_1_kl.h5ad"

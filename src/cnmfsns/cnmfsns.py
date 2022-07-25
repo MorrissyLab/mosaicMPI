@@ -5,6 +5,7 @@ import subprocess
 import click
 import cnmf
 import sys
+import pickle
 import warnings
 import numpy as np
 import pandas as pd
@@ -15,7 +16,9 @@ from anndata import AnnData, read_h5ad
 from cnmfsns.containers import Integration, add_cnmf_results_to_h5ad
 from cnmfsns.config import Config
 from cnmfsns.odg import model_overdispersion, create_diagnostic_plots, fetch_hgnc_protein_coding_genes
-from cnmfsns.plots import create_annotated_heatmaps, plot_annotated_usages
+from cnmfsns.plots import annotated_heatmap, plot_annotated_usages
+from cnmfsns import __version__
+
 
 def start_logging(output_path=None):
     if output_path is None:
@@ -47,10 +50,28 @@ class OrderedGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> Mapping[str, click.Command]:
         return self.commands
 
+def save_df_to_npz(obj, filename):
+    np.savez_compressed(filename, data=obj.values, index=obj.index.values, columns=obj.columns.values)
+
+def load_df_from_npz(filename, multiindex=False):
+    with np.load(filename, allow_pickle=True) as f:
+        if any([isinstance(c, tuple) for c in (f["index"])]):
+            index = pd.MultiIndex.from_tuples(f["index"])
+        else:
+            index = f["index"]
+        if any([isinstance(c, tuple) for c in (f["columns"])]):
+            columns = pd.MultiIndex.from_tuples(f["columns"])
+        else:
+            columns = f["columns"]
+        obj = pd.DataFrame(f["data"], index=index, columns=columns)
+    return obj
 
 @click.group(cls=OrderedGroup)
+@click.version_option(version=__version__)
 def cli():
-    pass
+    """
+    cNMF-SNS is a tool for deconvolution and integration of multiple datasets based on consensus Non-Negative Matrix Factorization (cNMF).
+    """
 
 @click.command()
 @click.option(
@@ -553,7 +574,7 @@ def postprocess(name, output_dir, local_density_threshold, local_neighborhood_si
 @click.option(
     '--max_categories_per_layer', type=int,
     help="Filter metadata layers by the number of categories. This parameter is useful to simplify heatmaps with too many annotations.")
-def create_annotated_heatmaps(input_h5ad, output_dir, metadata_colors_toml, max_categories_per_layer):
+def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categories_per_layer):
     """
     Create heatmaps of usages with annotation tracks.
     """
@@ -589,23 +610,24 @@ def create_annotated_heatmaps(input_h5ad, output_dir, metadata_colors_toml, max_
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), help="TOML config file")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results")
-def initialize(output_dir, config_toml, input_h5ad):
+def prepare_datasets(output_dir, config_toml, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.
     Although -i can be used multiple times to add .h5ad files directly, it is recommended to use a .toml file which allows for full customization.
     Using the .toml configuration file, datasets can be giving aliases and colors for use in downstream plots.
     """
+    # create directory structure, warn if not empty
     output_dir = os.path.normpath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    start_logging(os.path.join(output_dir, "logfile.txt"))
+    if os.listdir(output_dir):
+        logging.warning(f"Integration directory {output_dir} is not empty. Files may be overwritten.")
     
-    # create directory structure, warn if overwriting
-    if os.path.isdir(output_dir):
-        logging.warn(f"Integration directory {output_dir} already exists. Files may be overwritten.")
     os.makedirs(os.path.join(output_dir, "input", "datasets"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "output", "correlation_distributions"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "output", "overdispersed_genes"), exist_ok=True)
-
+    
     start_logging(os.path.join(output_dir, "logfile.txt"))
-    logging.info("cnmfsns initialize")
 
     if config_toml is not None and input_h5ad:
         logging.error("A TOML config file can be specified, or 1 or more h5mu files can be specified, but not both.")
@@ -627,16 +649,21 @@ def initialize(output_dir, config_toml, input_h5ad):
     # add missing colors to config
     config.add_missing_dataset_colors()
     config.add_missing_metadata_colors()
-
-    # test if variables already exist for SNS steps, otherwise create defaults that can be edited
-    pass
-
-    # save config file to output directory
     config.to_toml(os.path.join(output_dir, "config.toml"))
 
     geps = {}
     for dataset_name, dataset in config.datasets.items():
-        adata = read_h5ad(dataset["filename"])
+        df = read_h5ad(dataset["filename"]).varm["cnmf_gep_score"]
+        df.columns = pd.MultiIndex.from_tuples([(int(gep[0]), int(gep[1])) for gep in df.columns.str.split(".")])
+        geps[dataset_name] = df
+    geps = pd.concat(geps, axis=1).sort_index(axis=1)
+    
+    corr_path = os.path.join(output_dir, "correlations", "corr.df.npz")
+    try:
+        corr = load_df_from_npz(corr_path)
+    except:
+        corr = geps.corr(config.integration["corr_method"])
+
         
 
 @click.command()
@@ -654,8 +681,8 @@ cli.add_command(model_odg)
 cli.add_command(set_parameters)
 cli.add_command(factorize)
 cli.add_command(postprocess)
-cli.add_command(create_annotated_heatmaps)
-cli.add_command(initialize)
+cli.add_command(annotated_heatmap)
+cli.add_command(prepare_datasets)
 cli.add_command(create_sns)
 cli.add_command(annotate_sns)
 
