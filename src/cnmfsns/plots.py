@@ -103,34 +103,34 @@ def plot_annotated_usages(df, metadata, metadata_colors, title, filename):
     return fig
 
 
-    def plot_pairwise_corr(self, show_threshold=True):
-        n_datasets = len(self.cnmfresults)
-        fig, axes = plt.subplots(n_datasets, n_datasets, figsize=[3 * n_datasets, 3 * n_datasets], sharex=True, sharey=True)
-        for row, dataset_row in enumerate(self.corr.index.levels[0]):
-            for col, dataset_col in enumerate(self.corr.columns.levels[0]):
-                ax = axes[row,col]
-                corr = self.corr.loc[dataset_row, dataset_col].values.flatten()
-                if show_threshold:
-                    hist_kwargs = {
-                        "hue":[("Included" if c else "Excluded") for c in (corr > self.min_corr)],
-                        "palette": {"Included": "red", "Excluded": "gray"},
-                        "hue_order": ["Excluded", "Included"]
-                    }
-                    included_fraction = (corr > self.min_corr).sum() / corr.shape[0]
-                    ax.text(x=0.01, y=0.99, s=f"{included_fraction:.3f}", ha='left', va='top', transform=ax.transAxes, color="red", alpha=0.5)
-                else:
-                    hist_kwargs = {"color": "gray"}
-                sns.histplot(x=corr, ax=ax, linewidth=0,legend=(row == 0)&(col == 0), **hist_kwargs)
-                secondary_ax = ax.twinx()
-                sns.ecdfplot(x=corr, ax=secondary_ax, color="black", complementary=True)
-                ax.set_ylabel(dataset_row)
-                ax.set_xlabel(dataset_col)
-                ax.set_xlim(-1,1)
-                if col < n_datasets - 1:
-                    secondary_ax.set_yticklabels([])
-                    secondary_ax.set_ylabel("")
-        fig.suptitle(f"{self.corr_method.capitalize()} correlation distribution between datasets")
-        plt.tight_layout()
-        fig.savefig(os.path.join(self.output_dir, "output", "correlation_distributions", self.corr_method + ".pdf"))
-        fig.savefig(os.path.join(self.output_dir, "output", "correlation_distributions", self.corr_method + ".png"), dpi=600)
-        return fig
+def plot_pairwise_corr(self, show_threshold=True):
+    n_datasets = len(self.cnmfresults)
+    fig, axes = plt.subplots(n_datasets, n_datasets, figsize=[3 * n_datasets, 3 * n_datasets], sharex=True, sharey=True)
+    for row, dataset_row in enumerate(self.corr.index.levels[0]):
+        for col, dataset_col in enumerate(self.corr.columns.levels[0]):
+            ax = axes[row,col]
+            corr = self.corr.loc[dataset_row, dataset_col].values.flatten()
+            if show_threshold:
+                hist_kwargs = {
+                    "hue":[("Included" if c else "Excluded") for c in (corr > self.min_corr)],
+                    "palette": {"Included": "red", "Excluded": "gray"},
+                    "hue_order": ["Excluded", "Included"]
+                }
+                included_fraction = (corr > self.min_corr).sum() / corr.shape[0]
+                ax.text(x=0.01, y=0.99, s=f"{included_fraction:.3f}", ha='left', va='top', transform=ax.transAxes, color="red", alpha=0.5)
+            else:
+                hist_kwargs = {"color": "gray"}
+            sns.histplot(x=corr, ax=ax, linewidth=0,legend=(row == 0)&(col == 0), **hist_kwargs)
+            secondary_ax = ax.twinx()
+            sns.ecdfplot(x=corr, ax=secondary_ax, color="black", complementary=True)
+            ax.set_ylabel(dataset_row)
+            ax.set_xlabel(dataset_col)
+            ax.set_xlim(-1,1)
+            if col < n_datasets - 1:
+                secondary_ax.set_yticklabels([])
+                secondary_ax.set_ylabel("")
+    fig.suptitle(f"{self.corr_method.capitalize()} correlation distribution between datasets")
+    plt.tight_layout()
+    fig.savefig(os.path.join(self.output_dir, "output", "correlation_distributions", self.corr_method + ".pdf"))
+    fig.savefig(os.path.join(self.output_dir, "output", "correlation_distributions", self.corr_method + ".png"), dpi=600)
+    return fig

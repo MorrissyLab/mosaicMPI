@@ -139,7 +139,7 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
     if sparsify:
         adata = AnnData(X=sp.csr_matrix(normalized.values), raw=AnnData(X=sp.csr_matrix(counts)), obs=metadata)
     else:
-        adata = AnnData(X=normalized, raw=AnnData(X=counts), obs=metadata)
+        adata = AnnData(X=normalized, dtype=np.float64, raw=AnnData(X=counts, dtype=np.int64), obs=metadata)
     adata.write_h5ad(output)
 
 @click.command()
@@ -364,7 +364,7 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
     '--seed', type=int,
     help="Seed for sklearn random state.")
 @click.option(
-    '--beta_loss', type=click.Choice(["frobenius", "kullback-leibler"]), default="kullback-leibler",
+    '--beta_loss', type=click.Choice(["frobenius", "kullback-leibler"]), default="kullback-leibler", show_default=True,
     help="Measure of Beta divergence to be minimized.")
 
 def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, seed, beta_loss):
@@ -590,7 +590,10 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
     cfg.add_missing_metadata_colors(metadata_df=adata.obs)
     cfg.to_toml(os.path.join(output_dir, "metadata_colors.toml"))
     exclude_maxcat = adata.obs.select_dtypes(include=["object", "category"]).apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
-    metadata = adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index)
+    if adata.obs.shape[1] > 0:
+        metadata = adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index)
+    else:
+        metadata = adata.obs
     if "cnmf_usage" not in adata.obsm:
         logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `cnmfsns postprocess` before creating annotated usage heatmaps.")
         sys.exit(1)
