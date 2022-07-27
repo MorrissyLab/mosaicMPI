@@ -1,3 +1,4 @@
+from functools import partial
 import os
 import logging
 import shutil
@@ -10,13 +11,14 @@ import warnings
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+from multiprocessing.pool import Pool
 from collections import OrderedDict
 from typing import Optional, Mapping
 from anndata import AnnData, read_h5ad
 from cnmfsns.containers import Integration, add_cnmf_results_to_h5ad
 from cnmfsns.config import Config
-from cnmfsns.odg import model_overdispersion, create_diagnostic_plots, fetch_hgnc_protein_coding_genes
-from cnmfsns.plots import annotated_heatmap, plot_annotated_usages
+from cnmfsns.odg import model_overdispersion, odg_plots, fetch_hgnc_protein_coding_genes
+from cnmfsns.plots import plot_annotated_usages, plot_rank_reduction
 from cnmfsns import __version__
 
 
@@ -314,7 +316,7 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
     df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
 
     # create od genes plots
-    for fig_id, fig in create_diagnostic_plots(df, show_selected=False).items():
+    for fig_id, fig in odg_plots(df, show_selected=False).items():
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
 
@@ -432,7 +434,7 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
     df["selected"] = df.index.isin(genes)
 
     # update plots with threshold information
-    for fig_id, fig in create_diagnostic_plots(df, show_selected=True).items():
+    for fig_id, fig in odg_plots(df, show_selected=True).items():
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
 
@@ -505,6 +507,7 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
 @click.option(
     "-o", '--output_dir', type=click.Path(file_okay=False), default=os.getcwd(), show_default=True,
     help="Output directory. All output will be placed in [output_dir]/[name]/... ")
+@click.option('--cpus', type=int, default=1, show_default=True, help="Number of CPUs to use")
 @click.option(
     '--local_density_threshold', type=float, default=2.0, show_default=True,
     help="Threshold for the local density filtering prior to GEP consensus. Acceptable thresholds are > 0 and <= 2 (2.0 is no filtering).")
@@ -517,7 +520,7 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
 @click.option(
     '--force_h5ad_update', is_flag=True,
     help="If specified, overwrites cNMF results already saved to the .h5ad file.")
-def postprocess(name, output_dir, local_density_threshold, local_neighborhood_size, keep_individual_iterations, force_h5ad_update):
+def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborhood_size, keep_individual_iterations, force_h5ad_update):
     """
     Perform post-processing routines on cNMF after factorization. This includes checking factorization outputs for completeness, combining individual
     iterations, calculating consensus GEPs and usage matrices, and creating the k-selection and annotated usage plots.
@@ -547,18 +550,33 @@ def postprocess(name, output_dir, local_density_threshold, local_neighborhood_si
         else:
             # combine individual iterations
             logging.info(f"Factorization outputs (individual iterations) were found for all values of k.")
+            logging.info(f"Merging iterations")
             for k in sorted(set(run_params.n_components)):
                 cnmf_obj.combine_nmf(k, remove_individual_iterations=(not keep_individual_iterations))
     else:
         logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
     # calculate consensus GEPs and usages
-    for k in sorted(set(run_params.n_components)):
-        cnmf_obj.consensus(k, local_density_threshold, local_neighborhood_size, True,
-                            close_clustergram_fig=True)
+    logging.info(f"Creating consensus GEPs and usages using {cpus} CPUs")
+    call_consensus = partial(
+        cnmf_obj.consensus,
+        density_threshold=local_density_threshold,
+        local_neighborhood_size=local_neighborhood_size,
+        show_clustering=True,
+        close_clustergram_fig=True)
+
+    Pool(processes=cpus).map(call_consensus, sorted(set(run_params.n_components)))
+
+    # old single-process version of the code
+    # for k in sorted(set(run_params.n_components)):
+    #     cnmf_obj.consensus(k, local_density_threshold, local_neighborhood_size, True,
+    #                         close_clustergram_fig=True)
+
+
     # create k-selection plot
     cnmf_obj.k_selection_plot(close_fig=True)
    
     # update h5ad file with cnmf results
+    logging.info(f"Updating h5ad file with cNMF results")
     input_h5ad = os.path.join(output_dir, name, name + ".h5ad")
     add_cnmf_results_to_h5ad(output_dir, name, input_h5ad, local_density_threshold, local_neighborhood_size, force=force_h5ad_update)
 
@@ -613,7 +631,8 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), help="TOML config file")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results")
-def prepare_datasets(output_dir, config_toml, input_h5ad):
+@click.option('--cpus', type=int, default=1, show_default=True, help="Number of CPUs to use for calculating correlation matrix")
+def prepare_datasets(output_dir, config_toml, cpus, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.
     Although -i can be used multiple times to add .h5ad files directly, it is recommended to use a .toml file which allows for full customization.
@@ -661,11 +680,51 @@ def prepare_datasets(output_dir, config_toml, input_h5ad):
         geps[dataset_name] = df
     geps = pd.concat(geps, axis=1).sort_index(axis=1)
     
-    corr_path = os.path.join(output_dir, "correlations", "corr.df.npz")
+    corr_path = os.path.join(output_dir, "prepare_datasets", config.integration["corr_method"] + ".df.npz")
     try:
         corr = load_df_from_npz(corr_path)
-    except:
-        corr = geps.corr(config.integration["corr_method"])
+    except FileNotFoundError:
+        logging.info(f"Calculating correlation matrix")
+        if config.integration["corr_method"] == "pearson":
+            try:
+                from nancorrmp.nancorrmp import NaNCorrMp
+            except ImportError:
+                logging.info(f"nancorrmp not installed. Calculating Pearson correlation matrix using 1 CPU.")
+                corr = geps.corr(config.integration["corr_method"])
+            else:
+                cpu_string = "all" if cpus == -1 else str(cpus)
+                logging.info(f"nancorrmp found. Calculating Pearson correlation matrix using {cpu_string} CPUs.")
+                corr = NaNCorrMp.calculate(geps, n_jobs=cpus)
+        else:
+            logging.info(f"Calculating Spearman correlation matrix using 1 CPU.")
+            corr = geps.corr(config.integration["corr_method"])
+        save_df_to_npz(corr, corr_path)
+
+
+    assert (corr.index == corr.columns).all()
+    triu = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+
+    for dataset_name in triu.index.levels[0]:
+        dscorr = triu.loc[dataset_name, dataset_name]
+        kvals = dscorr.index.levels[0]
+        max_kval_medians = []
+        for max_kval in kvals.sort_values(ascending=False):
+            rankreduced = dscorr.loc[dscorr.index.get_level_values(0) <= max_kval, dscorr.columns.get_level_values(0) <= max_kval]
+            median_corr = np.nanmedian(rankreduced.values)
+            max_kval_medians.append((max_kval, median_corr))
+        max_kval_medians = pd.DataFrame(max_kval_medians, columns=["max_k", "median_corr"])
+        max_k_threshold = None
+        for _, (max_k, median_corr) in max_kval_medians.iterrows():
+            if median_corr > config.integration["max_median_corr"]:
+                max_k_threshold = max_k
+            else:
+                break
+        max_kval_medians["max_median_k_cap"] = (max_kval_medians["max_k"] >= max_k_threshold).map({True: "Excluded", False: "Included"})
+        max_kval_medians.to_csv(os.path.join(output_dir, "prepare_datasets", f"{dataset_name}.rank_reduction.txt"), sep="\t")
+
+        fig = plot_rank_reduction(max_kval_medians, config.integration["max_median_corr"])
+        fig.savefig(os.path.join(output_dir, "prepare_datasets", f"{dataset_name}.rank_reduction.pdf"))
+        fig.savefig(os.path.join(output_dir, "prepare_datasets", f"{dataset_name}.rank_reduction.png"))
 
         
 

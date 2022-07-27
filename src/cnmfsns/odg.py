@@ -1,4 +1,5 @@
 import numpy as np
+import logging
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -40,7 +41,7 @@ def model_overdispersion(adata, odg_default_spline_degree=3, odg_default_dof=8, 
     df["selected"] = df.index.isin(selected_genes)
     return df
 
-def create_diagnostic_plots(df, show_selected):
+def odg_plots(df, show_selected):
     """
     Create diagnostic plots for data from model_overdispersion()
     """
@@ -175,7 +176,7 @@ def fetch_hgnc_protein_coding_genes():
         # print('Symbol:' + data['response']['docs'][0]['symbol'])
 
     else:
-        print('Error detected: ' + response['status'])
+        logging.error('Fetching HGNC Protein coding genes failed: ' + response['status'])
 
     protein_coding_genes = {entry["symbol"] for entry in data["response"]["docs"]}
     return protein_coding_genes

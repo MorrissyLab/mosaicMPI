@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import seaborn as sns
 import glob
 from multiprocessing import Pool, freeze_support
 import json
@@ -101,6 +102,18 @@ def plot_annotated_usages(df, metadata, metadata_colors, title, filename):
     fig.savefig(filename, transparent=False, bbox_inches = "tight")
     plt.close(fig)  
     return fig
+
+def plot_rank_reduction(max_kval_medians, max_median_corr_threshold):
+    kvals = max_kval_medians["max_k"]
+    fig, ax = plt.subplots(figsize=[kvals.shape[0]/8, 6])
+    ax.set_ylim([-1, 1])
+    ax.set_xlim([kvals.min() - 1, kvals.max() + 1])
+    ax.axhline(max_median_corr_threshold, color="red")
+    ax.set_title("Median of the Correlation Distribution vs max_k")
+    sns.lineplot(data=max_kval_medians, x="max_k", y="median_corr", hue="max_median_k_cap", ax=ax, marker="o")
+    plt.tight_layout()
+    return fig
+
 
 
 def plot_pairwise_corr(self, show_threshold=True):
