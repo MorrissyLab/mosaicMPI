@@ -1,4 +1,3 @@
-from functools import partial
 import os
 import logging
 import shutil
@@ -6,19 +5,18 @@ import subprocess
 import click
 import cnmf
 import sys
-import pickle
-import warnings
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+from functools import partial
 from multiprocessing.pool import Pool
 from collections import OrderedDict
 from typing import Optional, Mapping
 from anndata import AnnData, read_h5ad
-from cnmfsns.containers import Integration, add_cnmf_results_to_h5ad
+from cnmfsns.containers import add_cnmf_results_to_h5ad
 from cnmfsns.config import Config
 from cnmfsns.odg import model_overdispersion, odg_plots, fetch_hgnc_protein_coding_genes
-from cnmfsns.plots import plot_annotated_usages, plot_rank_reduction
+from cnmfsns.plots import plot_annotated_usages, plot_rank_reduction, plot_pairwise_corr, plot_pairwise_corr_overlaid
 from cnmfsns import __version__
 
 
@@ -141,7 +139,7 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
     if sparsify:
         adata = AnnData(X=sp.csr_matrix(normalized.values), raw=AnnData(X=sp.csr_matrix(counts)), obs=metadata)
     else:
-        adata = AnnData(X=normalized, dtype=np.float64, raw=AnnData(X=counts, dtype=np.int64), obs=metadata)
+        adata = AnnData(X=normalized, dtype=np.float64, raw=AnnData(X=counts, dtype=np.float64), obs=metadata)
     adata.write_h5ad(output)
 
 @click.command()
@@ -507,7 +505,7 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
 @click.option(
     "-o", '--output_dir', type=click.Path(file_okay=False), default=os.getcwd(), show_default=True,
     help="Output directory. All output will be placed in [output_dir]/[name]/... ")
-@click.option('--cpus', type=int, default=1, show_default=True, help="Number of CPUs to use")
+@click.option('--cpus', type=int, default=len(os.sched_getaffinity(0)), show_default=True, help="Number of CPUs to use")
 @click.option(
     '--local_density_threshold', type=float, default=2.0, show_default=True,
     help="Threshold for the local density filtering prior to GEP consensus. Acceptable thresholds are > 0 and <= 2 (2.0 is no filtering).")
@@ -631,7 +629,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), help="TOML config file")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results")
-@click.option('--cpus', type=int, default=1, show_default=True, help="Number of CPUs to use for calculating correlation matrix")
+@click.option('--cpus', type=int, default=len(os.sched_getaffinity(0)), show_default=True, help="Number of CPUs to use for calculating correlation matrix")
 def prepare_datasets(output_dir, config_toml, cpus, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.

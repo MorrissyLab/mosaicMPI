@@ -23,15 +23,9 @@ layout_algorithm = "neato"
 ################################
 
 # Specify a dataset name (eg. CPTAC) to be used for this dataset in plots
-[datasets.CPTAC_protein]
+[datasets.CPTAC]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/cptac_gbm_1_kl/cptac_gbm_1_kl.h5ad"
 color = "royalblue"
-
-# k_range = 10 90 20  # k = 10, 30, 50, 70, 90
-# k = [10, 30, 50, 70, 90]  # same result, but this way you can specify unevenly spaced values
-[datasets.CPTAC_rna]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/CPTAC__FPKM.h5ad"
-color = "purple"
 
 [datasets.UCC]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/gbm_ffpe_proteogenomics_1_kl/gbm_ffpe_proteogenomics_1_kl.h5ad"

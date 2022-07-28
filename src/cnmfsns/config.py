@@ -98,8 +98,8 @@ class Config(SimpleNamespace):
             if np.NaN in allvalues:
                 existing_colors.add(self.metadata_colors["missing_data"])
             missing_values = set(allvalues.dropna().unique()) - existing_values
-            logging.info(f"Defining distinct colors for metadata layer {layer}")
             if missing_values:
+                logging.info(f"Choosing distinct colors for metadata layer {layer}")
                 if layer not in self.metadata_colors:
                     self.metadata_colors[layer] = {}
                 new_colors = distinctipy.get_colors(len(missing_values), exclude_colors=list(existing_colors))

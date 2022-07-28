@@ -2,7 +2,7 @@
 
 cNMF Solution Neighborhood Space
 
-![](https://img.shields.io/badge/version-0.2.4-blue)
+![](https://img.shields.io/badge/version-0.2.5-blue)
 
 ## Installation
 
@@ -62,8 +62,8 @@ Only one of the `--normalized` and `--counts` options are required. When only co
 #### Input semantics
 
 Expression (normalized and count) data must be indexed as follows:
-  - The first column must be sample/cell/spot IDs
-  - The first row must be genes or other features.
+  - Rows are samples/cells/spots; first column must be sample/cell/spot IDs
+  - Columns are genes/features; the first row must be feature names
 
 Metadata must be indexed as follows:
   - The first column must be sample/cell/spot IDs
@@ -74,19 +74,19 @@ Metadata must be indexed as follows:
 
 > Warning: Not completely implemented yet!
 
-Check h5ad objects for cells, spots, samples, or genes which have missing values, negative values, or variance of 0.
+Check h5ad objects for rows or columns which have missing values, negative values, or variance of 0.
 
 cNMF  supports input data that is sparse (i.e. with zeros), but not with missing values. When missing values are present (eg. from concatenation of datasets with partially overlapping features), the default behaviour is to subset the input matrix to shared features/genes only, but it is recommended to either run each dataset separately or use a dense, imputed data matrix. cNMF will warn the user if missing data is present.
 
 ```
-cnmfsns check-h5ad file.h5ad file_filtered.h5ad
+cnmfsns check-h5ad -i file.h5ad -o file_filtered.h5ad
 ```
 
 ### 3. Model gene overdispersion to select genes for factorization.
 
 Deconvolution of a gene expression dataset using cNMF requires a set of overdispersed genes/features which will be used for factorization. GEPs will include all genes after a re-fitting step, but cNMF will only optimize the fit for overdispersed genes, providing the user the opportunity to decide which genes are most informative.
 
-Since cNMF performs variance scaling on the input matrix, it is important to remove genes whose variance could be attributable to noise. cNMF-SNS supports two methods for overdispersed gene selection:    
+Since cNMF performs variance scaling on the input matrix, it is important to remove genes whose variance could be attributable to noise. cNMF-SNS supports two methods for overdispersed gene selection:
   - `cnmf`: v-score and minimum expression threshold (cNMF method: Kotliar, et al. eLife, 2019). This method is only suitable for count data.
   - `default`: residual standard deviation after modeling mean-variance dependence. (STdeconvolve method: Miller, et al. Nat. Comm. 2022) This method makes fewer assumptions about the input data but requires a visual check since the optimal threshold depends on the data type.
 

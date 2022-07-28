@@ -9,7 +9,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 import cnmf
 
-def model_overdispersion(adata, odg_default_spline_degree=3, odg_default_dof=8, odg_cnmf_mean_threshold=0.5, selected_genes = []):
+def model_overdispersion(adata, odg_default_spline_degree=3, odg_default_dof=8, odg_cnmf_mean_threshold=0.5):
 
     # create dataframe of per-gene statistics
     df = pd.DataFrame(index=adata.var.index)
@@ -37,8 +37,6 @@ def model_overdispersion(adata, odg_default_spline_degree=3, odg_default_dof=8, 
     df["vscore"] = vscore_stats["fano_ratio"]
     df["vscore_excluded"] = df["mean"] < odg_cnmf_mean_threshold
     df.loc[df["vscore_excluded"], "vscore"] = np.NaN
-    # include selected genes if provided
-    df["selected"] = df.index.isin(selected_genes)
     return df
 
 def odg_plots(df, show_selected):

@@ -1,16 +1,9 @@
 import pandas as pd
 import numpy as np
 import seaborn as sns
-import glob
-from multiprocessing import Pool, freeze_support
-import json
-import os
 import matplotlib
 import matplotlib.pyplot as plt
 from scipy.cluster.hierarchy import linkage, dendrogram
-from scipy.spatial.distance import squareform
-import palettable
-from matplotlib.backends.backend_pdf import PdfPages
 
 def annotated_heatmap(
         data, title, metadata=None, metadata_colors=None,
@@ -110,40 +103,63 @@ def plot_rank_reduction(max_kval_medians, max_median_corr_threshold):
     ax.set_xlim([kvals.min() - 1, kvals.max() + 1])
     ax.axhline(max_median_corr_threshold, color="red")
     ax.set_title("Median of the Correlation Distribution vs max_k")
-    sns.lineplot(data=max_kval_medians, x="max_k", y="median_corr", hue="max_median_k_cap", ax=ax, marker="o")
+    sns.lineplot(data=max_kval_medians, x="max_k", y="median_corr", hue="exclude", ax=ax, marker="o")
     plt.tight_layout()
     return fig
 
-
-
-def plot_pairwise_corr(self, show_threshold=True):
-    n_datasets = len(self.cnmfresults)
+def plot_pairwise_corr(tril, thresholds=None):
+    n_datasets = len(tril.index.levels[0])
     fig, axes = plt.subplots(n_datasets, n_datasets, figsize=[3 * n_datasets, 3 * n_datasets], sharex=True, sharey=True)
-    for row, dataset_row in enumerate(self.corr.index.levels[0]):
-        for col, dataset_col in enumerate(self.corr.columns.levels[0]):
+    for row, dataset_row in enumerate(tril.index.levels[0]):
+        for col, dataset_col in enumerate(tril.columns.levels[0]):
             ax = axes[row,col]
-            corr = self.corr.loc[dataset_row, dataset_col].values.flatten()
-            if show_threshold:
-                hist_kwargs = {
-                    "hue":[("Included" if c else "Excluded") for c in (corr > self.min_corr)],
-                    "palette": {"Included": "red", "Excluded": "gray"},
-                    "hue_order": ["Excluded", "Included"]
-                }
-                included_fraction = (corr > self.min_corr).sum() / corr.shape[0]
-                ax.text(x=0.01, y=0.99, s=f"{included_fraction:.3f}", ha='left', va='top', transform=ax.transAxes, color="red", alpha=0.5)
+            if row < col:
+                ax.set_axis_off()
             else:
-                hist_kwargs = {"color": "gray"}
-            sns.histplot(x=corr, ax=ax, linewidth=0,legend=(row == 0)&(col == 0), **hist_kwargs)
-            secondary_ax = ax.twinx()
-            sns.ecdfplot(x=corr, ax=secondary_ax, color="black", complementary=True)
-            ax.set_ylabel(dataset_row)
-            ax.set_xlabel(dataset_col)
-            ax.set_xlim(-1,1)
-            if col < n_datasets - 1:
-                secondary_ax.set_yticklabels([])
-                secondary_ax.set_ylabel("")
-    fig.suptitle(f"{self.corr_method.capitalize()} correlation distribution between datasets")
+                corr = pd.Series(tril.loc[dataset_row, dataset_col].values.flatten()).dropna()
+                if thresholds is not None:
+                    min_corr = thresholds.loc[(dataset_row, dataset_col)].values[0]
+                    hist_kwargs = {
+                        "hue":[("Included" if c else "Excluded") for c in (corr > min_corr)],
+                        "palette": {"Included": "red", "Excluded": "gray"},
+                        "hue_order": ["Excluded", "Included"]
+                    }
+                    included_fraction = (corr > min_corr).sum() / corr.shape[0]
+                    ax.text(x=0.01, y=0.99, s=f"{included_fraction:.3f}", ha='left', va='top', transform=ax.transAxes, color="red", alpha=0.5)
+                else:
+                    hist_kwargs = {"color": "gray"}
+                sns.histplot(x=corr, ax=ax,legend=(row == 0)&(col == 0), **hist_kwargs)
+                ax.set_ylabel(dataset_row)
+                ax.set_xlabel(dataset_col)
+                ax.set_xlim(-1,1)
+    fig.suptitle(f"Correlation distribution between datasets")
     plt.tight_layout()
-    fig.savefig(os.path.join(self.output_dir, "output", "correlation_distributions", self.corr_method + ".pdf"))
-    fig.savefig(os.path.join(self.output_dir, "output", "correlation_distributions", self.corr_method + ".png"), dpi=600)
+    return fig
+
+def plot_pairwise_corr_overlaid(tril, thresholds):
+    n_datasets = len(tril.index.levels[0])
+    fig, axes = plt.subplots(n_datasets, n_datasets, figsize=[3 * n_datasets, 3 * n_datasets], sharex=True, sharey=True)
+    for row, dataset_row in enumerate(tril.index.levels[0]):
+        for col, dataset_col in enumerate(tril.columns.levels[0]):
+            ax = axes[row,col]
+            if row < col:
+                ax.set_axis_off()
+            else:
+                corr = pd.DataFrame({"abscorr": tril.loc[dataset_row, dataset_col].values.flatten()}).dropna()
+                corr["sign"] = (corr["abscorr"] >= 0).map({True: "Positive", False: "Negative"})
+                corr["abscorr"] = corr["abscorr"].abs()
+                sns.histplot(data=corr, x="abscorr", hue="sign", palette= {"Positive": "red", "Negative": "lightblue"}, alpha= 0.5,
+                             hue_order= ["Negative", "Positive"], ax=ax,legend=(row == 0)&(col == 0))
+
+                # show min_corr as text in top left of plot and vertical line
+                min_corr = thresholds.loc[(dataset_row, dataset_col)].values[0]
+                # included_fraction = (corr["abscorr"] > min_corr).sum() / corr.shape[0]  # could also show the quantile of the min_corr threshold
+                ax.text(x=0.01, y=0.99, s=f"{min_corr:.3f}", ha='left', va='top', transform=ax.transAxes, color="black")
+                ax.axvline(min_corr, color="black")
+                
+                ax.set_ylabel(dataset_row)
+                ax.set_xlabel(dataset_col)
+                ax.set_xlim(0,1)
+    fig.suptitle(f"Correlation distribution between datasets")
+    plt.tight_layout()
     return fig
