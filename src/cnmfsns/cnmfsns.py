@@ -505,7 +505,7 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
 @click.option(
     "-o", '--output_dir', type=click.Path(file_okay=False), default=os.getcwd(), show_default=True,
     help="Output directory. All output will be placed in [output_dir]/[name]/... ")
-@click.option('--cpus', type=int, default=len(os.sched_getaffinity(0)), show_default=True, help="Number of CPUs to use")
+@click.option('--cpus', type=int, default=1, show_default=True, help="Number of CPUs to use (more memory needed for ")
 @click.option(
     '--local_density_threshold', type=float, default=2.0, show_default=True,
     help="Threshold for the local density filtering prior to GEP consensus. Acceptable thresholds are > 0 and <= 2 (2.0 is no filtering).")
@@ -554,10 +554,40 @@ def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborh
     else:
         logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
     # calculate consensus GEPs and usages
-    # logging.info(f"Creating consensus GEPs and usages using {cpus} CPUs")
-    for k in sorted(set(run_params.n_components)):
+    logging.info(f"Creating consensus GEPs and usages using {cpus} CPUs")
+
+
+    def call_consensus(k):
         logging.info(f"Creating consensus GEPs and usages for k={k}")
-        cnmf_obj.consensus(k, local_density_threshold, local_neighborhood_size, show_clustering=True, skip_density_and_return_after_stats=False, close_clustergram_fig=True)
+        cnmf_obj.consensus(k, density_threshold=local_density_threshold,
+            local_neighborhood_size=local_neighborhood_size,
+            show_clustering=True,
+            close_clustergram_fig=True)
+        density_threshold_repl = str(local_density_threshold).replace(".", "_")
+        filenames = [
+            cnmf_obj.paths['consensus_spectra']%(k, density_threshold_repl),
+            cnmf_obj.paths['consensus_spectra']%(k, density_threshold_repl),
+            cnmf_obj.paths['consensus_usages']%(k, density_threshold_repl),
+            cnmf_obj.paths['consensus_stats']%(k, density_threshold_repl),
+            cnmf_obj.paths['consensus_spectra__txt']%(k, density_threshold_repl),
+            cnmf_obj.paths['consensus_usages__txt']%(k, density_threshold_repl),
+            cnmf_obj.paths['gene_spectra_tpm']%(k, density_threshold_repl),
+            cnmf_obj.paths['gene_spectra_tpm__txt']%(k, density_threshold_repl),
+            cnmf_obj.paths['gene_spectra_score']%(k, density_threshold_repl),
+            cnmf_obj.paths['gene_spectra_score__txt']%(k, density_threshold_repl)
+            ]
+        for filename in filenames:
+            if not os.path.exists(filename):
+                logging.error("cNMF postprocessing could not find output file {filename}. This can be due to low memory conditions")
+                sys.exit(1)
+
+    if cpus > 1:
+        Pool(processes=cpus).map(call_consensus, sorted(set(run_params.n_components)))
+    elif cpus == 1:
+        for k in sorted(set(run_params.n_components)):
+            call_consensus(k)
+    else:
+        logging.error(f"{cpus} is an invalid number of cpus. Please specify a positive integer.")
 
     # create k-selection plot
     cnmf_obj.k_selection_plot(close_fig=True)
