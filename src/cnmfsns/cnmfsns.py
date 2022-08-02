@@ -558,7 +558,6 @@ def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborh
 
 
     def call_consensus(k):
-        logging.info(f"Creating consensus GEPs and usages for k={k}")
         cnmf_obj.consensus(k, density_threshold=local_density_threshold,
             local_neighborhood_size=local_neighborhood_size,
             show_clustering=True,
