@@ -19,6 +19,29 @@ from cnmfsns.odg import model_overdispersion, odg_plots, fetch_hgnc_protein_codi
 from cnmfsns.plots import plot_annotated_usages, plot_rank_reduction, plot_pairwise_corr, plot_pairwise_corr_overlaid
 from cnmfsns import __version__
 
+def get_and_check_consensus(k, cnmf_obj, local_density_threshold, local_neighborhood_size):
+    logging.info(f"Creating consensus GEPs and usages for k={k}")
+    cnmf_obj.consensus(k, density_threshold=local_density_threshold,
+        local_neighborhood_size=local_neighborhood_size,
+        show_clustering=True,
+        close_clustergram_fig=True)
+    density_threshold_repl = str(local_density_threshold).replace(".", "_")
+    filenames = [
+        cnmf_obj.paths['consensus_spectra']%(k, density_threshold_repl),
+        cnmf_obj.paths['consensus_spectra']%(k, density_threshold_repl),
+        cnmf_obj.paths['consensus_usages']%(k, density_threshold_repl),
+        cnmf_obj.paths['consensus_stats']%(k, density_threshold_repl),
+        cnmf_obj.paths['consensus_spectra__txt']%(k, density_threshold_repl),
+        cnmf_obj.paths['consensus_usages__txt']%(k, density_threshold_repl),
+        cnmf_obj.paths['gene_spectra_tpm']%(k, density_threshold_repl),
+        cnmf_obj.paths['gene_spectra_tpm__txt']%(k, density_threshold_repl),
+        cnmf_obj.paths['gene_spectra_score']%(k, density_threshold_repl),
+        cnmf_obj.paths['gene_spectra_score__txt']%(k, density_threshold_repl)
+        ]
+    for filename in filenames:
+        if not os.path.exists(filename):
+            logging.error(f"cNMF postprocessing could not find output file {filename}. This can arise in low memory conditions.")
+            sys.exit(1)
 
 def start_logging(output_path=None):
     if output_path is None:
@@ -555,31 +578,12 @@ def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborh
         logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
     # calculate consensus GEPs and usages
     logging.info(f"Creating consensus GEPs and usages using {cpus} CPUs")
-
-
-    def call_consensus(k):
-        cnmf_obj.consensus(k, density_threshold=local_density_threshold,
-            local_neighborhood_size=local_neighborhood_size,
-            show_clustering=True,
-            close_clustergram_fig=True)
-        density_threshold_repl = str(local_density_threshold).replace(".", "_")
-        filenames = [
-            cnmf_obj.paths['consensus_spectra']%(k, density_threshold_repl),
-            cnmf_obj.paths['consensus_spectra']%(k, density_threshold_repl),
-            cnmf_obj.paths['consensus_usages']%(k, density_threshold_repl),
-            cnmf_obj.paths['consensus_stats']%(k, density_threshold_repl),
-            cnmf_obj.paths['consensus_spectra__txt']%(k, density_threshold_repl),
-            cnmf_obj.paths['consensus_usages__txt']%(k, density_threshold_repl),
-            cnmf_obj.paths['gene_spectra_tpm']%(k, density_threshold_repl),
-            cnmf_obj.paths['gene_spectra_tpm__txt']%(k, density_threshold_repl),
-            cnmf_obj.paths['gene_spectra_score']%(k, density_threshold_repl),
-            cnmf_obj.paths['gene_spectra_score__txt']%(k, density_threshold_repl)
-            ]
-        for filename in filenames:
-            if not os.path.exists(filename):
-                logging.error("cNMF postprocessing could not find output file {filename}. This can be due to low memory conditions")
-                sys.exit(1)
-
+    call_consensus = partial(
+        get_and_check_consensus,
+        cnmf_obj=cnmf_obj,
+        local_density_threshold=local_density_threshold,
+        local_neighborhood_size=local_neighborhood_size)
+    
     if cpus > 1:
         Pool(processes=cpus).map(call_consensus, sorted(set(run_params.n_components)))
     elif cpus == 1:
