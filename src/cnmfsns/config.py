@@ -5,6 +5,7 @@ import numpy as np
 import sys
 import logging
 import collections.abc
+from copy import deepcopy
 from matplotlib import colors
 from datetime import datetime
 import distinctipy
@@ -12,19 +13,25 @@ import os
 from types import SimpleNamespace
 from anndata import read_h5ad
 
+# Here are default parameters for the config files
+
 config_defaults = {
     "integration": {
         "name": datetime.now().strftime("cnmfsns_%Y%m%d-%H%M%S"),
         "corr_method": "pearson",
         "max_median_corr": 0.01,
         "negative_corr_quantile": 0.95,
-        "layout_algorithm": "neato"
+        "layout_algorithm": "neato",
         },
+    "datasets": {},
     "metadata_colors": {"missing_data": "#dddddd"}
 }
-
+dataset_defaults = {
+    "k": [[1, 10, 1], [15, 500, 5]],
+    }
 
 def recursive_update(d, u):
+    d = deepcopy(d)
     for k, v in u.items():
         if isinstance(v, collections.abc.Mapping):
             d[k] = recursive_update(d.get(k, {}), v)
@@ -32,12 +39,14 @@ def recursive_update(d, u):
             d[k] = v
     return d
 
-
-
 class Config(SimpleNamespace):
 
     def __init__(self, /, **kwargs):
         self.__dict__.update(recursive_update(config_defaults, kwargs))
+        new_datasets = {}
+        for dataset_name, dataset_parameters in self.datasets.items():
+            new_datasets[dataset_name] = recursive_update(dataset_defaults, dataset_parameters)
+        self.datasets = new_datasets
 
     @classmethod
     def from_toml(cls, toml_file):

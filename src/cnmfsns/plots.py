@@ -3,7 +3,9 @@ import numpy as np
 import seaborn as sns
 import matplotlib
 import matplotlib.pyplot as plt
+import upsetplot
 from scipy.cluster.hierarchy import linkage, dendrogram
+from anndata import read_h5ad
 
 def annotated_heatmap(
         data, title, metadata=None, metadata_colors=None,
@@ -96,14 +98,15 @@ def plot_annotated_usages(df, metadata, metadata_colors, title, filename):
     plt.close(fig)  
     return fig
 
-def plot_rank_reduction(max_kval_medians, max_median_corr_threshold):
-    kvals = max_kval_medians["max_k"]
-    fig, ax = plt.subplots(figsize=[kvals.shape[0]/8, 6])
+def plot_rank_reduction(df, max_median_corr_threshold):
+    df = df.copy()    
+    df["max_k"] = df.index
+    fig, ax = plt.subplots(figsize=[df["max_k"].shape[0]/8, 6])
     ax.set_ylim([-1, 1])
-    ax.set_xlim([kvals.min() - 1, kvals.max() + 1])
+    ax.set_xlim([df["max_k"].min() - 1, df["max_k"].max() + 1])
     ax.axhline(max_median_corr_threshold, color="red")
     ax.set_title("Median of the Correlation Distribution vs max_k")
-    sns.lineplot(data=max_kval_medians, x="max_k", y="median_corr", hue="exclude", ax=ax, marker="o")
+    sns.lineplot(data=df, x="max_k", y="max_k_median_corr", hue="max_k_filter_pass", ax=ax, marker="o")
     plt.tight_layout()
     return fig
 
@@ -122,12 +125,16 @@ def plot_pairwise_corr(tril, thresholds=None):
                     hist_kwargs = {
                         "hue":[("Included" if c else "Excluded") for c in (corr > min_corr)],
                         "palette": {"Included": "red", "Excluded": "gray"},
-                        "hue_order": ["Excluded", "Included"]
+                        "hue_order": ["Excluded", "Included"],
+                        "linewidth": 0
                     }
                     included_fraction = (corr > min_corr).sum() / corr.shape[0]
                     ax.text(x=0.01, y=0.99, s=f"{included_fraction:.3f}", ha='left', va='top', transform=ax.transAxes, color="red", alpha=0.5)
                 else:
-                    hist_kwargs = {"color": "gray"}
+                    hist_kwargs = {
+                        "color": "gray",
+                        "linewidth": 0
+                    }
                 sns.histplot(x=corr, ax=ax,legend=(row == 0)&(col == 0), **hist_kwargs)
                 ax.set_ylabel(dataset_row)
                 ax.set_xlabel(dataset_col)
@@ -163,3 +170,19 @@ def plot_pairwise_corr_overlaid(tril, thresholds):
     fig.suptitle(f"Correlation distribution between datasets")
     plt.tight_layout()
     return fig
+
+def plot_genelist_upsets(config):
+    overdispersed_genelists = {}
+    full_genelists = {}
+    for dataset_name, d in config.datasets.items():
+        adata = read_h5ad(d["filename"])
+        overdispersed_genelists[dataset_name] = list(adata.uns["gene_list"])
+        full_genelists[dataset_name] = list(adata.var.index)
+    figs = {}
+    fig = plt.Figure()
+    upsetplot.UpSet(upsetplot.from_contents(overdispersed_genelists)).plot(fig=fig)
+    figs["overdispersed_genes.upset"] = fig
+    fig = plt.Figure()
+    upsetplot.UpSet(upsetplot.from_contents(full_genelists)).plot(fig=fig)
+    figs["all_genes.upset"] = fig
+    return figs

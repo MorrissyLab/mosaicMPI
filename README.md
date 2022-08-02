@@ -171,17 +171,17 @@ If you want to generate annotated heatmaps for usage matrices from the standard 
 A [TOML](https://toml.io/en/) configuration file is the most flexible way to configure cNMF-SNS. An example is found in `scripts/example_config.toml`.
 
 ```
-cnmfsns prepare-datasets -c config.toml -o output_directory
+cnmfsns integrate -c config.toml -o output_directory
 ```
 
 Alternatively, you can can also initialize a cNMF-SNS integration by providing a set of h5ad files from [`cnmfsns postprocess`](#6.-postprocessing) to integrate:
 ```
-cnmfsns prepare-datasets -i file1.h5ad file2.h5ad file3.h5ad file4.h5ad -o output_directory
+cnmfsns integrate -i file1.h5ad file2.h5ad file3.h5ad file4.h5ad -o output_directory
 ```
 
-`cnmf prepare-datasets` proceeds through the following steps:
-  1. Rank reduction
-    - histograms of the correlation distribution 
+`cnmf integrate` proceeds through the following steps:
+  1. Rank reduction to centre the correlation distribution around 0.
+  2. 
 
 
 Parameters that are required for the integration include:
