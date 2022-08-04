@@ -21,13 +21,15 @@ config_defaults = {
         "corr_method": "pearson",
         "max_median_corr": 0.01,
         "negative_corr_quantile": 0.95,
-        "layout_algorithm": "neato",
+        },
+    "sns": {
+        "layout_algorithm": "neato"
         },
     "datasets": {},
     "metadata_colors": {"missing_data": "#dddddd"}
 }
 dataset_defaults = {
-    "k": [[1, 10, 1], [15, 500, 5]],
+    "selected_k": [[1, 10, 1], [15, 500, 5]],
     }
 
 def recursive_update(d, u):
@@ -83,7 +85,8 @@ class Config(SimpleNamespace):
         if metadata_df is None:
             # read from h5ad files
             metadata_df = pd.concat({name: read_h5ad(d["filename"]).obs.select_dtypes(include="category") for name, d in self.datasets.items()})
-
+        else:
+            metadata_df = metadata_df.select_dtypes(include="category")
         # check provided metadata colors
         invalid_colors = []
         for layer, layer_colors in self.metadata_colors.items():

@@ -2,7 +2,7 @@
 
 cNMF Solution Neighborhood Space
 
-![](https://img.shields.io/badge/version-0.2.6-blue)
+![](https://img.shields.io/badge/version-0.2.7-blue)
 
 ## Installation
 
@@ -68,7 +68,8 @@ Expression (normalized and count) data must be indexed as follows:
 Metadata must be indexed as follows:
   - The first column must be sample/cell/spot IDs
   - Other columns are metadata 'layers' and must be labelled. Values can be numerical, boolean, or categorical types.
-  - Missing values are acceptable. For categorical data, these will be plotted as an "Other" category. For numerical data, these will be ignored.
+  > Note: if any values in a column are not numerical, the entire column will be treated as categorical. This can have implications for annotated heatmaps where numerical data is usually presented as a continuous color scale, not a set of distinct colors. If a column is numerical with missing values, then these should be empty values (not "NA", "NaN", etc.)
+  - Missing values are acceptable. For categorical data, these will be plotted in an "Other" category. For numerical data, these will be ignored.
 
 ### 2. Check existing h5ad files for minimum requirements for cNMF.
 
@@ -110,8 +111,8 @@ A more complex range of k values can also be set up using the `--k_range` parame
 
 The default behaviour is to select overdispersed genes using an od-score > 1.0. You can also choose from a number of different methods for selecting overdispersed_genes, for example:
   - `cnmfsns set-parameters --name example_run -m cnmf_topn -p 2000`: select top 2000 genes using cNMF's model and minimal mean threshold (Kotliar et al., 2019, eLife)
-  - `cnmfsns select-odg -n test -m default_quantile -p 0.8`: Select top 20% of genes when ranked by od-score
-  - `cnmfsns set-parameters --name example_run -n test -m genes_file -p path/to/genesfile.txt`: use a custom list of genes
+  - `cnmfsns set-parameters --name example_run -m default_quantile -p 0.8`: Select top 20% of genes when ranked by od-score
+  - `cnmfsns set-parameters --name example_run -m genes_file -p path/to/genesfile.txt`: use a custom list of genes
 
 ### 5. Perform cNMF factorization
 

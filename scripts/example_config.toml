@@ -1,11 +1,10 @@
-# Provide a name for the integration
+
 
 ###############
 # Integration #
 ###############
 
 [integration]
-name = "GBM Proteomics"
 
 # Correlation methods: spearman, pearson
 corr_method = "pearson"
@@ -14,10 +13,11 @@ max_median_corr = 0
 # Quantile from the negative half of the correlation distribution from which to derive the correlation threshold.
 # Lower values result in more edges, higher values result in fewer edges.
 negative_corr_quantile = 0.95
-# Layout options include: neato
-layout_algorithm = "neato"
-sns_node_size = 30
-sns_plot_size = [10, 10]
+
+[sns]
+layout_algorithm = "spring"  # Options include neato, spring, umap
+node_size = 30
+plot_size = [10, 10]
 
 ################################
 # Datasets and Sample Metadata #
@@ -28,7 +28,7 @@ sns_plot_size = [10, 10]
 filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/cptac_gbm_1_kl/cptac_gbm_1_kl.h5ad"
 color = "royalblue"
 
-# You can specify k-values to include for SNS 
+# You can specify k-values to include for 
 # k = [2, 3, 4, 5]             # k-values can be specified as a list of integers, or
 # k = [[2,10,1], [15,30,5]]    # a list of ranges (first, last, step), equivalent to k = [2, 3, 4, 5, 6, 7, 8, 9 10, 15, 20, 25, 30]
 
@@ -41,7 +41,7 @@ filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNM
 color = "tomato"
 
 [datasets.Diamandis]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/diamandis_1_kl/diamandis_1_kl.h5ad"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/diamandis_nobulk_1_kl/diamandis_nobulk_1_kl.h5ad"
 color = "lightgreen"
 
 

@@ -16,11 +16,15 @@ def annotated_heatmap(
     row_links = linkage(data.T, method='average', metric='euclidean')
 
     n_columns = data.columns.shape[0]
+    if metadata is None:
+        n_metadata_columns = 0
+    else:
+        n_metadata_columns = metadata.shape[1]
 
-    fig = plt.figure(figsize=[20, 2 + n_columns/3])
+    fig = plt.figure(figsize=[20, 2 + n_columns/3 + n_metadata_columns/4])
     fig.suptitle(title, fontsize=14)
     gs0 = matplotlib.gridspec.GridSpec(2,2, figure=fig,
-                                    height_ratios=[n_columns/3,1], hspace=0.05,
+                                    height_ratios=[n_columns/3,1 + n_metadata_columns/4], hspace=0.05,
                                     width_ratios=[5,1], wspace=0.05)
     gs1 = matplotlib.gridspec.GridSpecFromSubplotSpec(2,1, subplot_spec=gs0[0],
                                                     height_ratios=[1,8],

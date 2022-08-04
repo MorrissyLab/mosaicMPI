@@ -2,6 +2,7 @@ import os
 import logging
 import shutil
 import subprocess
+import collections
 import click
 import cnmf
 import sys
@@ -10,13 +11,12 @@ import pandas as pd
 import scipy.sparse as sp
 from functools import partial
 from multiprocessing.pool import Pool
-from collections import OrderedDict
 from typing import Optional, Mapping
 from anndata import AnnData, read_h5ad
 from cnmfsns.containers import add_cnmf_results_to_h5ad
 from cnmfsns.config import Config
 from cnmfsns.odg import model_overdispersion, odg_plots, fetch_hgnc_protein_coding_genes
-from cnmfsns.plots import plot_annotated_usages, plot_rank_reduction, plot_pairwise_corr, plot_pairwise_corr_overlaid
+from cnmfsns.plots import plot_annotated_usages, plot_rank_reduction, plot_pairwise_corr, plot_pairwise_corr_overlaid, plot_genelist_upsets
 from cnmfsns import __version__
 
 def get_and_check_consensus(k, cnmf_obj, local_density_threshold, local_neighborhood_size):
@@ -68,7 +68,7 @@ class OrderedGroup(click.Group):
     def __init__(self, name: Optional[str] = None, commands: Optional[Mapping[str, click.Command]] = None, **kwargs):
         super(OrderedGroup, self).__init__(name, commands, **kwargs)
         #: the registered subcommands by their exported names.
-        self.commands = commands or OrderedDict()
+        self.commands = commands or collections.OrderedDict()
 
     def list_commands(self, ctx: click.Context) -> Mapping[str, click.Command]:
         return self.commands
@@ -491,8 +491,6 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
     adata.uns["cnmf"] = cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss)[1]  # dict of cnmf parameters
     adata.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
 
-    
-    
 @click.command()
 @click.option(
     "-n", "--name", type=str, required=True, 
@@ -624,7 +622,6 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
         cfg = Config.from_toml(metadata_colors_toml)
     else:
         cfg = Config()
-        
     cfg.add_missing_metadata_colors(metadata_df=adata.obs)
     cfg.to_toml(os.path.join(output_dir, "metadata_colors.toml"))
     exclude_maxcat = adata.obs.select_dtypes(include=["object", "category"]).apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
@@ -639,12 +636,13 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
     usage.columns=pd.MultiIndex.from_tuples(usage.columns.str.split(".").to_list())
 
     # create annotated plots
-    for k in usage.columns.levels[0]:
-        k_usage = usage.loc[:, k]
+    for k in usage.columns.levels[0].astype(int).sort_values():
+        logging.info(f"Creating annotated usage heatmap for k={k}")
+        k_usage = usage.loc[:, str(k)]
         cnmf_name = adata.uns["cnmf_name"]
         ldt = adata.uns["ldt"]
         title = f"{cnmf_name} k={k} ldt={ldt}"
-        filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{(int(k)):03}.pdf")
+        filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{k:03}.pdf")
         plot_annotated_usages(df=k_usage, metadata=metadata, metadata_colors=cfg.metadata_colors, title=title, filename=filename)
 
 @click.command()
@@ -655,7 +653,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
 def integrate(output_dir, config_toml, cpus, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.
-    Although -i can be used multiple times to add .h5ad files directly, it is recommended to use a .toml file which allows for full customization.
+    Although -i can be used multiple times to add .h5ad files directly, it is recommended to use a single TOML file instead for full customization.
     Using the .toml configuration file, datasets can be giving aliases and colors for use in downstream plots.
     """
     # create directory structure, warn if not empty
@@ -710,7 +708,7 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
     corr_path = os.path.join(output_dir, "integrate", config.integration["corr_method"] + ".df.npz")
     try:
         corr = load_df_from_npz(corr_path)
-        logging.info(f"Loaded pre-calculated correlation matrix from {corr_path}")
+        logging.info(f"Loaded previously calculated correlation matrix from {corr_path}")
     except FileNotFoundError:
         logging.info(f"Calculating correlation matrix")
         if config.integration["corr_method"] == "pearson":
@@ -757,7 +755,7 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
     # output updated TOML with default k value selections based on filters etc
     for dataset_name, dataset_params in config.datasets.items():
         k_param = set()
-        for k_entry in dataset_params["k"]:
+        for k_entry in dataset_params["selected_k"]:
             if isinstance(k_entry, int):
                 k_param.add(k_entry)
             elif isinstance(k_entry, collections.abc.Collection):
@@ -765,12 +763,12 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
                 for k in range(k_entry[0], k_entry[1]+1, k_entry[2]):
                     k_param.add(k)
         k_table[(dataset_name, "selected_k")] = k_table[(dataset_name, "cNMF result")] & k_table[(dataset_name, "max_k_filter_pass")] & k_table.index.isin(k_param)
-        config.datasets[dataset_name]["k"] = sorted(list(k_table[(dataset_name, "selected_k")][k_table[(dataset_name, "selected_k")]]))
+        config.datasets[dataset_name]["selected_k"] = sorted(list(k_table[(dataset_name, "selected_k")][k_table[(dataset_name, "selected_k")]].index))
     k_table = k_table.sort_index(axis=1)
     k_table.to_csv(os.path.join(output_dir, "integrate", "k_filters.txt"), sep="\t")
     output_toml = os.path.join(output_dir, "config.toml")
     config.to_toml(output_toml)
-    logging.info(f"Updated config TOML file output to: {output_toml}")
+    logging.info(f"Output updated TOML file to: {output_toml}")
 
     # Rank Reduction Plots
     for dataset_name in config.datasets:
@@ -838,8 +836,8 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
             if thresholds is not None:
                 df_filt = df.copy(deep=True)
                 # apply pairwise thresholds
-                for row, dataset_row in enumerate(df.index.levels[0]):
-                    for col, dataset_col in enumerate(df.columns.levels[0]):
+                for dataset_row in df.index.levels[0]:
+                    for dataset_col in df.columns.levels[0]:
                         if (dataset_row, dataset_col) in thresholds.index:
                             min_corr = thresholds.loc[(dataset_row, dataset_col)].values[0]
                             mask = df_filt.loc[dataset_row, dataset_col] < min_corr
@@ -854,12 +852,15 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
             nodetable[(node_filter, edge_filter)] = results
 
     nodetable = pd.DataFrame(nodetable)
+    nodetable.columns.rename(["Node filter", "Edge Filter"], inplace=True)
     nodetable.to_csv(os.path.join(output_dir, "integrate", "node_stats.txt"), sep="\t")
 
         
 
 @click.command()
+@click.option('-o', '--output_dir', type=click.Path(file_okay=False, exists=True), required=True, help="Output directory for cNMF-SNS results")
 def create_sns():
+
     pass
 
 @click.command()
