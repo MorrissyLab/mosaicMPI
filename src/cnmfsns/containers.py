@@ -10,7 +10,7 @@ from glob import glob
 from cnmfsns.config import Config
 
 def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_density_threshold: float = None, local_neighborhood_size: float = None, force=False):
-    adata = read_h5ad(h5ad_path)
+    adata = read_h5ad(h5ad_path, backed="r+")
     adata.uns["cnmf_name"] = cnmf_name
     cnmf_data_loaded =  "cnmf_usage" in adata.obsm or\
                         "cnmf_gep_score" in adata.varm or\
@@ -24,8 +24,12 @@ def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_densit
     sensed_ldts = set()
     for fn in glob(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}*.*spectra*.k_*")):
         ldt_str = os.path.basename(fn).split(".")[3]
-        ldt = float(ldt_str.replace("dt_", "").replace("_", "."))
-        sensed_ldts.add((ldt_str, ldt))
+        try:
+            ldt = float(ldt_str.replace("dt_", "").replace("_", "."))
+        except ValueError:
+            pass
+        else:
+            sensed_ldts.add((ldt_str, ldt))
     if local_density_threshold is None and len(sensed_ldts) == 1:
         ldt_str, ldt = sensed_ldts.pop()
     elif local_density_threshold in (ldt[1] for ldt in sensed_ldts):
@@ -43,6 +47,7 @@ def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_densit
         "spectra": "cnmf_gep_raw"
         }
     for matchstr, result_type in result_types.items():
+        logging.info(f"Importing GEPs: {matchstr}")  
         meta_w = []
         for fn in glob(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}*.{matchstr}.k_*.{ldt_str}.*txt")):
             k = int(os.path.basename(fn).split(".")[2].replace("k_", ""))
@@ -53,6 +58,7 @@ def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_densit
         adata.varm[result_type] = meta_w
 
     # Import Usages
+    logging.info(f"Importing Usages")  
     usage = []
     for fn in glob(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}*.usages.k_*.{ldt_str}.*txt")):
         k = int(os.path.basename(fn).split(".")[2].replace("k_", ""))
@@ -69,5 +75,6 @@ def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_densit
     kvals = pd.DataFrame(**np.load(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}.k_selection_stats.df.npz"), allow_pickle=True)).set_index("k")[["stability", "prediction_error"]]
     kvals.index = kvals.index.astype(int)
     adata.uns["kvals"] = kvals
+    logging.info(f"Writing h5ad file")  
 
-    adata.write_h5ad(h5ad_path)        
+    adata.write_h5ad()

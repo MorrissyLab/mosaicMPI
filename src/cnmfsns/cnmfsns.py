@@ -172,9 +172,6 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
 @click.option(
     "-i", '--input_h5ad', type=click.Path(dir_okay=False, exists=True), required=True,
     help="Path to input .h5ad file.")
-@click.option(
-    "-o", '--output_h5ad', type=click.Path(dir_okay=False, exists=False), required=False,
-    help="Path to output .h5ad file. If none are provided, input file will be overwritten.")
 def update_h5ad_metadata(input_h5ad, metadata, output_h5ad):
     """
     Update metadata in a .h5ad file at any point in the cNMF-SNS workflow. New metadata will overwrite (`adata.obs`).
@@ -195,9 +192,9 @@ def update_h5ad_metadata(input_h5ad, metadata, output_h5ad):
 
     if output_h5ad is None:
         output_h5ad = input_h5ad
-    adata = read_h5ad(input_h5ad)
+    adata = read_h5ad(input_h5ad, backed="r+")
     adata.obs = metadata
-    adata.write_h5ad(output_h5ad)
+    adata.write_h5ad()
 
 
 @click.command()
@@ -463,7 +460,6 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
     df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
 
     # write TPM (normalized) data
-    adata = read_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     input_counts = AnnData(X=adata.raw.X, obs=adata.obs, var=adata.var, dtype=np.float64)
     tpm = AnnData(X=adata.X, obs=adata.obs, var=adata.var, dtype=np.float64)
     tpm.write_h5ad(cnmf_obj.paths["tpm"])
@@ -526,7 +522,7 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
 @click.option(
     "-o", '--output_dir', type=click.Path(file_okay=False), default=os.getcwd(), show_default=True,
     help="Output directory. All output will be placed in [output_dir]/[name]/... ")
-@click.option('--cpus', type=int, default=1, show_default=True, help="Number of CPUs to use (more memory needed for ")
+@click.option('--cpus', type=int, default=1, show_default=True, help="Number of CPUs to use. Note that multi-CPU runs can use large amounts of memory and stall silently.")
 @click.option(
     '--local_density_threshold', type=float, default=2.0, show_default=True,
     help="Threshold for the local density filtering prior to GEP consensus. Acceptable thresholds are > 0 and <= 2 (2.0 is no filtering).")
@@ -616,7 +612,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
     """
     start_logging()
     os.makedirs(output_dir, exist_ok=True)
-    adata = read_h5ad(input_h5ad)
+    adata = read_h5ad(input_h5ad, backed="r")
     # annotate usage plots
     if metadata_colors_toml:
         cfg = Config.from_toml(metadata_colors_toml)
@@ -694,7 +690,7 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
     k_table = {}
     geps = {}
     for dataset_name, dataset in config.datasets.items():
-        adata = read_h5ad(dataset["filename"])
+        adata = read_h5ad(dataset["filename"], backed="r")
         df = adata.varm["cnmf_gep_score"]
         df.columns = pd.MultiIndex.from_tuples([(int(gep[0]), int(gep[1])) for gep in df.columns.str.split(".")])
         geps[dataset_name] = df

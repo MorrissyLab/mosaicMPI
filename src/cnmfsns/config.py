@@ -84,7 +84,7 @@ class Config(SimpleNamespace):
         # get categorical data for which colors should match
         if metadata_df is None:
             # read from h5ad files
-            metadata_df = pd.concat({name: read_h5ad(d["filename"]).obs.select_dtypes(include="category") for name, d in self.datasets.items()})
+            metadata_df = pd.concat({name: read_h5ad(d["filename"], backed="r").obs.select_dtypes(include="category") for name, d in self.datasets.items()})
         else:
             metadata_df = metadata_df.select_dtypes(include="category")
         # check provided metadata colors
