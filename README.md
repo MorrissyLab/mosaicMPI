@@ -2,7 +2,7 @@
 
 cNMF Solution Neighborhood Space
 
-![](https://img.shields.io/badge/version-0.2.8-blue)
+![](https://img.shields.io/badge/version-0.2.9-blue)
 
 ## Installation
 
@@ -72,8 +72,6 @@ Metadata must be indexed as follows:
   - Missing values are acceptable. For categorical data, these will be plotted in an "Other" category. For numerical data, these will be ignored.
 
 ### 2. Check existing h5ad files for minimum requirements for cNMF.
-
-> Warning: Not completely implemented yet!
 
 Check h5ad objects for rows or columns which have missing values, negative values, or variance of 0.
 

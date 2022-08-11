@@ -109,7 +109,7 @@ def cli():
          "If not provided, TPM normalization will be calculated from the count matrix.")
 @click.option(
     "-m", "--metadata", type=click.Path(dir_okay=False, exists=True), required=False,
-    help="Tab-separated text file with metadata for samples/cells/spots with one row each. Columns are annotation layers.")
+    help="Optional tab-separated text file with metadata for samples/cells/spots with one row each. Columns are annotation layers.")
 @click.option(
     "--sparsify", is_flag=True,
     help="Save resulting data in sparse format. Recommended for sparse datasets such as scRNA-Seq, scATAC-Seq, and 10X Visium, but not for bulk expression data.")
@@ -275,6 +275,8 @@ def check_h5ad(input, output):
     
     # Save output to new h5ad file
     if output is not None:
+        adata.X = normalized
+        adata.raw.X = AnnData(counts, dtype=np.float64)
         adata.write(output)
 
 

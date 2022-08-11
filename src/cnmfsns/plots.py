@@ -159,7 +159,7 @@ def plot_pairwise_corr_overlaid(tril, thresholds):
                 corr = pd.DataFrame({"abscorr": tril.loc[dataset_row, dataset_col].values.flatten()}).dropna()
                 corr["sign"] = (corr["abscorr"] >= 0).map({True: "Positive", False: "Negative"})
                 corr["abscorr"] = corr["abscorr"].abs()
-                sns.histplot(data=corr, x="abscorr", hue="sign", palette= {"Positive": "red", "Negative": "lightblue"}, alpha= 0.5,
+                sns.histplot(data=corr, x="abscorr", hue="sign", palette= {"Positive": "red", "Negative": "lightblue"}, alpha=0.5, linewidth=0,
                              hue_order= ["Negative", "Positive"], ax=ax,legend=(row == 0)&(col == 0))
 
                 # show min_corr as text in top left of plot and vertical line

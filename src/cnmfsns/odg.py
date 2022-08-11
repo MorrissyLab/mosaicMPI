@@ -91,7 +91,6 @@ def odg_plots(df, show_selected):
             ], title="selected")
         else:
             sns.histplot(df, x="odscore", bins=100, linewidth=0, ax=ax, color="blue")
-        sns.ecdfplot(df, x="odscore", ax=ax2, color="black", stat="count", complementary=True)
     ax.set_xlabel("od-score")
     ax2.set_ylabel("Total Gene Count")
     plt.tight_layout()
@@ -128,7 +127,6 @@ def odg_plots(df, show_selected):
             ], title="selected")
         else:
             sns.histplot(df, x="vscore", bins=100, linewidth=0, ax=ax, color="blue")
-        sns.ecdfplot(df, x="vscore", ax=ax2, color="black", stat="count", complementary=True)
     ax.set_xlabel("v-score")
     ax2.set_ylabel("Total Gene Count")
     plt.tight_layout()
