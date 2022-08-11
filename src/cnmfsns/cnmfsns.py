@@ -162,7 +162,7 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
     if sparsify:
         adata = AnnData(X=sp.csr_matrix(normalized.values), raw=AnnData(X=sp.csr_matrix(counts)), obs=metadata)
     else:
-        adata = AnnData(X=normalized, dtype=normalized.dtype, raw=AnnData(X=counts, dtype=counts.dtype), obs=metadata)
+        adata = AnnData(X=normalized, dtype=normalized.values.dtype, raw=AnnData(X=counts, dtype=counts.values.dtype), obs=metadata)
     adata.write_h5ad(output)
 
 @click.command()
@@ -277,7 +277,7 @@ def check_h5ad(input, output):
     if output is not None:
         adata = adata[:, normalized.columns]
         adata.X = normalized
-        adata.raw = AnnData(counts, dtype=counts.dtype)
+        adata.raw = AnnData(counts, dtype=counts.values.dtype)
         adata.write(output)
 
 
