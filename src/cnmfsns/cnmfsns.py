@@ -275,9 +275,9 @@ def check_h5ad(input, output):
     
     # Save output to new h5ad file
     if output is not None:
-        adata = adata[:normalized.columns]
+        adata = adata[:normalized.columns.to_list()]
         adata.X = normalized
-        adata.raw = AnnData(counts[:counts], dtype=np.int64)
+        adata.raw = AnnData(counts, dtype=np.int64)
         adata.write(output)
 
 
