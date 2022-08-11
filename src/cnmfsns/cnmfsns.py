@@ -234,7 +234,7 @@ def check_h5ad(input, output):
         logging.warning("Count data matrix (`adata.raw.X`) is empty.")
         if output:
             logging.warning("Normalized data matrix (`adata.X`) will be used instead.")
-            counts = normalized
+            counts = normalized.copy()
     elif adata.raw.X is None and adata.X is None:
         logging.error(".h5ad file must contain a counts matrix (`adata.raw.X`) and/or a normalized matrix (`adata.X`).")
         sys.exit(1)
@@ -275,8 +275,9 @@ def check_h5ad(input, output):
     
     # Save output to new h5ad file
     if output is not None:
+        adata = adata[:normalized.columns]
         adata.X = normalized
-        adata.raw.X = AnnData(counts, dtype=np.float64)
+        adata.raw = AnnData(counts[:counts], dtype=np.int64)
         adata.write(output)
 
 
