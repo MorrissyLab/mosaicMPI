@@ -16,14 +16,30 @@ from anndata import read_h5ad
 # Here are default parameters for the config files
 
 config_defaults = {
-    "integration": {
-        "name": datetime.now().strftime("cnmfsns_%Y%m%d-%H%M%S"),
+    "integrate": {
         "corr_method": "pearson",
         "max_median_corr": 0.01,
         "negative_corr_quantile": 0.95,
         },
     "sns": {
-        "layout_algorithm": "neato"
+        "community_algorithm": "greedy_modularity",
+        "communities": {
+            "greedy_modularity": {
+                "resolution": 2
+            },
+            "leiden": {
+                "resolution": 0.01
+            }
+        },
+        "layout_algorithm": "neato",   # "neato", "spring", "community_weighted_spring"
+        "layouts": {  # parameters for each layout algorithm
+            "neato": {},
+            "spring": {},
+            "community_weighted_spring": {
+                "within": 100,
+                "between": 1
+            }
+        }
         },
     "datasets": {},
     "metadata_colors": {"missing_data": "#dddddd"}

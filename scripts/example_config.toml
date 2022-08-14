@@ -5,7 +5,7 @@
 ###############
 
 [integration]
-
+name = "gbm_proteomics"
 # Correlation methods: spearman, pearson
 corr_method = "pearson"
 # highest k-values will be eliminated until median correlation is below this value
@@ -25,7 +25,7 @@ plot_size = [10, 10]
 
 # Specify a dataset name (eg. CPTAC) to be used for this dataset in plots
 [datasets.CPTAC]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/cptac_gbm_1_kl/cptac_gbm_1_kl.h5ad"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/cnmf_results/cptac_gbm_1_kl/cptac_gbm_1_kl.h5ad"
 color = "royalblue"
 
 # You can specify k-values to include for 
@@ -33,15 +33,15 @@ color = "royalblue"
 # k = [[2,10,1], [15,30,5]]    # a list of ranges (first, last, step), equivalent to k = [2, 3, 4, 5, 6, 7, 8, 9 10, 15, 20, 25, 30]
 
 [datasets.UCC]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/gbm_ffpe_proteogenomics_1_kl/gbm_ffpe_proteogenomics_1_kl.h5ad"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/cnmf_results/gbm_ffpe_proteogenomics_1_kl/gbm_ffpe_proteogenomics_1_kl.h5ad"
 color = "gold"
 
 [datasets.Yonsei]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/yonsei_1_kl/yonsei_1_kl.h5ad"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/cnmf_results/yonsei_1_kl/yonsei_1_kl.h5ad"
 color = "tomato"
 
 [datasets.Diamandis]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/diamandis_nobulk_1_kl/diamandis_nobulk_1_kl.h5ad"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/cnmf_results/diamandis_nobulk_1_kl/diamandis_nobulk_1_kl.h5ad"
 color = "lightgreen"
 
 

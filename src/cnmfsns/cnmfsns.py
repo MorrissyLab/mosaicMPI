@@ -172,7 +172,7 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
 @click.option(
     "-i", '--input_h5ad', type=click.Path(dir_okay=False, exists=True), required=True,
     help="Path to input .h5ad file.")
-def update_h5ad_metadata(input_h5ad, metadata, output_h5ad):
+def update_h5ad_metadata(input_h5ad, metadata):
     """
     Update metadata in a .h5ad file at any point in the cNMF-SNS workflow. New metadata will overwrite (`adata.obs`).
     """
@@ -194,7 +194,7 @@ def update_h5ad_metadata(input_h5ad, metadata, output_h5ad):
         output_h5ad = input_h5ad
     adata = read_h5ad(input_h5ad, backed="r+")
     adata.obs = metadata
-    adata.write_h5ad()
+    adata.write()
 
 
 @click.command()
@@ -452,6 +452,7 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
     elif odg_method == "genes_file":
         genes = open(odg_param).read().rstrip().split(os.linesep)
 
+    logging.info(f"{len(genes)} genes selected for factorization")
     df["selected"] = df.index.isin(genes)
 
     # update plots with threshold information
@@ -647,7 +648,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
 @click.command()
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), help="TOML config file")
-@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results")
+@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results. Can be used to specify multiple files instead of a TOML config file.")
 @click.option('--cpus', type=int, default=len(os.sched_getaffinity(0)), show_default=True, help="Number of CPUs to use for calculating correlation matrix")
 def integrate(output_dir, config_toml, cpus, input_h5ad):
     """
@@ -858,13 +859,10 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
 
 @click.command()
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False, exists=True), required=True, help="Output directory for cNMF-SNS results")
-def create_sns():
+def create_network():
 
     pass
 
-@click.command()
-def annotate_sns():
-    pass
 
 cli.add_command(txt_to_h5ad)
 cli.add_command(update_h5ad_metadata)
@@ -875,8 +873,7 @@ cli.add_command(factorize)
 cli.add_command(postprocess)
 cli.add_command(annotated_heatmap)
 cli.add_command(integrate)
-cli.add_command(create_sns)
-cli.add_command(annotate_sns)
+cli.add_command(create_network)
 
 if __name__ == "__main__":
     cli()

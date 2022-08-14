@@ -124,7 +124,7 @@ For submitting jobs to the SLURM job scheduler, you can download a sample job su
 
 After editing the script to ensure it is suitable for your HPC cluster, cNMF-SNS will submit jobs using SLURM's `sbatch` command to parallelize factorization.
 ```
-cnmfsns factorize --name example_run --slurm-script /path/to/slurm.sh
+cnmfsns factorize --name example_run --slurm_script /path/to/slurm.sh
 ```
 
 ### 6. Postprocessing
@@ -167,7 +167,9 @@ If you want to generate annotated heatmaps for usage matrices from the standard 
 
 ### 1. Identify datasets for integration
 
-A [TOML](https://toml.io/en/) configuration file is the most flexible way to configure cNMF-SNS. An example is found in `scripts/example_config.toml`.
+Specify an output directory for your integration.
+
+A [TOML](https://toml.io/en/) configuration file is the most flexible way to configure cNMF-SNS. An example is found in `scripts/example_config.toml`. The minimal data to include in a TOML file is the paths to each of the datasets.
 
 ```
 cnmfsns integrate -c config.toml -o output_directory
@@ -175,22 +177,18 @@ cnmfsns integrate -c config.toml -o output_directory
 
 Alternatively, you can can also initialize a cNMF-SNS integration by providing a set of h5ad files from [`cnmfsns postprocess`](#6.-postprocessing) to integrate:
 ```
-cnmfsns integrate -i file1.h5ad file2.h5ad file3.h5ad file4.h5ad -o output_directory
+cnmfsns integrate -i file1.h5ad -i file2.h5ad -i file3.h5ad -o output_directory
 ```
 
 `cnmf integrate` proceeds through the following steps:
-  1. Rank reduction to centre the correlation distribution around 0.
-  2. 
+  1. Selecting values of k to include in the network
+  2. Defining communities of GEPs
+  3. 
 
-
-Parameters that are required for the integration include:
-    1. range(s) of k (decide based on # of samples?)
-    2. Specific values of k (eg. 5, 10, 15, 20)
-    3. Community resolution
-    4. 
+### 2. Create network and define GEP communities
 
 ```
-cnmfsns create-sns -o output_directory
+cnmfsns create-network -o output_directory
 ```
 
 ### TOML configuration file
