@@ -190,9 +190,9 @@ def update_h5ad_metadata(input_h5ad, metadata):
         for value_type, count in metadata[col].dropna().map(type).value_counts().items():
             print(f"   {value_type}:", count)
 
-    adata = read_h5ad(input_h5ad, backed="r+")
+    adata = read_h5ad(input_h5ad)
     adata.obs = metadata
-    adata.write()
+    adata.write(input_h5ad)
 
 
 @click.command()

@@ -2,7 +2,7 @@
 
 cNMF Solution Neighborhood Space
 
-![](https://img.shields.io/badge/version-0.2.11-blue)
+![](https://img.shields.io/badge/version-0.2.12-blue)
 
 ## Installation
 
