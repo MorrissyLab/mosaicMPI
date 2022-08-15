@@ -190,8 +190,6 @@ def update_h5ad_metadata(input_h5ad, metadata):
         for value_type, count in metadata[col].dropna().map(type).value_counts().items():
             print(f"   {value_type}:", count)
 
-    if output_h5ad is None:
-        output_h5ad = input_h5ad
     adata = read_h5ad(input_h5ad, backed="r+")
     adata.obs = metadata
     adata.write()
@@ -858,11 +856,425 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
         
 
 @click.command()
-@click.option('-o', '--output_dir', type=click.Path(file_okay=False, exists=True), required=True, help="Output directory for cNMF-SNS results")
-def create_network():
+@click.option('-o', '--output_dir', type=click.Path(file_okay=False, exists=True), required=True, help="Output directory for cNMF-SNS results generated using `cnmfsns integrate`")
+def create_network(output_dir):
+    ### TODO: Too much code, move to submodule
+    import matplotlib.pyplot as plt
+    import networkx as nx
+    import seaborn as sns
+    import networkx as nx
+    import tomli_w
+    import distinctipy
+    from datetime import datetime
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import FancyBboxPatch
 
-    pass
+    output_toml = os.path.join(output_dir, "config.toml")
+    config = Config.from_toml(output_toml)
+    sns_output_dir = os.path.join(output_dir, "sns_networks", datetime.now().strftime("%Y-%m-%d_%H%M%S"))
+    os.makedirs(sns_output_dir, exist_ok=False)
 
+    corr_path = os.path.join(output_dir, "integrate", config.integration["corr_method"] + ".df.npz")
+    if not os.path.exists(corr_path):
+        logging.error(f"No correlation matrix found at {corr_path}. Make sure you have run `cnmfsns integrate` before running `cnmfsns create-sns`.")
+    corr = load_df_from_npz(corr_path)
+    logging.info(f"Loaded correlation matrix from {corr_path}")
+    # Check that rows and columns of correlation matrix are identical
+    assert (corr.index == corr.columns).all()
+    # Lower triangular matrix contains each edge only once and removes diagonal (self-correlation)
+    tril = corr.where(np.tril(np.ones(corr.shape), k=-1).astype(bool))
+
+    # filter to selected k in each dataset
+    selected_k_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if gep[1] in config.datasets[gep[0]]["selected_k"]])
+    subset = tril.loc[selected_k_index, selected_k_index]
+
+    # filter edges by inter and intra-dataset thresholds
+    min_corr_thresholds = pd.read_table(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.txt"))
+    for _, row in min_corr_thresholds.iterrows():
+        dataset_row, dataset_col, threshold = row
+        filtered_chunk = subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col] <= threshold
+        subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col] = subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col].mask(filtered_chunk)
+
+    subset.index = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset.index])
+    subset.columns = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset.columns])
+
+    # Build graph
+    links = subset.stack().reset_index()
+    links.columns = ['node1', 'node2', 'corr']
+    G = nx.from_pandas_edgelist(links, 'node1', 'node2', "corr")
+
+    # Community search
+    community_algorithm = config.sns["community_algorithm"]
+    if community_algorithm == "greedy_modularity":
+        from networkx.algorithms.community.modularity_max import greedy_modularity_communities
+        communities = {
+            name: nodes for name, nodes in
+            enumerate(greedy_modularity_communities(G, weight="corr", resolution=config.sns["communities"]["greedy_modularity"]["resolution"]), start=1)
+            }
+    elif community_algorithm == "leiden":
+        import igraph
+        G_igraph = igraph.Graph.from_networkx(G)
+        communities = {}
+        leiden_comm = G_igraph.community_leiden(resolution_parameter=config.sns["communities"]["leiden"]["resolution"], weights="corr")
+        for community, member_nodes in enumerate(leiden_comm, start=1):
+            communities[community] = G_igraph.vs[member_nodes]['_nx_name']
+    else:
+        logging.error(f"{community_algorithm} is not a valid community algorithm ")
+        sys.exit(1)
+    logging.info(f"Identified {len(communities)} communities")
+
+    gep_communities = {gep: community for community, geps in communities.items() for gep in geps}
+    with open(os.path.join(sns_output_dir, "gep_communities.toml"), "wb") as f:
+        tomli_w.dump(gep_communities, f)
+
+    ### Plot communities by dataset and rank representation ###
+
+    marker_style = {
+        1: ("s", 30),  # 1 factor: square markers, size 30
+        2: (2, 30)     # 2 factors: marker #2 (up tick), size 30
+        }
+    dataset_colors = {ds: ds_attr["color"] for ds, ds_attr in config.datasets.items()}
+
+    fig, axes = plt.subplots(1, len(config.datasets)+1, figsize=[1 + len(config.datasets)* 5,1 + len(communities)/4], sharex=True, sharey=True)
+    for rownum, dataset in enumerate(config.datasets):
+        for community, members in communities.items():
+            counts = pd.Series([m.rpartition("|")[0] for m in members]).value_counts()
+            
+            # plot line if any factors are present
+            line_x = []
+            line_y = []
+            for pos, rank in enumerate(config.datasets[dataset]["selected_k"]):
+                line_x.append(pos)
+                if f"{dataset}|{rank}" in counts.index:
+                    line_y.append(community)
+                else:
+                    line_y.append(np.NaN)
+            axes[rownum].plot(line_x, line_y, color=dataset_colors[dataset], linewidth=2)
+            
+            for count, style in marker_style.items():
+                # plot different markers depending on how many factors are present:
+                x = []
+                y = []
+                for pos, rank in enumerate(config.datasets[dataset]["selected_k"]):
+                    factor_prefix = f"{dataset}|{rank}"
+                    if factor_prefix in counts.index and counts[factor_prefix] == count:
+                        x.append(pos)
+                        y.append(community)
+                axes[rownum].scatter(x, y, color=dataset_colors[dataset], marker=style[0], s=style[1])
+        axes[rownum].set_yticks(list(communities.keys()))
+        axes[rownum].set_xticks(list(range(len(config.datasets[dataset]["selected_k"]))))
+        axes[rownum].set_xticklabels(config.datasets[dataset]["selected_k"])
+        axes[rownum].set_title(dataset)
+
+    fig.supxlabel("Rank (k)")
+    fig.supylabel("Community")
+
+
+    # Add legend
+    cbdrlegend = []
+    cbdrlegend.append(Line2D([0],[0], marker='s', color='black', label="1 GEP", markerfacecolor="black", markersize=8))
+    cbdrlegend.append(Line2D([0],[0], marker=2, color='black', label="2 GEPs", markerfacecolor="black", markersize=8))
+    cbdrlegend.append(Line2D([0],[0], marker=None, color='black', label="3+ GEPs", markerfacecolor="black", markersize=8))
+    axes[-1].legend(handles=cbdrlegend, loc='center', frameon=False)
+    axes[-1].set_axis_off()
+    plt.tight_layout()
+    fig.savefig(os.path.join(sns_output_dir, "communities_by_dataset_rank.pdf"))
+    fig.savefig(os.path.join(sns_output_dir, "communities_by_dataset_rank.png"), dpi=600)
+
+
+    ### Community Colors ###
+
+    logging.info("Identifying distinct colors for each community}")
+    community_colors = {community: color for community, color in zip(communities, distinctipy.get_colors(n_colors=len(communities), pastel_factor=0.2))}
+    with open(os.path.join(sns_output_dir, "community_colors.toml"), "wb") as f:
+        tomli_w.dump({str(comm): col for comm, col in community_colors.items()}, f)
+
+    ### Layout ###
+
+    logging.info(f"Computing network layout for {len(G)} nodes")
+    layout_algorithm = config.sns["layout_algorithm"]
+    if layout_algorithm == "neato":
+        layout = nx.nx_agraph.graphviz_layout(G, prog="neato", args='-Goverlap=true')
+    elif layout_algorithm == "spring":
+        layout = nx.spring_layout(G, weight="corr")
+        layout = {node: list(coords) for node, coords in layout.items()}
+    elif layout_algorithm == "community_weighted_spring":
+        cws_weights = {
+            True: config.sns["layouts"]["community_weighted_spring"]["within"],
+            False: config.sns["layouts"]["community_weighted_spring"]["between"]
+            }
+        edge_attr = dict(zip(
+            (tuple(x) for x in links.iloc[:, 0:2].values),
+            (links["node1"].map(gep_communities) == links["node2"].map(gep_communities)).map(cws_weights)))
+        nx.set_edge_attributes(G, edge_attr, name="community_weight")
+        layout = nx.spring_layout(G, weight="community_weight")
+        layout = {node: list(coords) for node, coords in layout.items()}
+    elif layout_algorithm == "umap":
+        import umap
+        from sklearn.preprocessing import StandardScaler, RobustScaler
+
+        geps = {}
+        for dataset_name, dataset in config.datasets.items():
+            adata = read_h5ad(dataset["filename"], backed="r")
+            df = adata.varm["cnmf_gep_score"]
+            df.columns = pd.MultiIndex.from_tuples([(int(gep[0]), int(gep[1])) for gep in df.columns.str.split(".")])
+            geps[dataset_name] = df.loc[:, dataset["selected_k"]]
+
+        geps = pd.concat(geps, axis=1).sort_index(axis=1)
+        # Standardize features for dimensionality reduction
+        table = geps.dropna().T
+        x = table.values
+        x = RobustScaler().fit_transform(x)
+
+        embedding = umap.UMAP(n_neighbors=25, min_dist=0.01).fit_transform(x)
+        layout = {"|".join((gep[0], str(gep[1]), str(gep[2]))): list(emb.astype(float)) for gep, emb in zip(table.index, embedding)}  
+
+    with open(os.path.join(sns_output_dir, "layout.toml"), "wb") as f:
+        tomli_w.dump({"layout": layout}, f)
+
+    ### Plot network layout ###
+
+    fig, ax = plt.subplots(figsize=config.sns["plot_size"])
+    ax.set_aspect(1)
+    ax.set_title("Network Layout")
+    nx.draw(G, pos=layout, node_color="#444444", node_size=config.sns["node_size"], linewidths=0, width=0.2, edge_color="#888888", font_size=2)
+    plt.tight_layout()
+    fig.savefig(os.path.join(sns_output_dir, "layout.pdf"))
+    fig.savefig(os.path.join(sns_output_dir, "layout.png"), dpi=600)
+
+    ### Plot network colored by dataset ###
+
+    # create legend
+    dataset_legend = []
+    for dataset, color in dataset_colors.items():
+        dataset_legend.append(Line2D([0], [0], marker='o', color='w', label=dataset, markerfacecolor=color, markersize=8))
+
+    colors = []
+    for node in G:
+        colors.append(dataset_colors[node.split("|")[0]])
+
+    # Labels without cohorts
+    labels = {}
+    for node in G:
+        labels[node] = node.partition("|")[2]
+
+    # Node sizes inversely proportional to k
+    sizes = {}
+    min_rank = min([k for ds_attr in config.datasets.values() for k in ds_attr["selected_k"]])
+
+    for node in G:
+        sizes[node] = 200 / (int(node.split("|")[1]) + 0.5 - min_rank)
+    node_sizes = [(sizes[n] if n in sizes else 0) for n in G]
+
+    # Plot nodes colored by dataset
+    fig, ax = plt.subplots(figsize=config.sns["plot_size"])
+    nx.draw(G, pos=layout,
+            with_labels=False, node_color=colors, labels=labels, node_size=30, linewidths=0, width=0.2, edge_color="#888888", font_size=4)
+    ax.legend(handles=dataset_legend)
+    ax.set_title("Cohorts")
+    plt.tight_layout()
+    # Save Figure
+    fig.savefig(os.path.join(sns_output_dir, "datasets.pdf"))
+    fig.savefig(os.path.join(sns_output_dir, "datasets.png"), dpi=600)
+
+    # Plot the network with labelled nodes and radius inversely proportional to k
+    fig, ax = plt.subplots(figsize=config.sns["plot_size"])
+    nx.draw(G, pos=layout,
+            with_labels=True, node_color=colors, labels=labels, node_size=node_sizes, linewidths=0, width=0.2, edge_color="#888888", font_size=4)
+    ax.legend(handles=dataset_legend)
+    ax.set_title("Cohorts")
+    plt.tight_layout()
+    # Save Figure
+    fig.savefig(os.path.join(sns_output_dir, "cohorts_labelled.pdf"))
+    fig.savefig(os.path.join(sns_output_dir, "cohorts_labelled.png"), dpi=600)
+
+    ### Plot network colored by community ###
+    colors = [community_colors[gep_communities[node]] for node in G]
+
+    # Plot the network
+    fig, ax = plt.subplots(figsize=config.sns["plot_size"])
+    nx.draw(G, pos=layout,
+            with_labels=False, node_color=colors, node_size=config.sns["node_size"], linewidths=0, width=0.2, edge_color="#888888")
+
+    # Add legend
+    legend_elements = []
+    for name, color in community_colors.items():
+        legend_elements.append(Line2D([0], [0], marker='o', color='w', label=name, markerfacecolor=color, markersize=10))
+    ax.set_title("Network Communities")
+    ax.legend(handles=legend_elements)
+    plt.tight_layout()
+    # Save Figure
+    fig.savefig(os.path.join(sns_output_dir, "communities.pdf"))
+    fig.savefig(os.path.join(sns_output_dir, "communities.png"), dpi=600)
+
+    ### Maximum Correlation between Datasets and Communities ### TODO: test whether max or mean is more informative
+
+    index = pd.MultiIndex.from_product([communities, config.datasets], names=["Community", "Dataset"])
+    max_corr_communities = pd.DataFrame(index=index, columns=index)
+
+    for (community_1, cohort_1) in index:
+        nodes_1 = [(l[0], int(l[1]), int(l[2])) for l in pd.Index(list(communities[community_1])).str.split("|") if l[0] == cohort_1]
+        if nodes_1:
+            nodes_1 = pd.MultiIndex.from_tuples(nodes_1)
+            for (community_2, cohort_2) in index:
+                nodes_2 = [(l[0], int(l[1]), int(l[2])) for l in pd.Index(list(communities[community_2])).str.split("|") if l[0] == cohort_2]
+                if nodes_2:
+                    nodes_2 = pd.MultiIndex.from_tuples(nodes_2)
+                    max_corr_communities.loc[(community_1, cohort_1), (community_2, cohort_2)] = corr.loc[nodes_1, nodes_2].max().max()
+
+    max_corr_communities = max_corr_communities.astype("float").dropna(how="all", axis=0).dropna(how="all", axis=1).reorder_levels([1,0], axis=0).reorder_levels([1,0], axis=1)
+    fig, ax = plt.subplots(figsize=[16,16])
+    sns.heatmap(max_corr_communities, xticklabels=True, yticklabels=True, cmap="RdBu_r", center=0, vmin=-1, vmax=1, ax=ax)
+    fig.suptitle("Maximum correlation between GEPs grouped by dataset and community")
+    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_communities.pdf"))
+    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_communities.png"), dpi=600)
+
+    max_corr_communities = max_corr_communities.sort_index(axis=0).sort_index(axis=1)
+    fig, ax = plt.subplots(figsize=[16,16])
+    sns.heatmap(max_corr_communities, xticklabels=True, yticklabels=True, cmap="RdBu_r", center=0, vmin=-1, vmax=1, ax=ax)
+    fig.suptitle("Maximum correlation between GEPs grouped by dataset and community")
+    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_cohorts.pdf"))
+    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_cohorts.png"), dpi=600)
+
+    ### Number of samples, patients ###
+    usage = []
+    sample_to_patient = {}
+    for dataset_name, dataset in config.datasets.items():
+        adata = read_h5ad(dataset["filename"])
+        if "patient_id_column" in dataset:
+            for sample, patient in adata.obs[dataset["patient_id_column"]].items():
+                sample_to_patient[(dataset_name, sample)] = (dataset_name, patient)
+        df = adata.obsm["cnmf_usage"]
+        df.index = pd.MultiIndex.from_product(([dataset_name], (df.index)))
+        df.columns = pd.MultiIndex.from_tuples([(dataset_name, int(col[0]), int(col[1])) for col in df.columns.str.split(".")])
+        usage.append(df)
+    usage = pd.concat(usage, axis=1).sort_index(axis=0).sort_index(axis=1)
+    usage.index.rename(["dataset", "sample"], inplace=True)
+    usage.columns.rename(["dataset", "k", "gep"], inplace=True)
+    usage
+
+    # normalized usage (usages sum to 1 for each value of k)
+    normalized_usage = []
+    for k, subdf in usage.groupby(axis=1, level=[0,1]):
+        normalized_usage.append(subdf.div(subdf.sum(axis=1), axis=0))
+    normalized_usage = pd.concat(normalized_usage, axis=1)
+    normalized_usage
+
+    # discrete usage (Samples are assigned to GEPs with the highest usage)
+    discrete_usage = []
+    for k, subdf in usage.groupby(axis=1, level=[0,1]):
+        discrete_usage.append(subdf.eq(subdf.max(axis=1), axis=0).astype(float))
+    discrete_usage = pd.concat(discrete_usage, axis=1)
+    discrete_usage[usage.isnull()] = np.NaN
+
+    patients_to_geps = discrete_usage.loc[sample_to_patient.keys()].copy(deep=True)
+    patients_to_geps.index = patients_to_geps.index.map(sample_to_patient)
+    patients_to_geps = patients_to_geps.groupby(axis=0, level=[0,1]).any()
+
+    nodes = []
+    for node in G.nodes:
+        dataset_name, k_str, gep_str = node.split("|")
+        nodes.append((dataset_name, int(k_str), int(gep_str)))
+
+    for method in ('nsamples_continuous', 'nsamples_discrete', "npatients_discrete"):
+        if method == 'nsamples_continuous':
+            labels = normalized_usage[nodes].sum().apply(lambda x: "{:.1f}".format(x)).to_dict() # Label is number of samples
+            sizes = (normalized_usage[nodes].sum() * 5).to_dict() # Size is proportional to number of samples
+        elif method == 'nsamples_discrete':
+            labels = discrete_usage[nodes].sum().apply(lambda x: int(x)).to_dict() # Label is number of samples
+            sizes = (discrete_usage[nodes].sum() * 5).to_dict() # Size is proportional to number of samples
+        elif method == "npatients_discrete":
+            labels = patients_to_geps[nodes].sum().to_dict()
+            sizes = (patients_to_geps.sum() * 5).to_dict()
+        labels = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in labels.items()}
+        sizes = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in sizes.items()}
+        colors = [node.partition("|")[2] for node in G]
+        node_sizes = [(sizes[n] if n in sizes else 0) for n in G]
+        colors = [dataset_colors[node.split("|")[0]] for node in G]
+        fig, ax = plt.subplots(figsize=config.sns["plot_size"])
+        nx.draw(G, pos=layout,
+        with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color="#888888", font_size=3, ax=ax)
+        ax.legend(handles=dataset_legend)
+        ax.set_title(method)
+        plt.tight_layout()
+        fig.savefig(os.path.join(sns_output_dir, f"{method}.pdf"))
+
+    ### Categorical data overlay using spike plots ###
+    
+    def draw_circle_bar_plot(x, y, enrichments, colors, size, ax, draw_labels: bool=False, label_radius=0.2, label_font_size=1, draw_scale=False):
+        ### TODO: implement draw_scale functionality
+        if draw_scale:
+            raise NotImplementedError
+        previous = np.pi
+        for color, (label, enrichment) in zip(colors, enrichments.items()):
+            # calculate the points of the pie pieces
+            this = previous - 2 * np.pi / len(enrichments)
+            x_shape  = [0] + np.cos(np.linspace(previous, this, 40)).tolist() + [0]
+            y_shape  = [0] + np.sin(np.linspace(previous, this, 40)).tolist() + [0]
+            xy_shape = np.column_stack([x_shape, y_shape])
+            # print(label, previous, this)
+            # scatter each of the pie pieces
+            marker = {'marker':xy_shape, 's':np.abs(xy_shape).max()**2*enrichment*size, 'facecolor':color, 'linewidths':0}
+            ax.scatter([x], [y], **marker)
+            # text
+            if draw_labels:
+                a = (previous - np.pi / len(enrichments))
+                x_offset = label_radius * np.cos(a)
+                y_offset = label_radius * np.sin(a)
+                ax.text(x+x_offset, y+y_offset, label, rotation=np.rad2deg(a), ha="left", va="center", rotation_mode='anchor', fontsize=label_font_size)
+            previous = this
+
+    for dataset_name, dataset in config.datasets.items():
+        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
+        for annotation_layer, sample_to_class in metadata.items():
+            if len(sample_to_class.cat.categories) > 30:
+                continue
+            colordict = config.metadata_colors[annotation_layer]
+            if sample_to_class.isnull().any(): # add 
+                sample_to_class = sample_to_class.cat.add_categories("").fillna("")
+                colordict[""] = config.metadata_colors["missing_data"]
+            ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
+            ds_usage.index = ds_usage.index.map(sample_to_class)
+            category_counts_null = pd.Series(1, index=ds_usage.index).groupby(axis=0, level=0).sum()
+            category_ratios_null = category_counts_null.values / category_counts_null.sum()
+            
+            # Plot the network
+            fig, ax = plt.subplots(figsize=config.sns["plot_size"])
+            ax.set_axis_off()
+            ax.set_title(f"Dataset: {dataset_name}\nAnnotations: {annotation_layer}")
+            # nx.draw(G, pos=layout, with_labels=True, labels=labels, node_color="#AAAAAA", node_size=20, linewidths=0, width=0.2, font_size=2, edge_color="#888888", ax=ax)
+            nx.draw_networkx_edges(G, pos=layout, width=0.2, edge_color="#888888", ax=ax)
+            plotted_categories = set()
+            for node, column in ds_usage.iteritems():
+                node_str = f"{node[0]}|{node[1]}|{node[2]}"
+                if node_str in G and column.any():
+                    category_counts = column.groupby(axis=0, level=0).sum()
+                    category_ratios = category_counts / category_counts.sum()
+                    enrichments = category_ratios / category_ratios_null
+                    enrichments[enrichments < 1] = 1
+                    enrichments = np.log2(enrichments)
+                    plotted_categories.update(enrichments.index)
+                    color_list = category_counts.index.map(colordict)
+                    x, y = layout[node_str]
+                    draw_circle_bar_plot(x, y, enrichments, colors=color_list, size=config.sns["node_size"] * 10, ax=ax)
+
+            # Add legend
+            legend_bbox = [0.8,0.8,0.19, 0.19]
+            ax.add_patch(FancyBboxPatch(legend_bbox[:2], legend_bbox[2], legend_bbox[3], fc='#ffffff88', ec="#aaaaaa", boxstyle="round,pad=0.01", transform=ax.transAxes))
+            ax_legend = ax.inset_axes(legend_bbox)
+            ax_legend.set_axis_off()
+            ax_legend.set_ylim([0,1])
+            ax_legend.set_xlim([0,1])
+            draw_circle_bar_plot(
+                0.5, 0.5,
+                enrichments = pd.Series(1, index=ds_usage.index.sort_values().unique()),
+                colors=color_list, size=config.sns["node_size"]*16, draw_labels=True, label_font_size=6, ax=ax_legend)
+            plt.tight_layout()
+            os.makedirs(os.path.join(sns_output_dir, "annotated_networks", dataset_name), exist_ok=True)
+            fig.savefig(os.path.join(sns_output_dir, "annotated_networks", dataset_name, annotation_layer + ".pdf"))
+            fig.savefig(os.path.join(sns_output_dir, "annotated_networks", dataset_name, annotation_layer + ".png"), dpi=600)
+            plt.close(fig)
 
 cli.add_command(txt_to_h5ad)
 cli.add_command(update_h5ad_metadata)

@@ -8,6 +8,14 @@ cNMF Solution Neighborhood Space
 
 ### 1. Using `pip` to install the latest version from GitHub:
 
+Before installing cNMF-SNS from `pip`, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
+```
+conda create --name py39 python=3.9
+conda activate py39
+conda config --prepend channels conda-forge
+conda install anndata>=0.8.0 pandas numpy scipy>=1.9.0 matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz
+```
+
 If you use SSH authentication for GitHub, use the following:
 ```
 pip install git+ssh://git@github.com/MorrissyLab/cNMF-SNS.git
