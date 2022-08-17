@@ -560,16 +560,23 @@ def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborh
                 failed.append(iter_result)
         if failed:
             logging.error(
-                f"Postprocessing could not proceed because {(len(failed))} files from the factorization step are missing or empty:\n  - " + 
+                f"{(len(failed))} files from the factorization step are missing or empty:\n  - " + 
                 "\n  - ".join(failed)
             )
+        if failed and not skip_missing_iterations:
+            logging.error(
+                f"Postprocessing could not proceed. To skip missing iterations, use --skip_missing_iterations."
+            )
             sys.exit(1)
+        elif failed and skip_missing_iterations:
+            logging.warning("Missing files will be skipped")
         else:
-            # combine individual iterations
-            logging.info(f"Factorization outputs (individual iterations) were found for all values of k.")
-            logging.info(f"Merging iterations")
-            for k in sorted(set(run_params.n_components)):
-                cnmf_obj.combine_nmf(k, skip_missing_files=skip_missing_iterations)
+            logging.info(f"Factorization outputs (individual iterations) were found for all values of k. No missing files were detected.")
+
+        # combine individual iterations
+        logging.info(f"Merging iterations")
+        for k in sorted(set(run_params.n_components)):
+            cnmf_obj.combine_nmf(k, skip_missing_files=skip_missing_iterations)
     else:
         logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
     # calculate consensus GEPs and usages
