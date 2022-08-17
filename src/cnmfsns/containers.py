@@ -10,7 +10,7 @@ from glob import glob
 from cnmfsns.config import Config
 
 def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_density_threshold: float = None, local_neighborhood_size: float = None, force=False):
-    adata = read_h5ad(h5ad_path, backed="r+")
+    adata = read_h5ad(h5ad_path)
     adata.uns["cnmf_name"] = cnmf_name
     cnmf_data_loaded =  "cnmf_usage" in adata.obsm or\
                         "cnmf_gep_score" in adata.varm or\
@@ -77,4 +77,4 @@ def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_densit
     adata.uns["kvals"] = kvals
     logging.info(f"Writing h5ad file")  
 
-    adata.write_h5ad()
+    adata.write_h5ad(h5ad_path)

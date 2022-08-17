@@ -997,7 +997,7 @@ def create_network(output_dir):
     if layout_algorithm == "neato":
         layout = nx.nx_agraph.graphviz_layout(G, prog="neato", args='-Goverlap=true')
     elif layout_algorithm == "spring":
-        layout = nx.spring_layout(G, weight="corr")
+        layout = nx.spring_layout(G)
         layout = {node: list(coords) for node, coords in layout.items()}
     elif layout_algorithm == "community_weighted_spring":
         cws_weights = {
