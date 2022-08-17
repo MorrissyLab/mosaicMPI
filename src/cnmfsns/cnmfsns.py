@@ -532,12 +532,12 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
     '--local_neighborhood_size', type=float, default=0.3, show_default=True,
     help="Fraction of the number of replicates to use as nearest neighbors for local density filtering.")
 @click.option(
-    '--keep_individual_iterations', is_flag=True,
-    help="If specified, individual iteration files will be retained even after merging.")
+    '--skip_missing_iterations', is_flag=True,
+    help="If specified, consensus GEPs and usages will be calculated even though individual iterations are missing.")
 @click.option(
     '--force_h5ad_update', is_flag=True,
     help="If specified, overwrites cNMF results already saved to the .h5ad file.")
-def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborhood_size, keep_individual_iterations, force_h5ad_update):
+def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborhood_size, skip_missing_iterations, force_h5ad_update):
     """
     Perform post-processing routines on cNMF after factorization. This includes checking factorization outputs for completeness, combining individual
     iterations, calculating consensus GEPs and usage matrices, and creating the k-selection and annotated usage plots.
@@ -569,7 +569,7 @@ def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborh
             logging.info(f"Factorization outputs (individual iterations) were found for all values of k.")
             logging.info(f"Merging iterations")
             for k in sorted(set(run_params.n_components)):
-                cnmf_obj.combine_nmf(k, remove_individual_iterations=(not keep_individual_iterations))
+                cnmf_obj.combine_nmf(k, skip_missing_files=skip_missing_iterations)
     else:
         logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
     # calculate consensus GEPs and usages
