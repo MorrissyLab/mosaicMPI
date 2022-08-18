@@ -22,6 +22,7 @@ config_defaults = {
         "negative_corr_quantile": 0.95,
         },
     "sns": {
+        "edge_color": "#00000022",
         "community_algorithm": "greedy_modularity",
         "communities": {
             "greedy_modularity": {
@@ -37,7 +38,7 @@ config_defaults = {
             "spring": {},
             "community_weighted_spring": {
                 "within_community": 100,
-                "within_dataset": 3
+                "within_dataset": 1
             }
         }
         },

@@ -177,7 +177,7 @@ If you want to generate annotated heatmaps for usage matrices from the standard 
 
 Specify an output directory for your integration.
 
-A [TOML](https://toml.io/en/) configuration file is the most flexible way to configure cNMF-SNS. An example is found in `scripts/example_config.toml`. The minimal data to include in a TOML file is the paths to each of the datasets.
+A [TOML](https://toml.io/en/) configuration file is the most flexible way to configure cNMF-SNS. An example is found in `scripts/example_config.toml`. The minimal data to include in a TOML file is the paths to each of the datasets. Default values for other parameters will be used if not specified. 
 
 ```
 cnmfsns integrate -c config.toml -o output_directory
@@ -188,44 +188,15 @@ Alternatively, you can can also initialize a cNMF-SNS integration by providing a
 cnmfsns integrate -i file1.h5ad -i file2.h5ad -i file3.h5ad -o output_directory
 ```
 
-`cnmf integrate` proceeds through the following steps:
-  1. Selecting values of k to include in the network
-  2. Defining communities of GEPs
-  3. 
+Once the command has completed, outputs are located in `<output_directory>/integrate/`.
+- UpSet plot of OD Genes between datasets
+- plot correlation between cohorts
+- rank reduction plots to exclude high ranks with highly correlated GEPs
 
-### 2. Create network and define GEP communities
+### 2. Network-based analyses
 
 ```
 cnmfsns create-network -o output_directory
 ```
 
-### TOML configuration file
-
-Parameters for SNS integration are specified in the TOML configuration file. If none are chosen, default values for each parameter will be used. 
-
-### `cnmfsns initialize`
-
-- import multiple cnmf outputs for integration
-    - requires h5ad files from previous runs, or
-    - a config file (spec in progress, see example in 'scripts/example_config.toml')
-- specify an output directory for the integration being performed (eg. "gbm_proteomics")
-- UpSet plot of OD Genes between datasets
-- plot correlation between cohorts
-
-### `cnmfsns optimize-integration`
-
-- plot to compare integration using spearman and pearson
-- plot to decide range of k?
-- we need to prioritize communities that represent more than just 1 sample
-- collapse GEPs with similar
-- metrics for integration / shannon index?
-- metrics for communities 
-
-### `cnmfsns create-sns`
-
-- uses config information from 
-- creates SNS map and all plots without metadata (fast step)
-
-### `cnmfsns annotate-sns`
-
-- creates spike plots and related data outputs (slower steps)
+Outputs from this command are located in `<output_directory>/sns_networks/<timestamp>/`

@@ -574,8 +574,8 @@ def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborh
             logging.info(f"Factorization outputs (individual iterations) were found for all values of k. No missing files were detected.")
 
         # combine individual iterations
-        logging.info(f"Merging iterations")
         for k in sorted(set(run_params.n_components)):
+            logging.info(f"Merging iterations for k={k}")
             cnmf_obj.combine_nmf(k, skip_missing_files=skip_missing_iterations)
     else:
         logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
