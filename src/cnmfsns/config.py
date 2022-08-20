@@ -22,7 +22,7 @@ config_defaults = {
         "negative_corr_quantile": 0.95,
         },
     "sns": {
-        "edge_color": "#00000022",
+        "edge_color": "#dddddd20",
         "community_algorithm": "greedy_modularity",
         "communities": {
             "greedy_modularity": {
@@ -32,7 +32,7 @@ config_defaults = {
                 "resolution": 0.01
             }
         },
-        "layout_algorithm": "community_weighted_spring",   # "neato", "spring", "community_weighted_spring"
+        "layout_algorithm": "neato",   # "neato", "spring", "community_weighted_spring"
         "layouts": {  # parameters for each layout algorithm
             "neato": {},
             "spring": {},

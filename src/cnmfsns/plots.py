@@ -9,11 +9,7 @@ from anndata import read_h5ad
 
 def annotated_heatmap(
         data, title, metadata=None, metadata_colors=None,
-        row_cluster=True, col_cluster=True, row_dendrogram=True, col_dendrogram=True
-    ):
-    # HAC clustering (compute linkage matrices)
-    col_links = linkage(data, method='average', metric='euclidean')
-    row_links = linkage(data.T, method='average', metric='euclidean')
+        row_cluster=True, col_cluster=True, plot_col_dendrogram=True, show_sample_labels=True):
 
     n_columns = data.columns.shape[0]
     if metadata is None:
@@ -24,28 +20,41 @@ def annotated_heatmap(
     fig = plt.figure(figsize=[20, 2 + n_columns/3 + n_metadata_columns/4])
     fig.suptitle(title, fontsize=14)
     gs0 = matplotlib.gridspec.GridSpec(2,2, figure=fig,
-                                    height_ratios=[n_columns/3,1 + n_metadata_columns/4], hspace=0.05,
+                                    height_ratios=[n_columns/3, 1 + n_metadata_columns/4], hspace=0.05,
                                     width_ratios=[5,1], wspace=0.05)
+    
+    # subdivide heatmap and dendrogram
     gs1 = matplotlib.gridspec.GridSpecFromSubplotSpec(2,1, subplot_spec=gs0[0],
-                                                    height_ratios=[1,8],
+                                                    height_ratios=[1,n_columns],
                                                     hspace=0)
 
     # Heatmap
     ax_heatmap = fig.add_subplot(gs1[1])
     ax_col_dendrogram = fig.add_subplot(gs1[0], sharex=ax_heatmap)
-
-    col_dendrogram = dendrogram(col_links, color_threshold=0, ax=ax_col_dendrogram)
-    row_dendrogram = dendrogram(row_links, no_plot=True)
     ax_col_dendrogram.set_axis_off()
 
-    xind = col_dendrogram['leaves']
-    yind = row_dendrogram['leaves']
+    # HAC clustering (compute linkage matrices)
+    if col_cluster:
+        col_links = linkage(data, method='average', metric='euclidean')
+        if plot_col_dendrogram:
+            col_dendrogram = dendrogram(col_links, color_threshold=0, ax=ax_col_dendrogram)
+        else:
+            col_dendrogram = dendrogram(col_links, no_plot=True)
+        xind = col_dendrogram['leaves']
+    else:
+        xind = np.arange(0, data.shape[0])
+    if row_cluster:
+        row_links = linkage(data.T, method='average', metric='euclidean')
+        row_dendrogram = dendrogram(row_links, no_plot=True)
+        yind = row_dendrogram['leaves']
+    else:
+        yind = np.arange(0, data.shape[1])
 
     xmin,xmax = ax_col_dendrogram.get_xlim()
-    ax_heatmap.imshow(data.iloc[xind,yind].T, aspect='auto', extent=[xmin,xmax,0,1], cmap='YlOrRd', vmin=0, vmax=1)
-    ax_heatmap.yaxis.tick_right()
+    im_heatmap = ax_heatmap.imshow(data.iloc[xind,yind].T, aspect='auto', extent=[xmin,xmax,0,1], cmap='YlOrRd', vmin=0, vmax=1, interpolation='none')
     ax_heatmap.set_yticks((data.columns.astype("int").to_series() - 0.5).div(data.shape[1]))
     ax_heatmap.set_yticklabels(data.columns[yind][::-1])
+    ax_heatmap.set_ylabel("GEP", rotation=0, ha='right', va='center')
     ax_heatmap.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
     
 
@@ -53,11 +62,11 @@ def annotated_heatmap(
     if metadata is not None:
         # data and metadata must have the same index
         metadata = metadata.loc[data.index]
-        #### TODO: implement check that all metadata values have corresponding color values
         missing_data_color = metadata_colors["missing_data"]
     gs2 = matplotlib.gridspec.GridSpecFromSubplotSpec(metadata.shape[1], 1, subplot_spec=gs0[2])
     for i, (track, annot) in enumerate(metadata.iteritems()):
         ax = fig.add_subplot(gs2[i], sharex=ax_heatmap)
+        ax.set_facecolor(missing_data_color)
         if annot.dtype == "category" or annot.dtype == "object":
             ordered_rgb = annot.iloc[xind].replace(metadata_colors[track])
             if ordered_rgb.isnull().any():
@@ -65,39 +74,53 @@ def annotated_heatmap(
                 ordered_rgb = ordered_rgb.fillna(missing_data_color)
             ordered_rgb = ordered_rgb.astype("object").map(matplotlib.colors.to_rgb)
             ordered_rgb = np.array([list(rgb) for rgb in ordered_rgb])
-            ax.imshow(np.stack([ordered_rgb, ordered_rgb]), aspect='auto', extent=[xmin,xmax,0,1])
+            ax.imshow(np.stack([ordered_rgb, ordered_rgb]), aspect='auto', extent=[xmin,xmax,0,1], interpolation='none')
         else:
-            ax.imshow(np.stack([annot.iloc[xind],annot.iloc[xind]]), aspect='auto', extent=[xmin,xmax,0,1], cmap='Blues')
+            ax.imshow(np.stack([annot.iloc[xind],annot.iloc[xind]]), aspect='auto', extent=[xmin,xmax,0,1], cmap='Blues', interpolation='none')
         ax.set_yticks([])
         ax.set_ylabel(track, rotation=0, ha='right', va='center')
         if ax.get_subplotspec().is_last_row():
-            ax.set_xticklabels(data.index[xind], rotation=90)
+            if show_sample_labels:
+                ax.set_xticks(np.linspace(0, 1, data.shape[0], endpoint=False) + 1/(2 * data.shape[0]))
+                ax.set_xticklabels(data.index[xind], rotation=90)
+            else:
+                ax.set_xticks([])
         else:
             ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-    # Legend
-    from matplotlib.patches import Patch
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+    
+    
+    # Colormap for heatmap
     ax = fig.add_subplot(gs0[1])
+    ax.set_axis_off()
+    plt.colorbar(im_heatmap, ax=ax, location="top")
+    
+    # Category Legend
+    from matplotlib.patches import Patch
+    ax = fig.add_subplot(gs0[3])
     # Add legend
     legend_elements = []
     for track, color_def in metadata_colors.items():
         if track in metadata.columns:
             legend_elements.append(Patch(label=track, facecolor='white', edgecolor=None, ))
             for cat, color in color_def.items():
-                if cat in metadata[track].values:
+                if cat in metadata[track].astype("category").cat.categories:
                     legend_elements.append(Patch(label=cat, facecolor=color, edgecolor=None))
-            if metadata[track].isnull().any():
-                legend_elements.append(Patch(label="Other", facecolor=missing_data_color, edgecolor=None))
+            # if metadata[track].isnull().any():
+            #     legend_elements.append(Patch(label="Other", facecolor=missing_data_color, edgecolor=None))
 
     ax.legend(handles=legend_elements, loc='upper left')
     ax.set_axis_off()
     return fig
 
-def plot_annotated_usages(df, metadata, metadata_colors, title, filename):
+def plot_annotated_usages(df, metadata, metadata_colors, title, filename, cluster_geps, cluster_samples, show_sample_labels):
     samples = df.index.to_series()
     df = df.div(df.sum(axis=1), axis=0)
     annotations = metadata.loc[samples]
-    annotations = annotations[[c for c in annotations.columns if c in metadata_colors]]
-    fig = annotated_heatmap(data=df, metadata=annotations, metadata_colors=metadata_colors, title=title)
+    fig = annotated_heatmap(data=df, metadata=annotations, metadata_colors=metadata_colors, title=title, row_cluster=cluster_geps, col_cluster=cluster_samples, show_sample_labels=show_sample_labels)
     fig.savefig(filename, transparent=False, bbox_inches = "tight")
     plt.close(fig)  
     return fig

@@ -615,7 +615,11 @@ def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborh
 @click.option(
     '--max_categories_per_layer', type=int,
     help="Filter metadata layers by the number of categories. This parameter is useful to simplify heatmaps with too many annotations.")
-def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categories_per_layer):
+@click.option(
+    '--hide_sample_labels', is_flag=True,
+    help="Hide sample labels on usage heatmap")
+
+def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categories_per_layer, hide_sample_labels):
     """
     Create heatmaps of usages with annotation tracks.
     """
@@ -645,10 +649,11 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
         logging.info(f"Creating annotated usage heatmap for k={k}")
         k_usage = usage.loc[:, str(k)]
         cnmf_name = adata.uns["cnmf_name"]
-        ldt = adata.uns["ldt"]
-        title = f"{cnmf_name} k={k} ldt={ldt}"
+        title = f"{cnmf_name} k={k}"
         filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{k:03}.pdf")
-        plot_annotated_usages(df=k_usage, metadata=metadata, metadata_colors=cfg.metadata_colors, title=title, filename=filename)
+        plot_annotated_usages(
+            df=k_usage, metadata=metadata, metadata_colors=cfg.metadata_colors, title=title, filename=filename,
+            cluster_samples=True, cluster_geps=False, show_sample_labels=(not hide_sample_labels))
 
 @click.command()
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
@@ -781,11 +786,14 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
         fig.savefig(os.path.join(output_dir, "integrate", f"{dataset_name}.rank_reduction.pdf"))
         fig.savefig(os.path.join(output_dir, "integrate", f"{dataset_name}.rank_reduction.png"))
 
-    # Pairwise correlation thresholds from unfiltered correlation matrix
+    # Pairwise correlation thresholds from unfiltered correlation matrix 
     pairwise_thresholds = []
     for row, dataset_row in enumerate(tril.index.levels[0]):
         for col, dataset_col in enumerate(tril.columns.levels[0]):
             distr = tril.loc[dataset_row, dataset_col].values.flatten()
+
+            #TODO Currently calculates it on all correlations, not max-k filtered
+
             if not all(np.isnan(distr)):
                 pairwise_thresholds.append({
                     "dataset_row": dataset_row,
@@ -884,7 +892,7 @@ def create_network(output_dir):
 
     corr_path = os.path.join(output_dir, "integrate", config.integration["corr_method"] + ".df.npz")
     if not os.path.exists(corr_path):
-        logging.error(f"No correlation matrix found at {corr_path}. Make sure you have run `cnmfsns integrate` before running `cnmfsns create-sns`.")
+        logging.error(f"No correlation matrix found at {corr_path}. Make sure you have run `cnmfsns integrate` before running `cnmfsns create-network`.")
     corr = load_df_from_npz(corr_path)
     logging.info(f"Loaded correlation matrix from {corr_path}")
     # Check that rows and columns of correlation matrix are identical
@@ -1206,6 +1214,7 @@ def create_network(output_dir):
         ax.set_title(method)
         plt.tight_layout()
         fig.savefig(os.path.join(sns_output_dir, f"{method}.pdf"))
+        fig.savefig(os.path.join(sns_output_dir, f"{method}.png"), dpi=600)
 
     ### Categorical data overlay using spike plots ###
     
