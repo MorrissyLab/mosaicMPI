@@ -654,6 +654,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
         plot_annotated_usages(
             df=k_usage, metadata=metadata, metadata_colors=cfg.metadata_colors, title=title, filename=filename,
             cluster_samples=True, cluster_geps=False, show_sample_labels=(not hide_sample_labels))
+            
 
 @click.command()
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")

@@ -67,7 +67,7 @@ def annotated_heatmap(
     for i, (track, annot) in enumerate(metadata.iteritems()):
         ax = fig.add_subplot(gs2[i], sharex=ax_heatmap)
         ax.set_facecolor(missing_data_color)
-        if annot.dtype == "category" or annot.dtype == "object":
+        if pd.api.types.is_categorical_dtype(annot) or pd.api.types.is_object_dtype(annot):
             ordered_rgb = annot.iloc[xind].replace(metadata_colors[track])
             if ordered_rgb.isnull().any():
                 ordered_rgb = ordered_rgb.cat.add_categories(missing_data_color)
@@ -81,7 +81,8 @@ def annotated_heatmap(
         ax.set_ylabel(track, rotation=0, ha='right', va='center')
         if ax.get_subplotspec().is_last_row():
             if show_sample_labels:
-                ax.set_xticks(np.linspace(0, 1, data.shape[0], endpoint=False) + 1/(2 * data.shape[0]))
+                # print(ax.get_xticks())
+                # ax.set_xticks(np.linspace(0, 1, data.shape[0], endpoint=False) + 1/(2 * data.shape[0]))
                 ax.set_xticklabels(data.index[xind], rotation=90)
             else:
                 ax.set_xticks([])
