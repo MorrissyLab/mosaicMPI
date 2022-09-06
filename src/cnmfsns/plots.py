@@ -2,10 +2,13 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib
+from matplotlib.lines import Line2D
+from matplotlib.patches import FancyBboxPatch
 import matplotlib.pyplot as plt
 import upsetplot
 from scipy.cluster.hierarchy import linkage, dendrogram
 from anndata import read_h5ad
+import networkx as nx
 
 def annotated_heatmap(
         data, title, metadata=None, metadata_colors=None,
@@ -257,3 +260,118 @@ def plot_annotated_geps_by_community(usage, config, communities):
         fig.suptitle("Community")
         figs[dataset_name] = fig
     return figs
+
+def plot_community_by_dataset_rank(communities, config):
+    """
+    Plot communities by dataset and rank representation
+    """
+
+    marker_style = {
+        1: ("s", 30),  # 1 factor: square markers, size 30
+        2: (2, 30)     # 2 factors: marker #2 (up tick), size 30
+        }
+    dataset_colors = {ds: ds_attr["color"] for ds, ds_attr in config.datasets.items()}
+
+    fig, axes = plt.subplots(1, len(config.datasets)+1, figsize=[1 + len(config.datasets)* 5,1 + len(communities)/4], sharex=True, sharey=True)
+    for rownum, dataset in enumerate(config.datasets):
+        for community, members in communities.items():
+            counts = pd.Series([m.rpartition("|")[0] for m in members]).value_counts()
+            
+            # plot line if any factors are present
+            line_x = []
+            line_y = []
+            for pos, rank in enumerate(config.datasets[dataset]["selected_k"]):
+                line_x.append(pos)
+                if f"{dataset}|{rank}" in counts.index:
+                    line_y.append(community)
+                else:
+                    line_y.append(np.NaN)
+            axes[rownum].plot(line_x, line_y, color=dataset_colors[dataset], linewidth=2)
+            
+            for count, style in marker_style.items():
+                # plot different markers depending on how many factors are present:
+                x = []
+                y = []
+                for pos, rank in enumerate(config.datasets[dataset]["selected_k"]):
+                    factor_prefix = f"{dataset}|{rank}"
+                    if factor_prefix in counts.index and counts[factor_prefix] == count:
+                        x.append(pos)
+                        y.append(community)
+                axes[rownum].scatter(x, y, color=dataset_colors[dataset], marker=style[0], s=style[1])
+        axes[rownum].set_yticks(list(communities.keys()))
+        axes[rownum].set_xticks(list(range(len(config.datasets[dataset]["selected_k"]))))
+        axes[rownum].set_xticklabels(config.datasets[dataset]["selected_k"])
+        axes[rownum].set_title(dataset)
+
+    fig.supxlabel("Rank (k)")
+    fig.supylabel("Community")
+
+
+    # Add legend
+    cbdrlegend = []
+    cbdrlegend.append(Line2D([0],[0], marker='s', color='black', label="1 GEP", markerfacecolor="black", markersize=8))
+    cbdrlegend.append(Line2D([0],[0], marker=2, color='black', label="2 GEPs", markerfacecolor="black", markersize=8))
+    cbdrlegend.append(Line2D([0],[0], marker=None, color='black', label="3+ GEPs", markerfacecolor="black", markersize=8))
+    axes[-1].legend(handles=cbdrlegend, loc='center', frameon=False)
+    axes[-1].set_axis_off()
+    plt.tight_layout()
+    return fig
+
+            
+def draw_circle_bar_plot(x, y, enrichments, colors, size, ax, draw_labels: bool=False, label_radius=0.2, label_font_size=1, draw_scale=False):
+    ### TODO: implement draw_scale functionality
+    if draw_scale:
+        raise NotImplementedError
+    previous = np.pi
+    for color, (label, enrichment) in zip(colors, enrichments.items()):
+        # calculate the points of the pie pieces
+        this = previous - 2 * np.pi / len(enrichments)
+        x_shape  = [0] + np.cos(np.linspace(previous, this, 40)).tolist() + [0]
+        y_shape  = [0] + np.sin(np.linspace(previous, this, 40)).tolist() + [0]
+        xy_shape = np.column_stack([x_shape, y_shape])
+        # print(label, previous, this)
+        # scatter each of the pie pieces
+        marker = {'marker':xy_shape, 's':np.abs(xy_shape).max()**2*enrichment*size, 'facecolor':color, 'linewidths':0}
+        ax.scatter([x], [y], **marker)
+        # text
+        if draw_labels:
+            a = (previous - np.pi / len(enrichments))
+            x_offset = label_radius * np.cos(a)
+            y_offset = label_radius * np.sin(a)
+            ax.text(x+x_offset, y+y_offset, label, rotation=np.rad2deg(a), ha="left", va="center", rotation_mode='anchor', fontsize=label_font_size)
+        previous = this
+
+def plot_overrepresentation_network(graph, layout, title, overrepresentation, colordict, plot_size, node_size, edge_weights=None):
+
+    # Plot the network
+    fig, ax = plt.subplots(figsize=plot_size)
+    ax.set_axis_off()
+    # nx.draw(G, pos=layout, with_labels=True, labels=labels, node_color="#AAAAAA", node_size=20, linewidths=0, width=0.2, font_size=2, edge_color="#888888", ax=ax)
+    if edge_weights is None:
+        width = 0.2
+    else:
+        width = np.array(list(nx.get_edge_attributes(graph, edge_weights).values()))
+        width = width / np.max(width)
+
+    nx.draw_networkx_edges(graph, pos=layout, edge_color="#888888", ax=ax, width=width)
+    plotted_categories = set()
+    for node, gep_or in overrepresentation.iteritems():
+        if node in graph and gep_or.any():
+            plotted_categories.update(gep_or.index)
+            color_list = gep_or.index.map(colordict)
+            x, y = layout[node]
+            draw_circle_bar_plot(x, y, gep_or, colors=color_list, size=node_size * 10, ax=ax)
+
+    # Add legend
+    legend_bbox = [0.8,0.8,0.19, 0.19]
+    ax.add_patch(FancyBboxPatch(legend_bbox[:2], legend_bbox[2], legend_bbox[3], fc='#ffffff88', ec="#aaaaaa", boxstyle="round,pad=0.01", transform=ax.transAxes))
+    ax_legend = ax.inset_axes(legend_bbox)
+    ax_legend.set_axis_off()
+    ax_legend.set_ylim([0,1])
+    ax_legend.set_xlim([0,1])
+    draw_circle_bar_plot(
+        0.5, 0.5,
+        enrichments = pd.Series(1, index=gep_or.index.sort_values().unique()),
+        colors=overrepresentation.index.map(colordict), size=node_size*16, draw_labels=True, label_font_size=6, ax=ax_legend)
+    plt.tight_layout()
+    return fig

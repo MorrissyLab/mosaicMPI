@@ -7,6 +7,8 @@ import logging
 import collections.abc
 from copy import deepcopy
 from matplotlib import colors
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from datetime import datetime
 import distinctipy
 import os
@@ -136,3 +138,19 @@ class Config(SimpleNamespace):
                 new_colors = [colors.to_hex(c) for c in new_colors]
                 for value, color in zip(missing_values, new_colors):
                     self.metadata_colors[layer][value] = color
+
+    def plot_metadata_colors_legend(self):
+        # Category Legend
+        fig, ax = plt.subplots(figsize=[7, 200])
+        # Add legend
+        legend_elements = []
+        legend_elements.append(Patch(label="Missing Data", facecolor=self.metadata_colors["missing_data"], edgecolor=None))
+        for track, color_def in self.metadata_colors.items():
+            if isinstance(color_def, dict):
+                legend_elements.append(Patch(label="   " + track, facecolor='white', edgecolor=None))
+                for cat, color in color_def.items():
+                    legend_elements.append(Patch(label=cat, facecolor=color, edgecolor=None))
+        ax.legend(handles=legend_elements, loc='upper left')
+        ax.set_axis_off()
+        plt.tight_layout()
+        return fig
