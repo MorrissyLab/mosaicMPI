@@ -18,18 +18,19 @@ from anndata import read_h5ad
 config_defaults = {
     "integrate": {
         "corr_method": "pearson",
-        "max_median_corr": 0.01,
+        "max_median_corr": 0,
         "negative_corr_quantile": 0.95,
         },
     "sns": {
-        "edge_color": "#dddddd20",
-        "community_algorithm": "greedy_modularity",
+        "edge_color": "#bbbbbb20",
+        "edge_weight": "none",
+        "community_algorithm": "leiden",
         "communities": {
             "greedy_modularity": {
                 "resolution": 2
             },
             "leiden": {
-                "resolution": 0.01
+                "resolution": 0.0
             }
         },
         "layout_algorithm": "neato",   # "neato", "spring", "community_weighted_spring"

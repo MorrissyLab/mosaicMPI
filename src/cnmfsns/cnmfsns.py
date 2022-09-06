@@ -11,12 +11,13 @@ import pandas as pd
 import scipy.sparse as sp
 from functools import partial
 from multiprocessing.pool import Pool
+from datetime import datetime
 from typing import Optional, Mapping
 from anndata import AnnData, read_h5ad
 from cnmfsns.containers import add_cnmf_results_to_h5ad
 from cnmfsns.config import Config
 from cnmfsns.odg import model_overdispersion, odg_plots, fetch_hgnc_protein_coding_genes
-from cnmfsns.plots import plot_annotated_usages, plot_rank_reduction, plot_pairwise_corr, plot_pairwise_corr_overlaid, plot_genelist_upsets
+from cnmfsns.plots import plot_annotated_geps_by_community, plot_annotated_usages, plot_rank_reduction, plot_pairwise_corr, plot_pairwise_corr_overlaid, plot_genelist_upsets
 from cnmfsns import __version__
 
 def get_and_check_consensus(k, cnmf_obj, local_density_threshold, local_neighborhood_size):
@@ -191,7 +192,7 @@ def update_h5ad_metadata(input_h5ad, metadata):
             print(f"   {value_type}:", count)
 
     adata = read_h5ad(input_h5ad)
-    adata.obs = metadata
+    adata.obs = metadata.reindex(index=adata.obs.index)
     adata.write(input_h5ad)
 
 
@@ -872,28 +873,56 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
         
 
 @click.command()
-@click.option('-o', '--output_dir', type=click.Path(file_okay=False, exists=True), required=True, help="Output directory for cNMF-SNS results generated using `cnmfsns integrate`")
-def create_network(output_dir):
-    ### TODO: Too much code, move to submodule
+@click.option(
+    '-o', '--output_dir', type=click.Path(file_okay=False, exists=True), required=True,
+    help="Output directory for cNMF-SNS results generated using `cnmfsns integrate`")
+@click.option(
+    '-n', '--name', type=str, default=datetime.strftime(datetime.now(), "%Y-%m-%d_%H%M%S"),
+    help="Name for specific integration. Output from this step will be in [output_dir]/sns_networks/[name]/...")
+@click.option(
+    '-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), 
+    help="TOML config file. Defaults to file output from `cnmfsns integrate` step: [output_dir]/config.toml")
+def create_network(output_dir, name, config_toml):
     import matplotlib.pyplot as plt
     import networkx as nx
     import seaborn as sns
-    import networkx as nx
     import tomli_w
     import distinctipy
-    from datetime import datetime
-    import matplotlib.pyplot as plt
+    from scipy.stats.mstats import rankdata
     from matplotlib.lines import Line2D
     from matplotlib.patches import FancyBboxPatch
 
-    output_toml = os.path.join(output_dir, "config.toml")
-    config = Config.from_toml(output_toml)
-    sns_output_dir = os.path.join(output_dir, "sns_networks", datetime.now().strftime("%Y-%m-%d_%H%M%S"))
-    os.makedirs(sns_output_dir, exist_ok=False)
+    # TODO: Move some code to submodule
+
+    if config_toml is None:
+        config = Config.from_toml(os.path.join(output_dir, "config.toml"))
+    else:
+        config = Config.from_toml(config_toml)
+
+    # Category Legend
+    from matplotlib.patches import Patch
+    fig, ax = plt.subplots(figsize=[7, 100])
+    # Add legend
+    legend_elements = []
+    legend_elements.append(Patch(label="Missing Data", facecolor=config.metadata_colors["missing_data"], edgecolor=None))
+    for track, color_def in config.metadata_colors.items():
+        if isinstance(color_def, dict):
+            legend_elements.append(Patch(label="   " + track, facecolor='white', edgecolor=None))
+            for cat, color in color_def.items():
+                legend_elements.append(Patch(label=cat, facecolor=color, edgecolor=None))
+
+    ax.legend(handles=legend_elements, loc='upper left')
+    ax.set_axis_off()
+    plt.tight_layout()
+    fig.savefig(os.path.join(output_dir, "annotation_legend.pdf"))
+    plt.close(fig)
+
+    sns_output_dir = os.path.join(output_dir, "sns_networks", name)
+    os.makedirs(sns_output_dir, exist_ok=True)
 
     corr_path = os.path.join(output_dir, "integrate", config.integration["corr_method"] + ".df.npz")
     if not os.path.exists(corr_path):
-        logging.error(f"No correlation matrix found at {corr_path}. Make sure you have run `cnmfsns integrate` before running `cnmfsns create-network`.")
+        logging.error(f"No correlation matrix found at {corr_path}. Make sure you have run `cnmfsns integrate` before running `cnmfsns create-sns`.")
     corr = load_df_from_npz(corr_path)
     logging.info(f"Loaded correlation matrix from {corr_path}")
     # Check that rows and columns of correlation matrix are identical
@@ -901,9 +930,20 @@ def create_network(output_dir):
     # Lower triangular matrix contains each edge only once and removes diagonal (self-correlation)
     tril = corr.where(np.tril(np.ones(corr.shape), k=-1).astype(bool))
 
+    # create quantile version of tril where correlations are replaced by quantile of intra-and inter-dataset correlations
+    tril_quantile = tril.copy(deep=True)
+    for ds1 in config.datasets:
+        for ds2 in config.datasets:
+            chunk = tril_quantile.loc[tril_quantile.index.get_level_values(0) == ds1, tril_quantile.index.get_level_values(0) == ds2]
+            flattened_ranks = pd.Series(chunk.values.flatten()).rank() - 1
+            flattened_quantiles = (flattened_ranks / flattened_ranks.max()).values
+            quantile_chunk = pd.DataFrame(data=np.reshape(flattened_quantiles, newshape=chunk.values.shape), index=chunk.index, columns=chunk.columns)
+            tril_quantile.loc[tril_quantile.index.get_level_values(0) == ds1, tril_quantile.index.get_level_values(0) == ds2] = quantile_chunk      
+
     # filter to selected k in each dataset
     selected_k_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if gep[1] in config.datasets[gep[0]]["selected_k"]])
     subset = tril.loc[selected_k_index, selected_k_index]
+    subset_quantile = tril_quantile.loc[selected_k_index, selected_k_index]
 
     # filter edges by inter and intra-dataset thresholds
     min_corr_thresholds = pd.read_table(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.txt"))
@@ -911,28 +951,53 @@ def create_network(output_dir):
         dataset_row, dataset_col, threshold = row
         filtered_chunk = subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col] <= threshold
         subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col] = subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col].mask(filtered_chunk)
+        subset_quantile.loc[subset_quantile.index.get_level_values(0) == dataset_row, subset_quantile.columns.get_level_values(0) == dataset_col] = subset_quantile.loc[subset_quantile.index.get_level_values(0) == dataset_row, subset_quantile.columns.get_level_values(0) == dataset_col].mask(filtered_chunk)
 
     subset.index = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset.index])
     subset.columns = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset.columns])
+    subset_quantile.index = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset_quantile.index])
+    subset_quantile.columns = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset_quantile.columns])
 
     # Build graph
     links = subset.stack().reset_index()
     links.columns = ['node1', 'node2', 'corr']
-    G = nx.from_pandas_edgelist(links, 'node1', 'node2', "corr")
+    links_quantile = subset_quantile.stack().reset_index()
+    links_quantile.columns = ['node1', 'node2', 'prefilter_quantile']
+    links = links.merge(links_quantile)
+
+    # add post-filter quantile column
+    for ds1 in config.datasets:
+        for ds2 in config.datasets:
+            ds_pair_indices = (links['node1'].str.split("|").str[0] == ds1) & (links['node2'].str.split("|").str[0] == ds2)
+            links_ds_pair = links.loc[ds_pair_indices]
+            links.loc[ds_pair_indices, "postfilter_quantile"] = links_ds_pair["corr"].rank() / links_ds_pair["corr"].count()
+
+    G = nx.from_pandas_edgelist(links, 'node1', 'node2', ["corr", "prefilter_quantile", "postfilter_quantile"])
+
+    weight_method = config.sns["edge_weight"]
+    if weight_method == "none":
+        weight_method = None
+    elif weight_method not in ("corr", "prefilter_quantile", "postfilter_quantile"):
+        logging.error(f"{weight_method} is not a valid weight_method. Please choose one of `corr`, `prefilter_quantile`, `postfilter_quantile`")
 
     # Community search
     community_algorithm = config.sns["community_algorithm"]
     if community_algorithm == "greedy_modularity":
         from networkx.algorithms.community.modularity_max import greedy_modularity_communities
+        best_n_param = config.sns["communities"]["greedy_modularity"]["best_n"]
+        if best_n_param == 'none':
+            best_n_param = None
         communities = {
             name: nodes for name, nodes in
-            enumerate(greedy_modularity_communities(G, weight="corr", resolution=config.sns["communities"]["greedy_modularity"]["resolution"]), start=1)
+            enumerate(greedy_modularity_communities(G, resolution=config.sns["communities"]["greedy_modularity"]["resolution"],
+                weight=weight_method,
+                best_n=best_n_param), start=1)
             }
     elif community_algorithm == "leiden":
         import igraph
         G_igraph = igraph.Graph.from_networkx(G)
         communities = {}
-        leiden_comm = G_igraph.community_leiden(resolution_parameter=config.sns["communities"]["leiden"]["resolution"], weights="corr")
+        leiden_comm = G_igraph.community_leiden(resolution_parameter=config.sns["communities"]["leiden"]["resolution"], weights=weight_method)
         for community, member_nodes in enumerate(leiden_comm, start=1):
             communities[community] = G_igraph.vs[member_nodes]['_nx_name']
     else:
@@ -1016,13 +1081,17 @@ def create_network(output_dir):
         layout = nx.spring_layout(G)
         layout = {node: list(coords) for node, coords in layout.items()}
     elif layout_algorithm == "community_weighted_spring":
-        cws_weights = {
-            True: config.sns["layouts"]["community_weighted_spring"]["within"],
-            False: config.sns["layouts"]["community_weighted_spring"]["between"]
-            }
+        def cws_weight(edge):
+            weight = 1
+            if gep_communities[edge["node1"]] == gep_communities[edge["node2"]]:
+                weight *= config.sns["layouts"]["community_weighted_spring"]["within_community"]
+            if edge["node1"].split("|")[0] == edge["node2"].split("|")[0]:
+                weight *= config.sns["layouts"]["community_weighted_spring"]["within_dataset"]
+            return weight
+        links["community_weight"] = links.apply(cws_weight, axis=1)
         edge_attr = dict(zip(
             (tuple(x) for x in links.iloc[:, 0:2].values),
-            (links["node1"].map(gep_communities) == links["node2"].map(gep_communities)).map(cws_weights)))
+            links.apply(cws_weight, axis=1)))
         nx.set_edge_attributes(G, edge_attr, name="community_weight")
         layout = nx.spring_layout(G, weight="community_weight")
         layout = {node: list(coords) for node, coords in layout.items()}
@@ -1054,7 +1123,7 @@ def create_network(output_dir):
     fig, ax = plt.subplots(figsize=config.sns["plot_size"])
     ax.set_aspect(1)
     ax.set_title("Network Layout")
-    nx.draw(G, pos=layout, node_color="#444444", node_size=config.sns["node_size"], linewidths=0, width=0.2, edge_color="#888888", font_size=2)
+    nx.draw(G, pos=layout, node_color="#444444", node_size=config.sns["node_size"], linewidths=0, width=0.2, edge_color=config.sns["edge_color"], font_size=2)
     plt.tight_layout()
     fig.savefig(os.path.join(sns_output_dir, "layout.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "layout.png"), dpi=600)
@@ -1070,7 +1139,7 @@ def create_network(output_dir):
     for node in G:
         colors.append(dataset_colors[node.split("|")[0]])
 
-    # Labels without cohorts
+    # Labels without dataset names
     labels = {}
     for node in G:
         labels[node] = node.partition("|")[2]
@@ -1086,9 +1155,9 @@ def create_network(output_dir):
     # Plot nodes colored by dataset
     fig, ax = plt.subplots(figsize=config.sns["plot_size"])
     nx.draw(G, pos=layout,
-            with_labels=False, node_color=colors, labels=labels, node_size=30, linewidths=0, width=0.2, edge_color="#888888", font_size=4)
+            with_labels=False, node_color=colors, labels=labels, node_size=30, linewidths=0, width=0.2, edge_color=config.sns["edge_color"], font_size=4)
     ax.legend(handles=dataset_legend)
-    ax.set_title("Cohorts")
+    ax.set_title("Datasets")
     plt.tight_layout()
     # Save Figure
     fig.savefig(os.path.join(sns_output_dir, "datasets.pdf"))
@@ -1097,13 +1166,13 @@ def create_network(output_dir):
     # Plot the network with labelled nodes and radius inversely proportional to k
     fig, ax = plt.subplots(figsize=config.sns["plot_size"])
     nx.draw(G, pos=layout,
-            with_labels=True, node_color=colors, labels=labels, node_size=node_sizes, linewidths=0, width=0.2, edge_color="#888888", font_size=4)
+            with_labels=True, node_color=colors, labels=labels, node_size=node_sizes, linewidths=0, width=0.2, edge_color=config.sns["edge_color"], font_size=4)
     ax.legend(handles=dataset_legend)
-    ax.set_title("Cohorts")
+    ax.set_title("Datasets")
     plt.tight_layout()
     # Save Figure
-    fig.savefig(os.path.join(sns_output_dir, "cohorts_labelled.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "cohorts_labelled.png"), dpi=600)
+    fig.savefig(os.path.join(sns_output_dir, "gep_labels.pdf"))
+    fig.savefig(os.path.join(sns_output_dir, "gep_labels.png"), dpi=600)
 
     ### Plot network colored by community ###
     colors = [community_colors[gep_communities[node]] for node in G]
@@ -1111,7 +1180,7 @@ def create_network(output_dir):
     # Plot the network
     fig, ax = plt.subplots(figsize=config.sns["plot_size"])
     nx.draw(G, pos=layout,
-            with_labels=False, node_color=colors, node_size=config.sns["node_size"], linewidths=0, width=0.2, edge_color="#888888")
+            with_labels=False, node_color=colors, node_size=config.sns["node_size"], linewidths=0, width=0.2, edge_color=config.sns["edge_color"])
 
     # Add legend
     legend_elements = []
@@ -1119,7 +1188,6 @@ def create_network(output_dir):
         legend_elements.append(Line2D([0], [0], marker='o', color='w', label=name, markerfacecolor=color, markersize=10))
     ax.set_title("Network Communities")
     ax.legend(handles=legend_elements)
-    plt.tight_layout()
     # Save Figure
     fig.savefig(os.path.join(sns_output_dir, "communities.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "communities.png"), dpi=600)
@@ -1129,15 +1197,15 @@ def create_network(output_dir):
     index = pd.MultiIndex.from_product([communities, config.datasets], names=["Community", "Dataset"])
     max_corr_communities = pd.DataFrame(index=index, columns=index)
 
-    for (community_1, cohort_1) in index:
-        nodes_1 = [(l[0], int(l[1]), int(l[2])) for l in pd.Index(list(communities[community_1])).str.split("|") if l[0] == cohort_1]
+    for (community_1, dataset_1) in index:
+        nodes_1 = [(l[0], int(l[1]), int(l[2])) for l in pd.Index(list(communities[community_1])).str.split("|") if l[0] == dataset_1]
         if nodes_1:
             nodes_1 = pd.MultiIndex.from_tuples(nodes_1)
-            for (community_2, cohort_2) in index:
-                nodes_2 = [(l[0], int(l[1]), int(l[2])) for l in pd.Index(list(communities[community_2])).str.split("|") if l[0] == cohort_2]
+            for (community_2, dataset_2) in index:
+                nodes_2 = [(l[0], int(l[1]), int(l[2])) for l in pd.Index(list(communities[community_2])).str.split("|") if l[0] == dataset_2]
                 if nodes_2:
                     nodes_2 = pd.MultiIndex.from_tuples(nodes_2)
-                    max_corr_communities.loc[(community_1, cohort_1), (community_2, cohort_2)] = corr.loc[nodes_1, nodes_2].max().max()
+                    max_corr_communities.loc[(community_1, dataset_1), (community_2, dataset_2)] = corr.loc[nodes_1, nodes_2].max().max()
 
     max_corr_communities = max_corr_communities.astype("float").dropna(how="all", axis=0).dropna(how="all", axis=1).reorder_levels([1,0], axis=0).reorder_levels([1,0], axis=1)
     fig, ax = plt.subplots(figsize=[16,16])
@@ -1150,8 +1218,8 @@ def create_network(output_dir):
     fig, ax = plt.subplots(figsize=[16,16])
     sns.heatmap(max_corr_communities, xticklabels=True, yticklabels=True, cmap="RdBu_r", center=0, vmin=-1, vmax=1, ax=ax)
     fig.suptitle("Maximum correlation between GEPs grouped by dataset and community")
-    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_cohorts.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_cohorts.png"), dpi=600)
+    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_datasets.pdf"))
+    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_datasets.png"), dpi=600)
 
     ### Number of samples, patients ###
     usage = []
@@ -1210,15 +1278,58 @@ def create_network(output_dir):
         colors = [dataset_colors[node.split("|")[0]] for node in G]
         fig, ax = plt.subplots(figsize=config.sns["plot_size"])
         nx.draw(G, pos=layout,
-        with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color="#888888", font_size=3, ax=ax)
+        with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color=config.sns["edge_color"], font_size=3, ax=ax)
         ax.legend(handles=dataset_legend)
         ax.set_title(method)
         plt.tight_layout()
         fig.savefig(os.path.join(sns_output_dir, f"{method}.pdf"))
-        fig.savefig(os.path.join(sns_output_dir, f"{method}.png"), dpi=600)
+
+    # Overrepresentation bars per GEP
+    for dataset_name, dataset in config.datasets.items():
+        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
+        # number of bars in each community for this dataset
+        community_gep_counts = [len([node for node in communities[c] if node.split("|")[0] == dataset_name]) for c in sorted(list(communities))]
+        width_ratios = [1 + gep_counts for gep_counts in community_gep_counts]
+        fig, axes = plt.subplots(metadata.shape[1], len(communities), figsize=[len(communities) + 0.1 * sum(community_gep_counts), metadata.shape[1] * 3], sharey='row', gridspec_kw={"width_ratios": community_gep_counts})
+        for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
+            # usage subset to dataset
+            ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
+            ds_usage.index = ds_usage.index.map(sample_to_class)
+            ds_usage = ds_usage[ds_usage.index.notnull()]
+            category_sum_null = pd.Series(1, index=ds_usage.index).groupby(axis=0, level=0).sum()
+            category_prop_null = category_sum_null / category_sum_null.sum()
+            category_sum = ds_usage.groupby(axis=0, level=0).sum()
+            category_prop = category_sum / category_sum.sum()
+            overrepresentation = category_prop.div(category_prop_null, axis=0)
+            overrepresentation[overrepresentation < 1] = 1
+            overrepresentation = np.log2(overrepresentation)
+            for col, community in enumerate(sorted(list(communities))):
+                ax = axes[row, col]
+                geps = []
+                for node in communities[community]:
+                    dataset_str, k_str, gep_str = node.split("|")
+                    if dataset_str == dataset_name:
+                        geps.append((dataset_str, int(k_str), int(gep_str)))
+                geps = sorted(geps)
+                if geps:
+                    overrepresentation[geps].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=config.metadata_colors[annotation_layer])
+                ax.set_xlabel("")
+                ax.set_xticks([])
+                if col == 0:
+                    ax.set_ylabel(annotation_layer)
+                if row == 0:
+                    ax.set_title(community, size=14)
+
+        fig.supxlabel("GEP")
+        fig.supylabel("Overrepresentation")
+        fig.suptitle("Community")
+        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar_by_community"), exist_ok=True)
+        fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar_by_community", dataset_name + ".pdf"))
+        plt.close(fig)
+
 
     ### Categorical data overlay using spike plots ###
-    
+        
     def draw_circle_bar_plot(x, y, enrichments, colors, size, ax, draw_labels: bool=False, label_radius=0.2, label_font_size=1, draw_scale=False):
         ### TODO: implement draw_scale functionality
         if draw_scale:
@@ -1242,56 +1353,159 @@ def create_network(output_dir):
                 ax.text(x+x_offset, y+y_offset, label, rotation=np.rad2deg(a), ha="left", va="center", rotation_mode='anchor', fontsize=label_font_size)
             previous = this
 
+    def plot_overrepresentation_network(graph, layout, title, overrepresentation, colordict, plot_size, node_size, edge_weights=None):
+
+        # Plot the network
+        fig, ax = plt.subplots(figsize=plot_size)
+        ax.set_axis_off()
+        ax.set_title(f"Dataset: {dataset_name}\nAnnotations: {annotation_layer}")
+        # nx.draw(G, pos=layout, with_labels=True, labels=labels, node_color="#AAAAAA", node_size=20, linewidths=0, width=0.2, font_size=2, edge_color="#888888", ax=ax)
+        if edge_weights is None:
+            width = 0.2
+        else:
+            width = np.array(list(nx.get_edge_attributes(graph, edge_weights).values()))
+            width = width / np.max(width)
+
+        nx.draw_networkx_edges(graph, pos=layout, edge_color="#888888", ax=ax, width=width)
+        plotted_categories = set()
+        for node, gep_or in overrepresentation.iteritems():
+            if node in graph and gep_or.any():
+                plotted_categories.update(gep_or.index)
+                color_list = gep_or.index.map(colordict)
+                x, y = layout[node]
+                draw_circle_bar_plot(x, y, gep_or, colors=color_list, size=node_size * 10, ax=ax)
+
+        # Add legend
+        legend_bbox = [0.8,0.8,0.19, 0.19]
+        ax.add_patch(FancyBboxPatch(legend_bbox[:2], legend_bbox[2], legend_bbox[3], fc='#ffffff88', ec="#aaaaaa", boxstyle="round,pad=0.01", transform=ax.transAxes))
+        ax_legend = ax.inset_axes(legend_bbox)
+        ax_legend.set_axis_off()
+        ax_legend.set_ylim([0,1])
+        ax_legend.set_xlim([0,1])
+        draw_circle_bar_plot(
+            0.5, 0.5,
+            enrichments = pd.Series(1, index=gep_or.index.sort_values().unique()),
+            colors=overrepresentation.index.map(colordict), size=node_size*16, draw_labels=True, label_font_size=6, ax=ax_legend)
+        plt.tight_layout()
+        return fig
+
+    edge_list = []
+    for c1, n1 in communities.items():
+        for c2, n2 in communities.items():
+            if c1 != c2:  # no self-loops
+                n_edges = len(list(nx.edge_boundary(G, n1, n2)))
+                edge_list.append((c1, c2, n_edges))
+
+    edge_list = pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges"))
+    Gcomm = nx.from_pandas_edgelist(pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges")), "comm1", "comm2", "n_edges")
+
+
+    # Centroid method for community layout
+
+    community_layout = {}
+    for community_name, nodes in communities.items():
+        points = np.array([layout[node] for node in nodes])
+        centroid = (np.mean(points[:, 0]), np.mean(points[:, 1]))
+        community_layout[community_name] = centroid
+
+    # # Neato layout
+    # community_layout = nx.nx_agraph.graphviz_layout(Gcomm, prog="neato", args='-Goverlap=true')
+
+    # community-level overrepresentation plots
+
+    plot_data = {}
+    for dataset_name, dataset in config.datasets.items():
+        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
+        for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
+            # usage subset to dataset
+            ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
+            ds_usage.index = ds_usage.index.map(sample_to_class)
+            ds_usage = ds_usage[ds_usage.index.notnull()]
+            category_sum_null = pd.Series(1, index=ds_usage.index).groupby(axis=0, level=0).sum()
+            category_prop_null = category_sum_null / category_sum_null.sum()
+            category_sum = ds_usage.groupby(axis=0, level=0).sum()
+            category_prop = category_sum / category_sum.sum()
+            # enrichment = np.log2(category_prop.div(category_prop_null, axis=0))
+            enrichment = category_prop.div(category_prop_null, axis=0)
+            enrichment[enrichment < 1] = 1
+            enrichment = np.log2(enrichment)
+            result_df = []
+            for col, community in enumerate(sorted(list(communities))):
+                geps = []
+                for node in communities[community]:
+                    dataset_str, k_str, gep_str = node.split("|")
+                    if dataset_str == dataset_name:
+                        geps.append((dataset_str, int(k_str), int(gep_str)))
+                geps = sorted(geps)
+                if geps:
+                    com_es = enrichment[geps].mean(axis=1)
+                    com_es[com_es < 0] = 0
+                else:
+                    com_es = pd.Series(0, index=enrichment.index)
+                result_df.append(com_es.rename(community))
+            result_df = pd.concat(result_df, axis=1)
+            plot_data[(dataset_name, annotation_layer)] = result_df
+
+    for (dataset_name, annotation_layer), community_es in plot_data.items():
+        # bar plots
+        fig, ax = plt.subplots()
+        community_es.T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, rot=0, color=config.metadata_colors[annotation_layer])
+        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name), exist_ok=True)
+        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".pdf"))
+        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".png"), dpi=600)
+        plt.close(fig)
+
+        # community network plots
+        fig = plot_overrepresentation_network(
+            graph=Gcomm,
+            layout=community_layout,
+            title=f"Dataset: {dataset_name}\nAnnotations: {annotation_layer}",
+            overrepresentation=community_es,
+            colordict=config.metadata_colors[annotation_layer],
+            plot_size=config.sns["plot_size"],
+            node_size=np.array(config.sns["node_size"]) * 8,
+            edge_weights="n_edges"
+        )
+        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name), exist_ok=True)
+        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, annotation_layer + ".pdf"))
+        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, annotation_layer + ".png"), dpi=600)
+        plt.close(fig)
+    
     for dataset_name, dataset in config.datasets.items():
         metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
         for annotation_layer, sample_to_class in metadata.items():
-            if len(sample_to_class.cat.categories) > 30:
-                continue
             colordict = config.metadata_colors[annotation_layer]
             if sample_to_class.isnull().any(): # add 
                 sample_to_class = sample_to_class.cat.add_categories("").fillna("")
                 colordict[""] = config.metadata_colors["missing_data"]
+            # if len(sample_to_class.cat.categories) > 30:
+            #     # too many categories to be useful?
+            #     continue
             ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
             ds_usage.index = ds_usage.index.map(sample_to_class)
-            category_counts_null = pd.Series(1, index=ds_usage.index).groupby(axis=0, level=0).sum()
-            category_ratios_null = category_counts_null.values / category_counts_null.sum()
-            
-            # Plot the network
-            fig, ax = plt.subplots(figsize=config.sns["plot_size"])
-            ax.set_axis_off()
-            ax.set_title(f"Dataset: {dataset_name}\nAnnotations: {annotation_layer}")
-            # nx.draw(G, pos=layout, with_labels=True, labels=labels, node_color="#AAAAAA", node_size=20, linewidths=0, width=0.2, font_size=2, edge_color="#888888", ax=ax)
-            nx.draw_networkx_edges(G, pos=layout, width=0.2, edge_color="#888888", ax=ax)
-            plotted_categories = set()
-            for node, column in ds_usage.iteritems():
-                node_str = f"{node[0]}|{node[1]}|{node[2]}"
-                if node_str in G and column.any():
-                    category_counts = column.groupby(axis=0, level=0).sum()
-                    category_ratios = category_counts / category_counts.sum()
-                    enrichments = category_ratios / category_ratios_null
-                    enrichments[enrichments < 1] = 1
-                    enrichments = np.log2(enrichments)
-                    plotted_categories.update(enrichments.index)
-                    color_list = category_counts.index.map(colordict)
-                    x, y = layout[node_str]
-                    draw_circle_bar_plot(x, y, enrichments, colors=color_list, size=config.sns["node_size"] * 10, ax=ax)
-
-            # Add legend
-            legend_bbox = [0.8,0.8,0.19, 0.19]
-            ax.add_patch(FancyBboxPatch(legend_bbox[:2], legend_bbox[2], legend_bbox[3], fc='#ffffff88', ec="#aaaaaa", boxstyle="round,pad=0.01", transform=ax.transAxes))
-            ax_legend = ax.inset_axes(legend_bbox)
-            ax_legend.set_axis_off()
-            ax_legend.set_ylim([0,1])
-            ax_legend.set_xlim([0,1])
-            draw_circle_bar_plot(
-                0.5, 0.5,
-                enrichments = pd.Series(1, index=ds_usage.index.sort_values().unique()),
-                colors=color_list, size=config.sns["node_size"]*16, draw_labels=True, label_font_size=6, ax=ax_legend)
-            plt.tight_layout()
-            os.makedirs(os.path.join(sns_output_dir, "annotated_networks", dataset_name), exist_ok=True)
-            fig.savefig(os.path.join(sns_output_dir, "annotated_networks", dataset_name, annotation_layer + ".pdf"))
-            fig.savefig(os.path.join(sns_output_dir, "annotated_networks", dataset_name, annotation_layer + ".png"), dpi=600)
+            category_sum_null = pd.Series(1, index=ds_usage.index).groupby(axis=0, level=0).sum()
+            category_prop_null = category_sum_null / category_sum_null.sum()
+            category_sum = ds_usage.groupby(axis=0, level=0).sum()
+            category_prop = category_sum / category_sum.sum()
+            overrepresentation = category_prop.div(category_prop_null, axis=0)
+            overrepresentation[overrepresentation < 1] = 1
+            overrepresentation = np.log2(overrepresentation)
+            overrepresentation.columns = pd.Index([f"{c[0]}|{c[1]}|{c[2]}" for c in overrepresentation.columns])
+            fig = plot_overrepresentation_network(
+                graph=G,
+                layout=layout,
+                title=f"Dataset: {dataset_name}\nAnnotations: {annotation_layer}",
+                overrepresentation=overrepresentation,
+                colordict=colordict,
+                plot_size=config.sns["plot_size"],
+                node_size=config.sns["node_size"]
+                )
+                
+            os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name), exist_ok=True)
+            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, annotation_layer + ".pdf"))
+            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, annotation_layer + ".png"), dpi=600)
             plt.close(fig)
+
 
 cli.add_command(txt_to_h5ad)
 cli.add_command(update_h5ad_metadata)

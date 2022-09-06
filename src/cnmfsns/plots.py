@@ -63,35 +63,35 @@ def annotated_heatmap(
         # data and metadata must have the same index
         metadata = metadata.loc[data.index]
         missing_data_color = metadata_colors["missing_data"]
-    gs2 = matplotlib.gridspec.GridSpecFromSubplotSpec(metadata.shape[1], 1, subplot_spec=gs0[2])
-    for i, (track, annot) in enumerate(metadata.iteritems()):
-        ax = fig.add_subplot(gs2[i], sharex=ax_heatmap)
-        ax.set_facecolor(missing_data_color)
-        if pd.api.types.is_categorical_dtype(annot) or pd.api.types.is_object_dtype(annot):
-            ordered_rgb = annot.iloc[xind].replace(metadata_colors[track])
-            if ordered_rgb.isnull().any():
-                ordered_rgb = ordered_rgb.cat.add_categories(missing_data_color)
-                ordered_rgb = ordered_rgb.fillna(missing_data_color)
-            ordered_rgb = ordered_rgb.astype("object").map(matplotlib.colors.to_rgb)
-            ordered_rgb = np.array([list(rgb) for rgb in ordered_rgb])
-            ax.imshow(np.stack([ordered_rgb, ordered_rgb]), aspect='auto', extent=[xmin,xmax,0,1], interpolation='none')
-        else:
-            ax.imshow(np.stack([annot.iloc[xind],annot.iloc[xind]]), aspect='auto', extent=[xmin,xmax,0,1], cmap='Blues', interpolation='none')
-        ax.set_yticks([])
-        ax.set_ylabel(track, rotation=0, ha='right', va='center')
-        if ax.get_subplotspec().is_last_row():
-            if show_sample_labels:
-                # print(ax.get_xticks())
-                # ax.set_xticks(np.linspace(0, 1, data.shape[0], endpoint=False) + 1/(2 * data.shape[0]))
-                ax.set_xticklabels(data.index[xind], rotation=90)
+        gs2 = matplotlib.gridspec.GridSpecFromSubplotSpec(metadata.shape[1], 1, subplot_spec=gs0[2])
+        for i, (track, annot) in enumerate(metadata.items()):
+            ax = fig.add_subplot(gs2[i], sharex=ax_heatmap)
+            ax.set_facecolor(missing_data_color)
+            if pd.api.types.is_categorical_dtype(annot) or pd.api.types.is_object_dtype(annot):
+                ordered_rgb = annot.iloc[xind].replace(metadata_colors[track])
+                if ordered_rgb.isnull().any():
+                    ordered_rgb = ordered_rgb.cat.add_categories(missing_data_color)
+                    ordered_rgb = ordered_rgb.fillna(missing_data_color)
+                ordered_rgb = ordered_rgb.astype("object").map(matplotlib.colors.to_rgb)
+                ordered_rgb = np.array([list(rgb) for rgb in ordered_rgb])
+                ax.imshow(np.stack([ordered_rgb, ordered_rgb]), aspect='auto', extent=[xmin,xmax,0,1], interpolation='none')
             else:
-                ax.set_xticks([])
-        else:
-            ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['bottom'].set_visible(False)
-        ax.spines['left'].set_visible(False)
+                ax.imshow(np.stack([annot.iloc[xind],annot.iloc[xind]]), aspect='auto', extent=[xmin,xmax,0,1], cmap='Blues', interpolation='none')
+            ax.set_yticks([])
+            ax.set_ylabel(track, rotation=0, ha='right', va='center')
+            if ax.get_subplotspec().is_last_row():
+                if show_sample_labels:
+                    # print(ax.get_xticks())
+                    # ax.set_xticks(np.linspace(0, 1, data.shape[0], endpoint=False) + 1/(2 * data.shape[0]))
+                    ax.set_xticklabels(data.index[xind], rotation=90)
+                else:
+                    ax.set_xticks([])
+            else:
+                ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
     
     
     # Colormap for heatmap
@@ -213,4 +213,47 @@ def plot_genelist_upsets(config):
     fig = plt.Figure()
     upsetplot.UpSet(upsetplot.from_contents(full_genelists)).plot(fig=fig)
     figs["all_genes.upset"] = fig
+    return figs
+
+def plot_annotated_geps_by_community(usage, config, communities):
+    figs = {}
+    for dataset_name, dataset in config.datasets.items():
+        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
+        # number of bars in each community for this dataset
+        community_gep_counts = [len([node for node in communities[c] if node.split("|")[0] == dataset_name]) for c in sorted(list(communities))]
+        width_ratios = [1 + gep_counts for gep_counts in community_gep_counts]
+        fig, axes = plt.subplots(metadata.shape[1], len(communities), figsize=[2 + 0.1 * sum(community_gep_counts), metadata.shape[1] * 3], sharey='row', gridspec_kw={"width_ratios": community_gep_counts})
+        for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
+            # usage subset to dataset
+            ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
+            ds_usage.index = ds_usage.index.map(sample_to_class)
+            ds_usage = ds_usage[ds_usage.index.notnull()]
+            category_sum_null = pd.Series(1, index=ds_usage.index).groupby(axis=0, level=0).sum()
+            category_prop_null = category_sum_null / category_sum_null.sum()
+            category_sum = ds_usage.groupby(axis=0, level=0).sum()
+            category_prop = category_sum / category_sum.sum()
+            overrepresentation = category_prop.div(category_prop_null, axis=0)
+            overrepresentation[overrepresentation < 1] = 1
+            overrepresentation = np.log2(overrepresentation)
+            for col, community in enumerate(sorted(list(communities))):
+                ax = axes[row, col]
+                geps = []
+                for node in communities[community]:
+                    dataset_str, k_str, gep_str = node.split("|")
+                    if dataset_str == dataset_name:
+                        geps.append((dataset_str, int(k_str), int(gep_str)))
+                geps = sorted(geps)
+                if geps:
+                    overrepresentation[geps].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=config.metadata_colors[annotation_layer])
+                ax.set_xlabel("")
+                ax.set_xticks([])
+                if col == 0:
+                    ax.set_ylabel(annotation_layer)
+                if row == 0:
+                    ax.set_title(community, size=14)
+
+        fig.supxlabel("GEP")
+        fig.supylabel("Overrepresentation")
+        fig.suptitle("Community")
+        figs[dataset_name] = fig
     return figs

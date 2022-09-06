@@ -2,7 +2,7 @@
 
 cNMF Solution Neighborhood Space
 
-![](https://img.shields.io/badge/version-0.2.15-blue)
+![](https://img.shields.io/badge/version-0.2.16-blue)
 
 ## Installation
 
@@ -10,10 +10,8 @@ cNMF Solution Neighborhood Space
 
 Before installing cNMF-SNS from `pip`, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
 ```
-conda create --name py39 python=3.9
+conda create --name py39 python=3.9 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz
 conda activate py39
-conda config --prepend channels conda-forge
-conda install anndata>=0.8.0 pandas numpy scipy>=1.9.0 matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz
 ```
 
 If you use SSH authentication for GitHub, use the following:
@@ -57,7 +55,7 @@ Easily get help for each subcommand using, for example:
 cnmfsns model-odg --help
 ```
 
-### 1. Create AnnData object from text files with expression and annotations.
+### 1. Create AnnData object from text files with gene expression and metadata
 
 If expression and annotation data is in text files, this utility can combine them into a .h5ad file for downstream tools. If you have normalized and count data as text files, use the following command:
 
@@ -65,7 +63,7 @@ If expression and annotation data is in text files, this utility can combine the
 cnmfsns txt-to-h5ad --normalized normalized.txt --counts counts.txt --metadata metadata.txt -o dataset.h5ad
 ```
 
-Only one of the `--normalized` and `--counts` options are required. When only count data is provided, TPM normalization is automatically performed and this is used for overdispersed gene selection. If only normalized data is provided, then the normalized data is used for factorization and for overdispersed gene selection.
+Only one of the `--normalized` and `--counts` options are required. When only count data is provided, TPM normalization is automatically performed and this is used for overdispersed gene selection. If only normalized data is provided, then the normalized data is used both for factorization and for overdispersed gene selection.
 
 #### Input semantics
 
