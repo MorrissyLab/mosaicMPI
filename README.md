@@ -1,6 +1,6 @@
 # cNMF-SNS
 
-cNMF Solution Neighborhood Space
+cNMF Solution Network Space
 
 ![](https://img.shields.io/badge/version-0.2.18-blue)
 
@@ -8,7 +8,7 @@ cNMF Solution Neighborhood Space
 
 ### 1. Using `pip` to install the latest version from GitHub:
 
-Before installing cNMF-SNS from `pip`, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
+Before installing cNMF-SNS from pip, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
 ```
 conda create --name py39 python=3.9 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz
 conda activate py39
