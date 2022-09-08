@@ -154,3 +154,29 @@ class Config(SimpleNamespace):
         ax.set_axis_off()
         plt.tight_layout()
         return fig
+
+    def get_usage_matrix(self):
+        usage = []
+        sample_to_patient = {}
+        for dataset_name, dataset in self.datasets.items():
+            adata = read_h5ad(dataset["filename"])
+            # if "patient_id_column" in dataset:   # this code can be removed once patient-id mapping is implemented elsewhere
+            #     for sample, patient in adata.obs[dataset["patient_id_column"]].items():
+            #         sample_to_patient[(dataset_name, sample)] = (dataset_name, patient)
+            df = adata.obsm["cnmf_usage"]
+            df.index = pd.MultiIndex.from_product(([dataset_name], (df.index)))
+            df.columns = pd.MultiIndex.from_tuples([(dataset_name, int(col[0]), int(col[1])) for col in df.columns.str.split(".")])
+            usage.append(df)
+        usage = pd.concat(usage, axis=1).sort_index(axis=0).sort_index(axis=1)
+        usage.index.rename(["dataset", "sample"], inplace=True)
+        usage.columns.rename(["dataset", "k", "gep"], inplace=True)
+        return usage
+
+    def get_sample_patient_mapping(self):
+        sample_to_patient = {}
+        for dataset_name, dataset in self.datasets.items():
+            adata = read_h5ad(dataset["filename"])
+            if "patient_id_column" in dataset:   # this code can be removed once patient-id mapping is implemented elsewhere
+                for sample, patient in adata.obs[dataset["patient_id_column"]].items():
+                    sample_to_patient[(dataset_name, sample)] = (dataset_name, patient)
+        return sample_to_patient

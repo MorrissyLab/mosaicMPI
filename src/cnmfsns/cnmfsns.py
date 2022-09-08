@@ -25,7 +25,8 @@ from cnmfsns.plots import (
     plot_pairwise_corr_overlaid,
     plot_genelist_upsets,
     plot_community_by_dataset_rank,
-    plot_overrepresentation_network)
+    plot_overrepresentation_network,
+    plot_number_of_patients)
 
 from cnmfsns.sns import (
     add_community_weights_to_graph, 
@@ -1022,76 +1023,25 @@ def create_network(output_dir, name, config_toml):
     fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_datasets.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_datasets.png"), dpi=600)
 
-    ### Number of samples, patients ###
-    usage = []
-    sample_to_patient = {}
-    for dataset_name, dataset in config.datasets.items():
-        adata = read_h5ad(dataset["filename"])
-        if "patient_id_column" in dataset:
-            for sample, patient in adata.obs[dataset["patient_id_column"]].items():
-                sample_to_patient[(dataset_name, sample)] = (dataset_name, patient)
-        df = adata.obsm["cnmf_usage"]
-        df.index = pd.MultiIndex.from_product(([dataset_name], (df.index)))
-        df.columns = pd.MultiIndex.from_tuples([(dataset_name, int(col[0]), int(col[1])) for col in df.columns.str.split(".")])
-        usage.append(df)
-    usage = pd.concat(usage, axis=1).sort_index(axis=0).sort_index(axis=1)
-    usage.index.rename(["dataset", "sample"], inplace=True)
-    usage.columns.rename(["dataset", "k", "gep"], inplace=True)
-    usage
-
-    # normalized usage (usages sum to 1 for each value of k)
-    normalized_usage = []
-    for k, subdf in usage.groupby(axis=1, level=[0,1]):
-        normalized_usage.append(subdf.div(subdf.sum(axis=1), axis=0))
-    normalized_usage = pd.concat(normalized_usage, axis=1)
-    normalized_usage
-
-    # discrete usage (Samples are assigned to GEPs with the highest usage)
-    discrete_usage = []
-    for k, subdf in usage.groupby(axis=1, level=[0,1]):
-        discrete_usage.append(subdf.eq(subdf.max(axis=1), axis=0).astype(float))
-    discrete_usage = pd.concat(discrete_usage, axis=1)
-    discrete_usage[usage.isnull()] = np.NaN
-
-    patients_to_geps = discrete_usage.loc[sample_to_patient.keys()].copy(deep=True)
-    patients_to_geps.index = patients_to_geps.index.map(sample_to_patient)
-    patients_to_geps = patients_to_geps.groupby(axis=0, level=[0,1]).any()
-
-    nodes = []
-    for node in G.nodes:
-        dataset_name, k_str, gep_str = node.split("|")
-        nodes.append((dataset_name, int(k_str), int(gep_str)))
-
-    for method in ('nsamples_continuous', 'nsamples_discrete', "npatients_discrete"):
-        if method == 'nsamples_continuous':
-            labels = normalized_usage[nodes].sum().apply(lambda x: "{:.1f}".format(x)).to_dict() # Label is number of samples
-            sizes = (normalized_usage[nodes].sum() * 5).to_dict() # Size is proportional to number of samples
-        elif method == 'nsamples_discrete':
-            labels = discrete_usage[nodes].sum().apply(lambda x: int(x)).to_dict() # Label is number of samples
-            sizes = (discrete_usage[nodes].sum() * 5).to_dict() # Size is proportional to number of samples
-        elif method == "npatients_discrete":
-            labels = patients_to_geps[nodes].sum().to_dict()
-            sizes = (patients_to_geps.sum() * 5).to_dict()
-        labels = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in labels.items()}
-        sizes = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in sizes.items()}
-        colors = [node.partition("|")[2] for node in G]
-        node_sizes = [(sizes[n] if n in sizes else 0) for n in G]
-        colors = [dataset_colors[node.split("|")[0]] for node in G]
-        fig, ax = plt.subplots(figsize=config.sns["plot_size"])
-        nx.draw(G, pos=layout,
-        with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color=config.sns["edge_color"], font_size=3, ax=ax)
-        ax.legend(handles=dataset_legend)
-        ax.set_title(method)
-        plt.tight_layout()
-        fig.savefig(os.path.join(sns_output_dir, f"{method}.pdf"))
+    # get usage matrix
+    usage = config.get_usage_matrix()
+    sample_to_patient = config.get_sample_patient_mapping()
+    # Number of samples, patients per GEP
+    if any(["patient_id_column" in d for d in config.datasets.values()]):
+        figs = plot_number_of_patients(usage, sample_to_patient, G, layout, config)
+        for method, fig in figs.items():
+            fig.savefig(os.path.join(sns_output_dir, f"{method}.pdf"))
 
     # Overrepresentation bars per GEP
     for dataset_name, dataset in config.datasets.items():
         metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
         # number of bars in each community for this dataset
         community_gep_counts = [len([node for node in communities[c] if node.split("|")[0] == dataset_name]) for c in sorted(list(communities))]
-        width_ratios = [1 + gep_counts for gep_counts in community_gep_counts]
-        fig, axes = plt.subplots(metadata.shape[1], len(communities), figsize=[len(communities) + 0.1 * sum(community_gep_counts), metadata.shape[1] * 3], sharey='row', gridspec_kw={"width_ratios": community_gep_counts})
+        fig, axes = plt.subplots(
+            metadata.shape[1], len(communities),
+            figsize=[len(communities) + 0.1 * sum(community_gep_counts), metadata.shape[1] * 3],
+            sharey='row',
+            gridspec_kw={"width_ratios": [1 + gep_counts for gep_counts in community_gep_counts]})
         for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
             # usage subset to dataset
             ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)

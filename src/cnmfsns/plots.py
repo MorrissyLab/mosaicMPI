@@ -375,3 +375,58 @@ def plot_overrepresentation_network(graph, layout, title, overrepresentation, co
         colors=overrepresentation.index.map(colordict), size=node_size*16, draw_labels=True, label_font_size=6, ax=ax_legend)
     plt.tight_layout()
     return fig
+
+def plot_number_of_patients(usage, sample_to_patient, G, layout, config):
+
+    # normalized usage (usages sum to 1 for each value of k)
+    normalized_usage = []
+    for k, subdf in usage.groupby(axis=1, level=[0,1]):
+        normalized_usage.append(subdf.div(subdf.sum(axis=1), axis=0))
+    normalized_usage = pd.concat(normalized_usage, axis=1)
+    normalized_usage
+
+    # discrete usage (Samples are assigned to GEPs with the highest usage)
+    discrete_usage = []
+    for k, subdf in usage.groupby(axis=1, level=[0,1]):
+        discrete_usage.append(subdf.eq(subdf.max(axis=1), axis=0).astype(float))
+    discrete_usage = pd.concat(discrete_usage, axis=1)
+    discrete_usage[usage.isnull()] = np.NaN
+
+    patients_to_geps = discrete_usage.loc[sample_to_patient.keys()].copy(deep=True)
+    patients_to_geps.index = patients_to_geps.index.map(sample_to_patient)
+    patients_to_geps = patients_to_geps.groupby(axis=0, level=[0,1]).any()
+
+    nodes = []
+    for node in G.nodes:
+        dataset_name, k_str, gep_str = node.split("|")
+        nodes.append((dataset_name, int(k_str), int(gep_str)))
+
+    dataset_colors = {ds: ds_attr["color"] for ds, ds_attr in config.datasets.items()}
+    dataset_legend = []
+    for dataset, color in dataset_colors.items():
+        dataset_legend.append(Line2D([0], [0], marker='o', color='w', label=dataset, markerfacecolor=color, markersize=8))
+
+    figs = {}
+    for method in ('nsamples_continuous', 'nsamples_discrete', "npatients_discrete"):
+        if method == 'nsamples_continuous':
+            labels = normalized_usage[nodes].sum().apply(lambda x: "{:.1f}".format(x)).to_dict() # Label is number of samples
+            sizes = (normalized_usage[nodes].sum() * 5).to_dict() # Size is proportional to number of samples
+        elif method == 'nsamples_discrete':
+            labels = discrete_usage[nodes].sum().apply(lambda x: int(x)).to_dict() # Label is number of samples
+            sizes = (discrete_usage[nodes].sum() * 5).to_dict() # Size is proportional to number of samples
+        elif method == "npatients_discrete":
+            labels = patients_to_geps[nodes].sum().to_dict()
+            sizes = (patients_to_geps.sum() * 5).to_dict()
+        labels = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in labels.items()}
+        sizes = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in sizes.items()}
+        colors = [node.partition("|")[2] for node in G]
+        node_sizes = [(sizes[n] if n in sizes else 0) for n in G]
+        colors = [dataset_colors[node.split("|")[0]] for node in G]
+        fig, ax = plt.subplots(figsize=config.sns["plot_size"])
+        nx.draw(G, pos=layout,
+        with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color=config.sns["edge_color"], font_size=3, ax=ax)
+        ax.legend(handles=dataset_legend)
+        ax.set_title(method)
+        plt.tight_layout()
+        figs[method] = fig
+    return figs
