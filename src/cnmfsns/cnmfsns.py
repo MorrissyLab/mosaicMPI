@@ -647,6 +647,9 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
         cfg = Config()
     cfg.add_missing_metadata_colors(metadata_df=adata.obs)
     cfg.to_toml(os.path.join(output_dir, "metadata_colors.toml"))
+    # plot legend
+    fig = cfg.plot_metadata_colors_legend()
+    fig.savefig(os.path.join(output_dir, f"metadata_legend.pdf"))
     exclude_maxcat = adata.obs.select_dtypes(include=["object", "category"]).apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
     if adata.obs.shape[1] > 0:
         metadata = adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index)
@@ -658,15 +661,19 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
     usage = adata.obsm["cnmf_usage"]
     usage.columns=pd.MultiIndex.from_tuples(usage.columns.str.split(".").to_list())
 
+
     # create annotated plots
+    metadata_colors = {col: cfg.get_metadata_colors(col) for col in adata.obs.columns}
+    metadata_colors["missing_data"] = cfg.metadata_colors["missing_data"]
     for k in usage.columns.levels[0].astype(int).sort_values():
         logging.info(f"Creating annotated usage heatmap for k={k}")
         k_usage = usage.loc[:, str(k)]
         cnmf_name = adata.uns["cnmf_name"]
         title = f"{cnmf_name} k={k}"
         filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{k:03}.pdf")
+        
         plot_annotated_usages(
-            df=k_usage, metadata=metadata, metadata_colors=cfg.metadata_colors, title=title, filename=filename,
+            df=k_usage, metadata=metadata, metadata_colors=metadata_colors, title=title, filename=filename,
             cluster_samples=True, cluster_geps=False, show_sample_labels=(not hide_sample_labels))
             
 
@@ -1063,7 +1070,7 @@ def create_network(output_dir, name, config_toml):
                         geps.append((dataset_str, int(k_str), int(gep_str)))
                 geps = sorted(geps)
                 if geps:
-                    overrepresentation[geps].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=config.metadata_colors[annotation_layer])
+                    overrepresentation[geps].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=config.get_metadata_colors(annotation_layer))
                 ax.set_xlabel("")
                 ax.set_xticks([])
                 if col == 0:
@@ -1141,7 +1148,7 @@ def create_network(output_dir, name, config_toml):
     for (dataset_name, annotation_layer), community_es in plot_data.items():
         # bar plots
         fig, ax = plt.subplots()
-        community_es.T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, rot=0, color=config.metadata_colors[annotation_layer])
+        community_es.T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, rot=0, color=config.get_metadata_colors(annotation_layer))
         os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name), exist_ok=True)
         fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".pdf"))
         fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".png"), dpi=600)
@@ -1153,7 +1160,7 @@ def create_network(output_dir, name, config_toml):
             layout=community_layout,
             title=f"Dataset: {dataset_name}\nAnnotations: {annotation_layer}",
             overrepresentation=community_es,
-            colordict=config.metadata_colors[annotation_layer],
+            colordict=config.get_metadata_colors(annotation_layer),
             plot_size=config.sns["plot_size"],
             node_size=np.array(config.sns["node_size"]) * 8,
             edge_weights="n_edges"
@@ -1166,7 +1173,7 @@ def create_network(output_dir, name, config_toml):
     for dataset_name, dataset in config.datasets.items():
         metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
         for annotation_layer, sample_to_class in metadata.items():
-            colordict = config.metadata_colors[annotation_layer]
+            colordict = config.get_metadata_colors(annotation_layer)
             if sample_to_class.isnull().any(): # add 
                 sample_to_class = sample_to_class.cat.add_categories("").fillna("")
                 colordict[""] = config.metadata_colors["missing_data"]

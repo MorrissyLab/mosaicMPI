@@ -46,7 +46,8 @@ config_defaults = {
         }
         },
     "datasets": {},
-    "metadata_colors": {"missing_data": "#dddddd"}
+    "metadata_colors": {"missing_data": "#dddddd"},
+    "metadata_colors_group": {}
 }
 dataset_defaults = {
     "selected_k": [[1, 10, 1], [15, 500, 5]],
@@ -118,40 +119,64 @@ class Config(SimpleNamespace):
             logging.error(f"Metadata colors included these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
             sys.exit(1)
 
-
         # fill in missing values with random colors distinct from existing colors
         for layer, allvalues in metadata_df.items():
-            if layer in self.metadata_colors:
-                existing_values = set(self.metadata_colors[layer].keys())
-                existing_colors = set(colors.to_rgb(self.metadata_colors[layer][val]) for val in existing_values)
-            else:
-                existing_values = set()
-                existing_colors = set()
+            layer_colors = self.get_metadata_colors(layer)
+            existing_values = set(layer_colors.keys())
+            existing_colors = set(layer_colors.values())
             if np.NaN in allvalues:
                 existing_colors.add(self.metadata_colors["missing_data"])
-            missing_values = set(allvalues.dropna().unique()) - existing_values
-            if missing_values:
+            colorless_values = set(allvalues.dropna().unique()) - existing_values
+            if colorless_values:
                 logging.info(f"Choosing distinct colors for metadata layer {layer}")
                 if layer not in self.metadata_colors:
                     self.metadata_colors[layer] = {}
-                new_colors = distinctipy.get_colors(len(missing_values), exclude_colors=list(existing_colors))
+                new_colors = distinctipy.get_colors(len(colorless_values), exclude_colors=list(existing_colors))
                 new_colors = [colors.to_hex(c) for c in new_colors]
-                for value, color in zip(missing_values, new_colors):
+                for value, color in zip(colorless_values, new_colors):
                     self.metadata_colors[layer][value] = color
 
+    
+    def get_metadata_colors(self, layer):
+        group_names = [group for group, group_attr in self.metadata_colors_group.items() if layer in group_attr["group"]]
+        layer_colors = {}
+        if layer in self.metadata_colors:
+            layer_colors = {**layer_colors, **self.metadata_colors[layer]}  # updates dict with info from metadata_colors
+        if len(group_names) == 1:
+            group = group_names[0]
+            layer_colors = {**layer_colors, **self.metadata_colors_group[group]['colors']} # updates dict with info from metadata_colors_group
+        elif len(group_names) > 1:
+            logging.error((
+                f"The following column in the metadata matrix (adata.obs) has multiple metadata color groups in the config TOML file:\n"
+                f"Metadata column: {layer}\n"
+                "Metadata color groups: " + ", ".join(group_names)
+            ))
+            sys.exit(1)
+        return layer_colors
+
     def plot_metadata_colors_legend(self):
-        # Category Legend
-        fig, ax = plt.subplots(figsize=[7, 200])
-        # Add legend
-        legend_elements = []
-        legend_elements.append(Patch(label="Missing Data", facecolor=self.metadata_colors["missing_data"], edgecolor=None))
-        for track, color_def in self.metadata_colors.items():
-            if isinstance(color_def, dict):
-                legend_elements.append(Patch(label="   " + track, facecolor='white', edgecolor=None))
-                for cat, color in color_def.items():
-                    legend_elements.append(Patch(label=cat, facecolor=color, edgecolor=None))
-        ax.legend(handles=legend_elements, loc='upper left')
-        ax.set_axis_off()
+        categorical_columns = [track for track, color_def in self.metadata_colors.items() if isinstance(color_def, dict)]
+        categorical_groups = [group for group, group_attr in self.metadata_colors_group.items() if isinstance(group_attr["colors"], dict)]
+        n_columns = len(categorical_columns) + len(categorical_groups) + 1
+        fig, axes = plt.subplots(1, n_columns, figsize=[3*n_columns, 200])
+        for ax, track in zip(axes, categorical_columns):
+            color_def = self.metadata_colors[track]
+            legend_elements = [Patch(label=cat, facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+            ax.legend(handles=legend_elements, loc='upper left')
+            ax.set_title(track)
+            ax.set_axis_off()
+        for ax_id, group in enumerate(categorical_groups, len(categorical_columns)):
+            ax = axes[ax_id]
+            color_def = self.metadata_colors_group[group]["colors"]
+            legend_elements = [Patch(label=cat, facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+            ax.legend(handles=legend_elements, loc='upper left')
+            ax.set_title(group)
+            ax.set_axis_off()
+
+        # last column is missing data color
+        axes[-1].legend(handles=[Patch(label="Missing Data", facecolor=self.metadata_colors["missing_data"], edgecolor=None)], loc='upper left')
+        axes[-1].set_axis_off()
+
         plt.tight_layout()
         return fig
 

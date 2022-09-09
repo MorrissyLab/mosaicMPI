@@ -102,22 +102,23 @@ def annotated_heatmap(
     ax.set_axis_off()
     plt.colorbar(im_heatmap, ax=ax, location="top")
     
-    # Category Legend
-    from matplotlib.patches import Patch
-    ax = fig.add_subplot(gs0[3])
-    # Add legend
-    legend_elements = []
-    for track, color_def in metadata_colors.items():
-        if track in metadata.columns:
-            legend_elements.append(Patch(label=track, facecolor='white', edgecolor=None, ))
-            for cat, color in color_def.items():
-                if cat in metadata[track].astype("category").cat.categories:
-                    legend_elements.append(Patch(label=cat, facecolor=color, edgecolor=None))
-            # if metadata[track].isnull().any():
-            #     legend_elements.append(Patch(label="Other", facecolor=missing_data_color, edgecolor=None))
+    # # old legend used to go here
+    # # Category Legend
+    # from matplotlib.patches import Patch
+    # ax = fig.add_subplot(gs0[3])
+    # # Add legend
+    # legend_elements = []
+    # for track, color_def in metadata_colors.items():
+    #     if track in metadata.columns:
+    #         legend_elements.append(Patch(label=track, facecolor='white', edgecolor=None, ))
+    #         for cat, color in color_def.items():
+    #             if cat in metadata[track].astype("category").cat.categories:
+    #                 legend_elements.append(Patch(label=cat, facecolor=color, edgecolor=None))
+    #         # if metadata[track].isnull().any():
+    #         #     legend_elements.append(Patch(label="Other", facecolor=missing_data_color, edgecolor=None))
 
-    ax.legend(handles=legend_elements, loc='upper left')
-    ax.set_axis_off()
+    # ax.legend(handles=legend_elements, loc='upper left')
+    # ax.set_axis_off()
     return fig
 
 def plot_annotated_usages(df, metadata, metadata_colors, title, filename, cluster_geps, cluster_samples, show_sample_labels):
