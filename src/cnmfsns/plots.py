@@ -380,6 +380,8 @@ def plot_overrepresentation_network(graph, layout, title, overrepresentation, co
     return fig
 
 def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config):
+    # usage subset to dataset
+    ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
     # number of bars in each community for this dataset
     community_gep_counts = [len([node for node in communities[c] if node.split("|")[0] == dataset_name]) for c in sorted(list(communities))]
     fig, axes = plt.subplots(
@@ -388,8 +390,6 @@ def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name,
         sharey='row',
         gridspec_kw={"width_ratios": [1 + gep_counts for gep_counts in community_gep_counts]})
     for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
-        # usage subset to dataset
-        ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
         overrepresentation = get_category_overrepresentation(ds_usage, sample_to_class)
         for col, community in enumerate(sorted(list(communities))):
             ax = axes[row, col]
@@ -411,7 +411,7 @@ def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name,
     fig.supxlabel("GEP")
     fig.supylabel("Overrepresentation")
     fig.suptitle("Community")
-
+    return fig
 
 
 def plot_number_of_patients(usage, sample_to_patient, G, layout, config):
