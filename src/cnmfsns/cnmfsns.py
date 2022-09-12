@@ -26,6 +26,7 @@ from cnmfsns.plots import (
     plot_genelist_upsets,
     plot_community_by_dataset_rank,
     plot_overrepresentation_network,
+    plot_overrepresentation_geps_bar,
     plot_number_of_patients)
 
 from cnmfsns.sns import (
@@ -35,7 +36,8 @@ from cnmfsns.sns import (
     create_graph, 
     community_search, 
     get_graph_layout, 
-    get_max_corr_communities)
+    get_max_corr_communities,
+    get_category_overrepresentation)
 from cnmfsns import __version__
 
 
@@ -938,8 +940,6 @@ def create_network(output_dir, name, config_toml):
     with open(os.path.join(sns_output_dir, "layout.toml"), "wb") as f:
         tomli_w.dump({"layout": layout}, f)
 
-
-    # TODO: simplify below code
     ### Plot network layout ###
     fig, ax = plt.subplots(figsize=config.sns["plot_size"])
     ax.set_aspect(1)
@@ -1033,143 +1033,22 @@ def create_network(output_dir, name, config_toml):
     # get usage matrix
     usage = config.get_usage_matrix()
     sample_to_patient = config.get_sample_patient_mapping()
+
     # Number of samples, patients per GEP
     if any(["patient_id_column" in d for d in config.datasets.values()]):
         figs = plot_number_of_patients(usage, sample_to_patient, G, layout, config)
         for method, fig in figs.items():
             fig.savefig(os.path.join(sns_output_dir, f"{method}.pdf"))
 
-    # Overrepresentation bars per GEP
+    # GEP level, overrepresentation bars
     for dataset_name, dataset in config.datasets.items():
         metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
-        # number of bars in each community for this dataset
-        community_gep_counts = [len([node for node in communities[c] if node.split("|")[0] == dataset_name]) for c in sorted(list(communities))]
-        fig, axes = plt.subplots(
-            metadata.shape[1], len(communities),
-            figsize=[len(communities) + 0.1 * sum(community_gep_counts), metadata.shape[1] * 3],
-            sharey='row',
-            gridspec_kw={"width_ratios": [1 + gep_counts for gep_counts in community_gep_counts]})
-        for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
-            # usage subset to dataset
-            ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
-            ds_usage.index = ds_usage.index.map(sample_to_class)
-            ds_usage = ds_usage[ds_usage.index.notnull()]
-            category_sum_null = pd.Series(1, index=ds_usage.index).groupby(axis=0, level=0).sum()
-            category_prop_null = category_sum_null / category_sum_null.sum()
-            category_sum = ds_usage.groupby(axis=0, level=0).sum()
-            category_prop = category_sum / category_sum.sum()
-            overrepresentation = category_prop.div(category_prop_null, axis=0)
-            overrepresentation[overrepresentation < 1] = 1
-            overrepresentation = np.log2(overrepresentation)
-            for col, community in enumerate(sorted(list(communities))):
-                ax = axes[row, col]
-                geps = []
-                for node in communities[community]:
-                    dataset_str, k_str, gep_str = node.split("|")
-                    if dataset_str == dataset_name:
-                        geps.append((dataset_str, int(k_str), int(gep_str)))
-                geps = sorted(geps)
-                if geps:
-                    overrepresentation[geps].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=config.get_metadata_colors(annotation_layer))
-                ax.set_xlabel("")
-                ax.set_xticks([])
-                if col == 0:
-                    ax.set_ylabel(annotation_layer)
-                if row == 0:
-                    ax.set_title(community, size=14)
-
-        fig.supxlabel("GEP")
-        fig.supylabel("Overrepresentation")
-        fig.suptitle("Community")
+        fig = plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config)
         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar_by_community"), exist_ok=True)
         fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar_by_community", dataset_name + ".pdf"))
         plt.close(fig)
-
-
-    ### Categorical data overlay using spike plots ###
     
-    edge_list = []
-    for c1, n1 in communities.items():
-        for c2, n2 in communities.items():
-            if c1 != c2:  # no self-loops
-                n_edges = len(list(nx.edge_boundary(G, n1, n2)))
-                edge_list.append((c1, c2, n_edges))
-
-    edge_list = pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges"))
-    Gcomm = nx.from_pandas_edgelist(pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges")), "comm1", "comm2", "n_edges")
-
-
-    # Centroid method for community layout
-
-    community_layout = {}
-    for community_name, nodes in communities.items():
-        points = np.array([layout[node] for node in nodes])
-        centroid = (np.mean(points[:, 0]), np.mean(points[:, 1]))
-        community_layout[community_name] = centroid
-
-    # # Neato layout
-    # community_layout = nx.nx_agraph.graphviz_layout(Gcomm, prog="neato", args='-Goverlap=true')
-
-    # community-level overrepresentation plots
-
-    plot_data = {}
-    for dataset_name, dataset in config.datasets.items():
-        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
-        for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
-            # usage subset to dataset
-            ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
-            ds_usage.index = ds_usage.index.map(sample_to_class)
-            ds_usage = ds_usage[ds_usage.index.notnull()]
-            category_sum_null = pd.Series(1, index=ds_usage.index).groupby(axis=0, level=0).sum()
-            category_prop_null = category_sum_null / category_sum_null.sum()
-            category_sum = ds_usage.groupby(axis=0, level=0).sum()
-            category_prop = category_sum / category_sum.sum()
-            # enrichment = np.log2(category_prop.div(category_prop_null, axis=0))
-            enrichment = category_prop.div(category_prop_null, axis=0)
-            enrichment[enrichment < 1] = 1
-            enrichment = np.log2(enrichment)
-            result_df = []
-            for col, community in enumerate(sorted(list(communities))):
-                geps = []
-                for node in communities[community]:
-                    dataset_str, k_str, gep_str = node.split("|")
-                    if dataset_str == dataset_name:
-                        geps.append((dataset_str, int(k_str), int(gep_str)))
-                geps = sorted(geps)
-                if geps:
-                    com_es = enrichment[geps].mean(axis=1)
-                    com_es[com_es < 0] = 0
-                else:
-                    com_es = pd.Series(0, index=enrichment.index)
-                result_df.append(com_es.rename(community))
-            result_df = pd.concat(result_df, axis=1)
-            plot_data[(dataset_name, annotation_layer)] = result_df
-
-    for (dataset_name, annotation_layer), community_es in plot_data.items():
-        # bar plots
-        fig, ax = plt.subplots()
-        community_es.T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, rot=0, color=config.get_metadata_colors(annotation_layer))
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name), exist_ok=True)
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".pdf"))
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".png"), dpi=600)
-        plt.close(fig)
-
-        # community network plots
-        fig = plot_overrepresentation_network(
-            graph=Gcomm,
-            layout=community_layout,
-            title=f"Dataset: {dataset_name}\nAnnotations: {annotation_layer}",
-            overrepresentation=community_es,
-            colordict=config.get_metadata_colors(annotation_layer),
-            plot_size=config.sns["plot_size"],
-            node_size=np.array(config.sns["node_size"]) * 8,
-            edge_weights="n_edges"
-        )
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name), exist_ok=True)
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, annotation_layer + ".pdf"))
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, annotation_layer + ".png"), dpi=600)
-        plt.close(fig)
-    
+    # GEP level, overrepresentation networks
     for dataset_name, dataset in config.datasets.items():
         metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
         for annotation_layer, sample_to_class in metadata.items():
@@ -1177,18 +1056,8 @@ def create_network(output_dir, name, config_toml):
             if sample_to_class.isnull().any(): # add 
                 sample_to_class = sample_to_class.cat.add_categories("").fillna("")
                 colordict[""] = config.metadata_colors["missing_data"]
-            # if len(sample_to_class.cat.categories) > 30:
-            #     # too many categories to be useful?
-            #     continue
             ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
-            ds_usage.index = ds_usage.index.map(sample_to_class)
-            category_sum_null = pd.Series(1, index=ds_usage.index).groupby(axis=0, level=0).sum()
-            category_prop_null = category_sum_null / category_sum_null.sum()
-            category_sum = ds_usage.groupby(axis=0, level=0).sum()
-            category_prop = category_sum / category_sum.sum()
-            overrepresentation = category_prop.div(category_prop_null, axis=0)
-            overrepresentation[overrepresentation < 1] = 1
-            overrepresentation = np.log2(overrepresentation)
+            overrepresentation = get_category_overrepresentation(ds_usage, sample_to_class)
             overrepresentation.columns = pd.Index([f"{c[0]}|{c[1]}|{c[2]}" for c in overrepresentation.columns])
             fig = plot_overrepresentation_network(
                 graph=G,
@@ -1204,6 +1073,78 @@ def create_network(output_dir, name, config_toml):
             fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, annotation_layer + ".pdf"))
             fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, annotation_layer + ".png"), dpi=600)
             plt.close(fig)
+
+    # Community-level Network    
+    edge_list = []
+    for c1, n1 in communities.items():
+        for c2, n2 in communities.items():
+            if c1 != c2:  # no self-loops
+                n_edges = len(list(nx.edge_boundary(G, n1, n2)))
+                edge_list.append((c1, c2, n_edges))
+
+    edge_list = pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges"))
+    Gcomm = nx.from_pandas_edgelist(pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges")), "comm1", "comm2", "n_edges")
+
+
+    # Centroid method for community layout
+    community_layout = {}
+    for community_name, nodes in communities.items():
+        points = np.array([layout[node] for node in nodes])
+        centroid = (np.mean(points[:, 0]), np.mean(points[:, 1]))
+        community_layout[community_name] = centroid
+
+    # # Neato layout
+    # community_layout = nx.nx_agraph.graphviz_layout(Gcomm, prog="neato", args='-Goverlap=true')
+
+    # Community-level overrepresentation plots
+    plot_data = {}
+    for dataset_name, dataset in config.datasets.items():
+        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
+        for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
+            # usage subset to dataset
+            ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
+            overrepresentation = get_category_overrepresentation(ds_usage, sample_to_class)
+            result_df = []
+            for col, community in enumerate(sorted(list(communities))):
+                geps = []
+                for node in communities[community]:
+                    dataset_str, k_str, gep_str = node.split("|")
+                    if dataset_str == dataset_name:
+                        geps.append((dataset_str, int(k_str), int(gep_str)))
+                geps = sorted(geps)
+                if geps:
+                    com_es = overrepresentation[geps].mean(axis=1)
+                    com_es[com_es < 0] = 0
+                else:
+                    com_es = pd.Series(0, index=overrepresentation.index)
+                result_df.append(com_es.rename(community))
+            result_df = pd.concat(result_df, axis=1)
+            plot_data[(dataset_name, annotation_layer)] = result_df
+
+    for (dataset_name, annotation_layer), community_es in plot_data.items():
+        # bar plots
+        fig, ax = plt.subplots()
+        community_es.T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, rot=0, color=config.get_metadata_colors(annotation_layer))
+        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name), exist_ok=True)
+        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".pdf"))
+        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".png"), dpi=600)
+        plt.close(fig)
+
+        # network plots
+        fig = plot_overrepresentation_network(
+            graph=Gcomm,
+            layout=community_layout,
+            title=f"Dataset: {dataset_name}\nAnnotations: {annotation_layer}",
+            overrepresentation=community_es,
+            colordict=config.get_metadata_colors(annotation_layer),
+            plot_size=config.sns["plot_size"],
+            node_size=np.array(config.sns["node_size"]) * 8,
+            edge_weights="n_edges"
+        )
+        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name), exist_ok=True)
+        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, annotation_layer + ".pdf"))
+        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, annotation_layer + ".png"), dpi=600)
+        plt.close(fig)
 
 
 cli.add_command(txt_to_h5ad)

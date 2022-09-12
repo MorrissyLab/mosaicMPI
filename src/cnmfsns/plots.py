@@ -9,6 +9,7 @@ import upsetplot
 from scipy.cluster.hierarchy import linkage, dendrogram
 from anndata import read_h5ad
 import networkx as nx
+from cnmfsns.sns import get_category_overrepresentation
 
 def annotated_heatmap(
         data, title, metadata=None, metadata_colors=None,
@@ -232,13 +233,14 @@ def plot_annotated_geps_by_community(usage, config, communities):
             ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
             ds_usage.index = ds_usage.index.map(sample_to_class)
             ds_usage = ds_usage[ds_usage.index.notnull()]
-            category_sum_null = pd.Series(1, index=ds_usage.index).groupby(axis=0, level=0).sum()
-            category_prop_null = category_sum_null / category_sum_null.sum()
-            category_sum = ds_usage.groupby(axis=0, level=0).sum()
-            category_prop = category_sum / category_sum.sum()
-            overrepresentation = category_prop.div(category_prop_null, axis=0)
-            overrepresentation[overrepresentation < 1] = 1
-            overrepresentation = np.log2(overrepresentation)
+            observed = ds_usage.groupby(axis=0, level=0).sum()
+            expected = []
+            for k, obs_k in observed.groupby(axis=1, level=1):
+                exp_k = pd.DataFrame(obs_k.sum(axis=1)) @ pd.DataFrame(obs_k.sum(axis=0)).T / obs_k.sum().sum()
+                expected.append(exp_k)
+            expected = pd.concat(expected, axis=1)
+            chisq_resid = (observed - expected) / np.sqrt(expected)  # pearson residual of chi-squared test of contingency table
+            overrepresentation = chisq_resid.clip(lower=0)
             for col, community in enumerate(sorted(list(communities))):
                 ax = axes[row, col]
                 geps = []
@@ -248,7 +250,7 @@ def plot_annotated_geps_by_community(usage, config, communities):
                         geps.append((dataset_str, int(k_str), int(gep_str)))
                 geps = sorted(geps)
                 if geps:
-                    overrepresentation[geps].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=config.metadata_colors[annotation_layer])
+                    overrepresentation[geps].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=config.get_metadata_colors(annotation_layer))
                 ax.set_xlabel("")
                 ax.set_xticks([])
                 if col == 0:
@@ -376,6 +378,41 @@ def plot_overrepresentation_network(graph, layout, title, overrepresentation, co
         colors=overrepresentation.index.map(colordict), size=node_size*16, draw_labels=True, label_font_size=6, ax=ax_legend)
     plt.tight_layout()
     return fig
+
+def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config):
+    # number of bars in each community for this dataset
+    community_gep_counts = [len([node for node in communities[c] if node.split("|")[0] == dataset_name]) for c in sorted(list(communities))]
+    fig, axes = plt.subplots(
+        metadata.shape[1], len(communities),
+        figsize=[len(communities) + 0.1 * sum(community_gep_counts), metadata.shape[1] * 3],
+        sharey='row',
+        gridspec_kw={"width_ratios": [1 + gep_counts for gep_counts in community_gep_counts]})
+    for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
+        # usage subset to dataset
+        ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
+        overrepresentation = get_category_overrepresentation(ds_usage, sample_to_class)
+        for col, community in enumerate(sorted(list(communities))):
+            ax = axes[row, col]
+            geps = []
+            for node in communities[community]:
+                dataset_str, k_str, gep_str = node.split("|")
+                if dataset_str == dataset_name:
+                    geps.append((dataset_str, int(k_str), int(gep_str)))
+            geps = sorted(geps)
+            if geps:
+                overrepresentation[geps].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=config.get_metadata_colors(annotation_layer))
+            ax.set_xlabel("")
+            ax.set_xticks([])
+            if col == 0:
+                ax.set_ylabel(annotation_layer)
+            if row == 0:
+                ax.set_title(community, size=14)
+
+    fig.supxlabel("GEP")
+    fig.supylabel("Overrepresentation")
+    fig.suptitle("Community")
+
+
 
 def plot_number_of_patients(usage, sample_to_patient, G, layout, config):
 

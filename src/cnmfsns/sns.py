@@ -176,3 +176,15 @@ def get_max_corr_communities(communities, output_dir, config):
                     nodes_2 = pd.MultiIndex.from_tuples(nodes_2)
                     max_corr_communities.loc[(community_1, dataset_1), (community_2, dataset_2)] = corr.loc[nodes_1, nodes_2].max().max()
     return max_corr_communities
+
+def get_category_overrepresentation(usage, sample_to_class):
+    usage.index = usage.index.map(sample_to_class)
+    observed = usage.groupby(axis=0, level=0).sum()
+    expected = []
+    for k, obs_k in observed.groupby(axis=1, level=1):
+        exp_k = pd.DataFrame(obs_k.sum(axis=1)) @ pd.DataFrame(obs_k.sum(axis=0)).T / obs_k.sum().sum()
+        expected.append(exp_k)
+    expected = pd.concat(expected, axis=1)
+    chisq_resid = (observed - expected) / np.sqrt(expected)  # pearson residual of chi-squared test of contingency table
+    overrepresentation = chisq_resid.clip(lower=0)
+    return overrepresentation
