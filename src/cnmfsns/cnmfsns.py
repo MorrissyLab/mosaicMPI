@@ -1043,6 +1043,7 @@ def create_network(output_dir, name, config_toml):
     # GEP level, overrepresentation bars
     for dataset_name, dataset in config.datasets.items():
         metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
+        
         fig = plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config)
         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar_by_community"), exist_ok=True)
         fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar_by_community", dataset_name + ".pdf"))

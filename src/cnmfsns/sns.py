@@ -178,6 +178,7 @@ def get_max_corr_communities(communities, output_dir, config):
     return max_corr_communities
 
 def get_category_overrepresentation(usage, sample_to_class):
+    usage = usage.copy()
     usage.index = usage.index.map(sample_to_class)
     observed = usage.groupby(axis=0, level=0).sum()
     expected = []
