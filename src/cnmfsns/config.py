@@ -15,7 +15,7 @@ import os
 from types import SimpleNamespace
 from anndata import read_h5ad
 
-# Here are default parameters for the config files
+# Default parameters for the config files are used when missing as input to cnmfsns integrate
 
 config_defaults = {
     "integrate": {
@@ -26,13 +26,14 @@ config_defaults = {
     "sns": {
         "edge_color": "#bbbbbb20",
         "edge_weight": "none",
-        "community_algorithm": "leiden",
+        "community_algorithm": "greedy_modularity",
         "communities": {
             "greedy_modularity": {
-                "resolution": 2
+                "resolution": 2,
+                "best_n": "none"
             },
             "leiden": {
-                "resolution": 0.0
+                "resolution": 0.01
             }
         },
         "layout_algorithm": "neato",   # "neato", "spring", "community_weighted_spring"
@@ -43,7 +44,9 @@ config_defaults = {
                 "within_community": 100,
                 "within_dataset": 1
             }
-        }
+        },
+        "node_size": 30,
+        "plot_size": [10, 10]
         },
     "datasets": {},
     "metadata_colors": {"missing_data": "#dddddd"},
@@ -123,7 +126,7 @@ class Config(SimpleNamespace):
         for layer, allvalues in metadata_df.items():
             layer_colors = self.get_metadata_colors(layer)
             existing_values = set(layer_colors.keys())
-            existing_colors = set(layer_colors.values())
+            existing_colors = set(layer_colors.values()) | {"#FFFFFF", "#000000"} # add white/back so that it is excluded from new colors.
             if np.NaN in allvalues:
                 existing_colors.add(self.metadata_colors["missing_data"])
             colorless_values = set(allvalues.dropna().unique()) - existing_values
@@ -131,7 +134,7 @@ class Config(SimpleNamespace):
                 logging.info(f"Choosing distinct colors for metadata layer {layer}")
                 if layer not in self.metadata_colors:
                     self.metadata_colors[layer] = {}
-                new_colors = distinctipy.get_colors(len(colorless_values), exclude_colors=list(existing_colors))
+                new_colors = distinctipy.get_colors(len(colorless_values), exclude_colors=[colors.to_rgb(c) for c in existing_colors])
                 new_colors = [colors.to_hex(c) for c in new_colors]
                 for value, color in zip(colorless_values, new_colors):
                     self.metadata_colors[layer][value] = color

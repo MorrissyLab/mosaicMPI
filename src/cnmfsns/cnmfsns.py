@@ -682,7 +682,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
 @click.command()
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), help="TOML config file")
-@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results. Can be used to specify multiple files instead of a TOML config file.")
+@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results. Can be used to specify multiple datasets for integration instead of a TOML config file.")
 @click.option('--cpus', type=int, default=len(os.sched_getaffinity(0)), show_default=True, help="Number of CPUs to use for calculating correlation matrix")
 def integrate(output_dir, config_toml, cpus, input_h5ad):
     """
@@ -713,10 +713,6 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
     elif input_h5ad:
         config = Config.from_h5ad_files(input_h5ad)
         print(config)
-    logging.info("Copying data to output directory...")
-    # # copy files to output directory
-    # for name, d in config.datasets.items():
-    #     shutil.copy(d["filename"], os.path.join(output_dir, "input", "datasets", name + ".h5ad"))
 
     # add missing colors to config
     logging.info("Checking metadata colors for completeness...")
@@ -737,25 +733,25 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
     geps = pd.concat(geps, axis=1).sort_index(axis=1)
     k_table = pd.concat(k_table, axis=1)
 
-    corr_path = os.path.join(output_dir, "integrate", config.integration["corr_method"] + ".df.npz")
+    corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")
     try:
         corr = load_df_from_npz(corr_path)
         logging.info(f"Loaded previously calculated correlation matrix from {corr_path}")
     except FileNotFoundError:
         logging.info(f"Calculating correlation matrix")
-        if config.integration["corr_method"] == "pearson":
+        if config.integrate["corr_method"] == "pearson":
             try:
                 from nancorrmp.nancorrmp import NaNCorrMp
             except ImportError:
                 logging.info(f"nancorrmp not installed. Calculating Pearson correlation matrix using 1 CPU.")
-                corr = geps.corr(config.integration["corr_method"])
+                corr = geps.corr(config.integrate["corr_method"])
             else:
                 cpu_string = "all" if cpus == -1 else str(cpus)
                 logging.info(f"nancorrmp found. Calculating Pearson correlation matrix using {cpu_string} CPUs.")
                 corr = NaNCorrMp.calculate(geps, n_jobs=cpus)
         else:
             logging.info(f"Calculating Spearman correlation matrix using 1 CPU.")
-            corr = geps.corr(config.integration["corr_method"])
+            corr = geps.corr(config.integrate["corr_method"])
         save_df_to_npz(corr, corr_path)
 
     # Check that rows and columns of correlation matrix are identical
@@ -777,7 +773,7 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
         max_k_threshold = None
         for max_k, median_corr in max_kval_medians.items():
             max_k_threshold = max_k
-            if median_corr <= config.integration["max_median_corr"]:
+            if median_corr <= config.integrate["max_median_corr"]:
                 break
         new_columns = pd.DataFrame([max_kval_medians, (max_kval_medians.index.to_series() <= max_k_threshold)]).T #, columns=pd.MultiIndex.from_product([[dataset_name],["max_k_median_corr", "max_k_filter_pass"]]))
         new_columns = pd.DataFrame({"max_k_median_corr": max_kval_medians, "max_k_filter_pass": (max_kval_medians.index.to_series() <= max_k_threshold)})
@@ -798,40 +794,38 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
         config.datasets[dataset_name]["selected_k"] = sorted(list(k_table[(dataset_name, "selected_k")][k_table[(dataset_name, "selected_k")]].index))
     k_table = k_table.sort_index(axis=1)
     k_table.to_csv(os.path.join(output_dir, "integrate", "k_filters.txt"), sep="\t")
-    output_toml = os.path.join(output_dir, "config.toml")
+    output_toml = os.path.join(output_dir, "integrate", "config.toml")
     config.to_toml(output_toml)
     logging.info(f"Output updated TOML file to: {output_toml}")
 
     # Rank Reduction Plots
     for dataset_name in config.datasets:
-        fig = plot_rank_reduction(k_table.loc[:, dataset_name], config.integration["max_median_corr"])
+        fig = plot_rank_reduction(k_table.loc[:, dataset_name], config.integrate["max_median_corr"])
         fig.savefig(os.path.join(output_dir, "integrate", f"{dataset_name}.rank_reduction.pdf"))
         fig.savefig(os.path.join(output_dir, "integrate", f"{dataset_name}.rank_reduction.png"))
-
-    # Pairwise correlation thresholds from unfiltered correlation matrix 
-    pairwise_thresholds = []
-    for row, dataset_row in enumerate(tril.index.levels[0]):
-        for col, dataset_col in enumerate(tril.columns.levels[0]):
-            distr = tril.loc[dataset_row, dataset_col].values.flatten()
-
-            #TODO Currently calculates it on all correlations, not max-k filtered
-
-            if not all(np.isnan(distr)):
-                pairwise_thresholds.append({
-                    "dataset_row": dataset_row,
-                    "dataset_col": dataset_col,
-                    "threshold": -np.quantile(distr[distr < 0], q=1-config.integration["negative_corr_quantile"])
-                })
-
-    pairwise_thresholds = pd.DataFrame.from_records(pairwise_thresholds).set_index(["dataset_row", "dataset_col"])
-    pairwise_thresholds.to_csv(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.txt"), sep="\t")
-
 
     # Filter correlations using dataset-specific max_k thresholds
     maxk_filtered_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if k_table.loc[gep[1], (gep[0], "max_k_filter_pass")]])
     selected_k_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if k_table.loc[gep[1], (gep[0], "selected_k")]])
     maxk_filtered_tril = tril.loc[maxk_filtered_index, maxk_filtered_index]
     selected_k_tril = tril.loc[selected_k_index, selected_k_index]
+
+    # Pairwise correlation thresholds from unfiltered correlation matrix 
+    pairwise_thresholds = []
+    for row, dataset_row in enumerate(maxk_filtered_tril.index.levels[0]):
+        for col, dataset_col in enumerate(maxk_filtered_tril.columns.levels[0]):
+            distr = maxk_filtered_tril.loc[dataset_row, dataset_col].values.flatten()
+
+            if not all(np.isnan(distr)):
+                pairwise_thresholds.append({
+                    "dataset_row": dataset_row,
+                    "dataset_col": dataset_col,
+                    "threshold": -np.quantile(distr[distr < 0], q=1-config.integrate["negative_corr_quantile"])
+                })
+
+    pairwise_thresholds = pd.DataFrame.from_records(pairwise_thresholds).set_index(["dataset_row", "dataset_col"])
+    pairwise_thresholds.to_csv(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.txt"), sep="\t")
+
 
     # plot pairwise corr of all k
     fig = plot_pairwise_corr(tril=tril, thresholds=pairwise_thresholds)
@@ -898,15 +892,15 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
     help="Output directory for cNMF-SNS results generated using `cnmfsns integrate`")
 @click.option(
     '-n', '--name', type=str, default=datetime.strftime(datetime.now(), "%Y-%m-%d_%H%M%S"),
-    help="Name for specific integration. Output from this step will be in [output_dir]/sns_networks/[name]/...")
+    help="Name for this network. Output from this step will be in [output_dir]/sns_networks/[name]/...")
 @click.option(
     '-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), 
-    help="TOML config file. Defaults to file output from `cnmfsns integrate` step: [output_dir]/config.toml")
+    help="TOML config file. Defaults to file output from `cnmfsns integrate` step: [output_dir]/integrate/config.toml")
 def create_network(output_dir, name, config_toml):
     start_logging(os.path.join(output_dir, "logfile.txt"))
 
     if config_toml is None:
-        config = Config.from_toml(os.path.join(output_dir, "config.toml"))
+        config = Config.from_toml(os.path.join(output_dir, "integrate", "config.toml"))
     else:
         config = Config.from_toml(config_toml)
 
@@ -916,6 +910,9 @@ def create_network(output_dir, name, config_toml):
 
     sns_output_dir = os.path.join(output_dir, "sns_networks", name)
     os.makedirs(sns_output_dir, exist_ok=True)
+    # write just the SNS parameters to the SNS output directory for better documentation of how it was run
+    with open(os.path.join(sns_output_dir, "sns.toml"), "wb") as f:
+        tomli_w.dump(config.sns, f)
 
     G = create_graph(output_dir, config)
     communities = community_search(G, config)

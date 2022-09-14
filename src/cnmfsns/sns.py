@@ -23,7 +23,7 @@ def load_df_from_npz(filename, multiindex=False):
     return obj
 
 def get_corr_matrix(output_dir, config):
-    corr_path = os.path.join(output_dir, "integrate", config.integration["corr_method"] + ".df.npz")
+    corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")
     if not os.path.exists(corr_path):
         logging.error(f"No correlation matrix found at {corr_path}. Make sure you have run `cnmfsns integrate` before running `cnmfsns create-sns`.")
     corr = load_df_from_npz(corr_path)
