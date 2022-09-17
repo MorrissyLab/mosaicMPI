@@ -3,7 +3,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib
 from matplotlib.lines import Line2D
-from matplotlib.patches import FancyBboxPatch
+from matplotlib.patches import Polygon, Rectangle
 import matplotlib.pyplot as plt
 import upsetplot
 from scipy.cluster.hierarchy import linkage, dendrogram
@@ -102,24 +102,6 @@ def annotated_heatmap(
     ax = fig.add_subplot(gs0[1])
     ax.set_axis_off()
     plt.colorbar(im_heatmap, ax=ax, location="top")
-    
-    # # old legend used to go here
-    # # Category Legend
-    # from matplotlib.patches import Patch
-    # ax = fig.add_subplot(gs0[3])
-    # # Add legend
-    # legend_elements = []
-    # for track, color_def in metadata_colors.items():
-    #     if track in metadata.columns:
-    #         legend_elements.append(Patch(label=track, facecolor='white', edgecolor=None, ))
-    #         for cat, color in color_def.items():
-    #             if cat in metadata[track].astype("category").cat.categories:
-    #                 legend_elements.append(Patch(label=cat, facecolor=color, edgecolor=None))
-    #         # if metadata[track].isnull().any():
-    #         #     legend_elements.append(Patch(label="Other", facecolor=missing_data_color, edgecolor=None))
-
-    # ax.legend(handles=legend_elements, loc='upper left')
-    # ax.set_axis_off()
     return fig
 
 def plot_annotated_usages(df, metadata, metadata_colors, title, filename, cluster_geps, cluster_samples, show_sample_labels):
@@ -320,36 +302,55 @@ def plot_community_by_dataset_rank(communities, config):
     plt.tight_layout()
     return fig
 
-            
-def draw_circle_bar_plot(x, y, enrichments, colors, size, ax, draw_labels: bool=False, label_radius=0.2, label_font_size=1, draw_scale=False):
-    ### TODO: implement draw_scale functionality
-    if draw_scale:
-        raise NotImplementedError
+# Overrepresentation network plots
+
+def draw_circle_bar_plot(position, enrichments, colors, size, ax, scale_factor: float=1, draw_labels: bool=False, label_font_size: float=1):
+
+    x, y = position
     previous = np.pi
     for color, (label, enrichment) in zip(colors, enrichments.items()):
-        # calculate the points of the pie pieces
         this = previous - 2 * np.pi / len(enrichments)
-        x_shape  = [0] + np.cos(np.linspace(previous, this, 40)).tolist() + [0]
-        y_shape  = [0] + np.sin(np.linspace(previous, this, 40)).tolist() + [0]
-        xy_shape = np.column_stack([x_shape, y_shape])
-        # print(label, previous, this)
-        # scatter each of the pie pieces
-        marker = {'marker':xy_shape, 's':np.abs(xy_shape).max()**2*enrichment*size, 'facecolor':color, 'linewidths':0}
-        ax.scatter([x], [y], **marker)
-        # text
-        if draw_labels:
-            a = (previous - np.pi / len(enrichments))
-            x_offset = label_radius * np.cos(a)
-            y_offset = label_radius * np.sin(a)
-            ax.text(x+x_offset, y+y_offset, label, rotation=np.rad2deg(a), ha="left", va="center", rotation_mode='anchor', fontsize=label_font_size)
+        if enrichment > 0:
+            # calculate the points of the pie pieces
+            radius = size * np.sqrt(enrichment * scale_factor)
+            n_edges_on_arc = max(2, 200 // len(enrichments))
+            x_shape  = np.array([0] + np.cos(np.linspace(previous, this, n_edges_on_arc)).tolist()) * radius + x
+            y_shape  = np.array([0] + np.sin(np.linspace(previous, this, n_edges_on_arc)).tolist()) * radius + y
+            xy_shape = np.column_stack([x_shape, y_shape])
+            ax.add_patch(Polygon(xy_shape, fill=True, closed=True, color=color, linewidth=0))
+
+            # text
+            if draw_labels:
+                a = (previous - np.pi / len(enrichments))
+                x_offset = (size * 1.1) * np.cos(a)
+                y_offset = (size * 1.1) * np.sin(a)
+                ax.text(x+x_offset, y+y_offset, label, rotation=np.rad2deg(a), ha="left", va="center", rotation_mode='anchor', fontsize=label_font_size)
         previous = this
+
+def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size):
+    x, y = position
+    for ring in [0.25,0.5,0.75,1]:
+        ax.add_patch(plt.Circle(position, np.sqrt(ring) * size, color="black", fill=False))
+    ax.add_patch(Rectangle(position, size * 1.01, size * 1.01, color="#FFFFFF"))
+    for ring in [0.25,0.5,0.75,1]:
+        value = ring/scale_factor
+        ax.text(
+            x + size * 0.05,
+            y + np.sqrt(ring) * size,
+            f"{value:.3f}",
+            fontsize=label_font_size,
+            verticalalignment="center")
 
 def plot_overrepresentation_network(graph, layout, title, overrepresentation, colordict, plot_size, node_size, edge_weights=None):
 
     # Plot the network
     fig, ax = plt.subplots(figsize=plot_size)
+    # fig = plt.figure(figsize=plot_size)
+    # ax = fig.add_axes([0.025, 0.025, 0.95, 0.95])
+    ax.set_aspect("equal")
     ax.set_axis_off()
-    # nx.draw(G, pos=layout, with_labels=True, labels=labels, node_color="#AAAAAA", node_size=20, linewidths=0, width=0.2, font_size=2, edge_color="#888888", ax=ax)
+    ax.set_title(title)
+    
     if edge_weights is None:
         width = 0.2
     else:
@@ -357,27 +358,38 @@ def plot_overrepresentation_network(graph, layout, title, overrepresentation, co
         width = width / np.max(width)
 
     nx.draw_networkx_edges(graph, pos=layout, edge_color="#888888", ax=ax, width=width)
-    plotted_categories = set()
+    xlim = ax.get_xlim()
+    ax.set_xlim([xlim[0] - xlim[0] * 0.1, xlim[1] + xlim[1] * 0.1])
+    ylim = ax.get_ylim()
+    ax.set_ylim([ylim[0] - ylim[0] * 0.1, ylim[1] + ylim[1] * 0.1])
+
+    max_or = np.max(overrepresentation.values.flatten())
+    scale_factor = 1 / max_or
     for node, gep_or in overrepresentation.iteritems():
         if node in graph and gep_or.any():
-            plotted_categories.update(gep_or.index)
             color_list = gep_or.index.map(colordict)
-            x, y = layout[node]
-            draw_circle_bar_plot(x, y, gep_or, colors=color_list, size=node_size * 10, ax=ax)
+            draw_circle_bar_plot(position=layout[node], enrichments=gep_or, scale_factor=scale_factor, colors=color_list, size=node_size, ax=ax)
 
-    # Add legend
-    legend_bbox = [0.8,0.8,0.19, 0.19]
-    ax.add_patch(FancyBboxPatch(legend_bbox[:2], legend_bbox[2], legend_bbox[3], fc='#ffffff88', ec="#aaaaaa", boxstyle="round,pad=0.01", transform=ax.transAxes))
-    ax_legend = ax.inset_axes(legend_bbox)
-    ax_legend.set_axis_off()
-    ax_legend.set_ylim([0,1])
-    ax_legend.set_xlim([0,1])
+    # Add legends
+    upper_right_position = (max([x for x, y in layout.values()]) * 1.1, max([y for x, y in layout.values()]) * 1.1)
+    lower_right_position = (max([x for x, y in layout.values()]) * 1.1, min([y for x, y in layout.values()]) * 0.9)
     draw_circle_bar_plot(
-        0.5, 0.5,
-        enrichments = pd.Series(1, index=gep_or.index.sort_values().unique()),
-        colors=overrepresentation.index.map(colordict), size=node_size*16, draw_labels=True, label_font_size=6, ax=ax_legend)
-    plt.tight_layout()
+        position=upper_right_position,
+        enrichments=pd.Series(max_or, index=gep_or.index.sort_values().unique()),
+        colors=overrepresentation.index.map(colordict),
+        scale_factor=scale_factor,
+        size=node_size,
+        draw_labels=True,
+        label_font_size=6, ax=ax)
+    draw_circle_bar_scale(
+        position=lower_right_position,
+        scale_factor=scale_factor,
+        size=node_size,
+        label_font_size=6, ax=ax)
+    fig.tight_layout()
     return fig
+
+# overrepresentation bar plots
 
 def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config):
     # usage subset to dataset
@@ -465,6 +477,6 @@ def plot_number_of_patients(usage, sample_to_patient, G, layout, config):
         with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color=config.sns["edge_color"], font_size=3, ax=ax)
         ax.legend(handles=dataset_legend)
         ax.set_title(method)
-        plt.tight_layout()
+        fig.tight_layout()
         figs[method] = fig
     return figs

@@ -18,7 +18,6 @@ from cnmfsns.containers import add_cnmf_results_to_h5ad
 from cnmfsns.config import Config
 from cnmfsns.odg import model_overdispersion, odg_plots, fetch_hgnc_protein_coding_genes
 from cnmfsns.plots import (
-    plot_annotated_geps_by_community,
     plot_annotated_usages,
     plot_rank_reduction,
     plot_pairwise_corr,
@@ -47,8 +46,16 @@ import seaborn as sns
 import tomli_w
 import distinctipy
 from matplotlib.lines import Line2D
-from matplotlib.patches import FancyBboxPatch
 
+import matplotlib as mpl
+
+#To make sure we have always the same matplotlib settings
+#(the ones in comments are the ipython notebook settings)
+
+mpl.rcParams['figure.figsize']=(6.0,4.0)    #(6.0,4.0)
+mpl.rcParams['font.size']=10                #10 
+mpl.rcParams['savefig.dpi']=72             #72 
+mpl.rcParams['figure.subplot.bottom']=.125    #.125
 
 def get_and_check_consensus(k, cnmf_obj, local_density_threshold, local_neighborhood_size):
     logging.info(f"Creating consensus GEPs and usages for k={k}")
@@ -681,7 +688,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
 
 @click.command()
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
-@click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), help="TOML config file")
+@click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), required=True, help="TOML config file")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results. Can be used to specify multiple datasets for integration instead of a TOML config file.")
 @click.option('--cpus', type=int, default=len(os.sched_getaffinity(0)), show_default=True, help="Number of CPUs to use for calculating correlation matrix")
 def integrate(output_dir, config_toml, cpus, input_h5ad):
@@ -904,15 +911,15 @@ def create_network(output_dir, name, config_toml):
     else:
         config = Config.from_toml(config_toml)
 
-    fig = config.plot_metadata_colors_legend()
-    fig.savefig(os.path.join(output_dir, "annotation_legend.pdf"))
-    plt.close(fig)
-
     sns_output_dir = os.path.join(output_dir, "sns_networks", name)
     os.makedirs(sns_output_dir, exist_ok=True)
-    # write just the SNS parameters to the SNS output directory for better documentation of how it was run
-    with open(os.path.join(sns_output_dir, "sns.toml"), "wb") as f:
-        tomli_w.dump(config.sns, f)
+
+    fig = config.plot_metadata_colors_legend()
+    fig.savefig(os.path.join(sns_output_dir, "annotation_legend.pdf"))
+    plt.close(fig)
+
+    # write current configuration to config.toml file in the SNS output directory
+    config.to_toml(os.path.join(sns_output_dir, "config.toml"))
 
     G = create_graph(output_dir, config)
     communities = community_search(G, config)
@@ -1136,7 +1143,7 @@ def create_network(output_dir, name, config_toml):
             overrepresentation=community_es,
             colordict=config.get_metadata_colors(annotation_layer),
             plot_size=config.sns["plot_size"],
-            node_size=np.array(config.sns["node_size"]) * 8,
+            node_size=np.array(config.sns["node_size"]),
             edge_weights="n_edges"
         )
         os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name), exist_ok=True)
