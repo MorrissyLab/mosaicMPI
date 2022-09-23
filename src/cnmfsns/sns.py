@@ -156,7 +156,21 @@ def get_graph_layout(G, config):
         x = RobustScaler().fit_transform(x)
 
         embedding = umap.UMAP(n_neighbors=25, min_dist=0.01).fit_transform(x)
-        layout = {"|".join((gep[0], str(gep[1]), str(gep[2]))): list(emb.astype(float)) for gep, emb in zip(table.index, embedding)}  
+        layout = {"|".join((gep[0], str(gep[1]), str(gep[2]))): list(emb.astype(float)) for gep, emb in zip(table.index, embedding)}
+
+    # rescale layout
+    xmax = max(x for x, y in layout.values())
+    xmin = min(x for x, y in layout.values())
+    ymax = max(y for x, y in layout.values())
+    ymin = min(y for x, y in layout.values())
+    def rescale_point(xy, xmin, xmax, ymin, ymax, new_range):
+        x, y = xy
+        x = (new_range[1] - new_range[0]) * (x - xmin) / (xmax - xmin) + new_range[0]
+        y = (new_range[1] - new_range[0]) * (y - ymin) / (ymax - ymin) + new_range[0]
+        return (x, y)
+    layout = {
+        name: rescale_point(xy, xmin, xmax, ymin, ymax, (-400, 400))
+        for name, xy in layout.items()}
     return layout
 
 

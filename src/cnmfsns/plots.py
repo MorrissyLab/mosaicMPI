@@ -12,10 +12,9 @@ import networkx as nx
 from cnmfsns.sns import get_category_overrepresentation
 
 def annotated_heatmap(
-        data, title, metadata=None, metadata_colors=None,
+        data, title, metadata=None, metadata_colors=None, missing_data_color="#BBBBBB",
         row_cluster=True, col_cluster=True, plot_col_dendrogram=True, show_sample_labels=True):
-
-    n_columns = data.columns.shape[0]
+    n_columns = data.shape[1]
     if metadata is None:
         n_metadata_columns = 0
     else:
@@ -39,7 +38,7 @@ def annotated_heatmap(
 
     # HAC clustering (compute linkage matrices)
     if col_cluster:
-        col_links = linkage(data, method='average', metric='euclidean')
+        col_links = linkage(data.dropna(axis=1), method='average', metric='euclidean')
         if plot_col_dendrogram:
             col_dendrogram = dendrogram(col_links, color_threshold=0, ax=ax_col_dendrogram)
         else:
@@ -66,7 +65,6 @@ def annotated_heatmap(
     if metadata is not None:
         # data and metadata must have the same index
         metadata = metadata.loc[data.index]
-        missing_data_color = metadata_colors["missing_data"]
         gs2 = matplotlib.gridspec.GridSpecFromSubplotSpec(metadata.shape[1], 1, subplot_spec=gs0[2])
         for i, (track, annot) in enumerate(metadata.items()):
             ax = fig.add_subplot(gs2[i], sharex=ax_heatmap)
@@ -104,13 +102,13 @@ def annotated_heatmap(
     plt.colorbar(im_heatmap, ax=ax, location="top")
     return fig
 
-def plot_annotated_usages(df, metadata, metadata_colors, title, filename, cluster_geps, cluster_samples, show_sample_labels):
+def plot_annotated_usages(df, metadata, metadata_colors, missing_data_color, title, filename, cluster_geps, cluster_samples, show_sample_labels):
     samples = df.index.to_series()
     df = df.div(df.sum(axis=1), axis=0)
     annotations = metadata.loc[samples]
-    fig = annotated_heatmap(data=df, metadata=annotations, metadata_colors=metadata_colors, title=title, row_cluster=cluster_geps, col_cluster=cluster_samples, show_sample_labels=show_sample_labels)
+    fig = annotated_heatmap(data=df, metadata=annotations, metadata_colors=metadata_colors, missing_data_color=missing_data_color, title=title, row_cluster=cluster_geps, col_cluster=cluster_samples, show_sample_labels=show_sample_labels)
     fig.savefig(filename, transparent=False, bbox_inches = "tight")
-    plt.close(fig)  
+    plt.close(fig)
     return fig
 
 def plot_rank_reduction(df, max_median_corr_threshold):
@@ -398,7 +396,7 @@ def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name,
     community_gep_counts = [len([node for node in communities[c] if node.split("|")[0] == dataset_name]) for c in sorted(list(communities))]
     fig, axes = plt.subplots(
         metadata.shape[1], len(communities),
-        figsize=[len(communities) + 0.1 * sum(community_gep_counts), metadata.shape[1] * 3],
+        figsize=[len(communities) + 0.05 * sum(community_gep_counts), metadata.shape[1] * 2],
         sharey='row',
         gridspec_kw={"width_ratios": [gep_counts for gep_counts in community_gep_counts]})
     for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
@@ -423,8 +421,67 @@ def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name,
     fig.supxlabel("GEP")
     fig.supylabel("Overrepresentation")
     fig.suptitle("Community")
+    fig.tight_layout()
     return fig
 
+def plot_metadata_correlation_geps_bar(usage, metadata, communities, dataset_name, config):
+    # usage subset to dataset
+    ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
+    # number of bars in each community for this dataset
+    community_gep_counts = [len([node for node in communities[c] if node.split("|")[0] == dataset_name]) for c in sorted(list(communities))]
+    fig, axes = plt.subplots(
+        metadata.shape[1], len(communities),
+        figsize=[len(communities) + 0.05 * sum(community_gep_counts), metadata.shape[1] * 2],
+        sharey='row',
+        gridspec_kw={"width_ratios": [gep_counts for gep_counts in community_gep_counts]}, squeeze=False)
+    for row, (annotation_layer, sample_to_numeric) in enumerate(metadata.items()):
+        association = ds_usage.corrwith(sample_to_numeric, method="spearman")
+        for col, community in enumerate(sorted(list(communities))):
+            ax = axes[row, col]
+            geps = []
+            for node in communities[community]:
+                dataset_str, k_str, gep_str = node.split("|")
+                if dataset_str == dataset_name:
+                    geps.append((dataset_str, int(k_str), int(gep_str)))
+            geps = sorted(geps)
+            if geps:
+                association[geps].T.plot.bar(width=0.9, ax=ax, legend=None)
+            ax.set_xlabel("")
+            ax.set_xticks([])
+            if col == 0:
+                ax.set_ylabel(annotation_layer)
+            if row == 0:
+                ax.set_title(community, size=14)
+
+    fig.supxlabel("GEP")
+    fig.supylabel("Pearson corr")
+    fig.suptitle("Community")
+    fig.tight_layout()
+    return fig
+
+def plot_metadata_correlation_network(graph, layout, title, correlation, plot_size, node_size, edge_weights=None):
+     
+    if edge_weights is None:
+        width = 0.2
+    else:
+        width = np.array(list(nx.get_edge_attributes(graph, edge_weights).values()))
+        width = width / np.max(width)   
+
+    color_map = matplotlib.cm.ScalarMappable(norm=matplotlib.colors.Normalize(-1, 1), cmap=matplotlib.cm.RdBu_r)
+    nodes_in_dataset = []
+    colors = []
+    for node in graph:
+        if node in correlation:
+            nodes_in_dataset.append(node)
+            colors.append(color_map.to_rgba(correlation[node]))
+
+    fig, ax = plt.subplots(figsize=(plot_size[0] * 1.15, plot_size[1]))
+    nx.draw(graph, nodelist = nodes_in_dataset, pos=layout,
+            with_labels=False, node_color=colors, node_size=node_size, linewidths=0, width=width, edge_color="#888888", font_size=4)
+    ax.set_title(title)
+    fig.colorbar(color_map, location="right", anchor=(0, 1), panchor=(1, 0), shrink=0.2, fraction=0.15)
+    plt.tight_layout()
+    return fig
 
 def plot_number_of_patients(usage, sample_to_patient, G, layout, config):
 
