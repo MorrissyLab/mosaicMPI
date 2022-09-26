@@ -700,12 +700,11 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
     """
     # create directory structure, warn if not empty
     output_dir = os.path.normpath(output_dir)
+    start_logging()
     os.makedirs(output_dir, exist_ok=True)
-    start_logging(os.path.join(output_dir, "logfile.txt"))
     if os.listdir(output_dir):
         logging.warning(f"Integration directory {output_dir} is not empty. Files may be overwritten.")
-
-    os.makedirs(os.path.join(output_dir, "input", "datasets"), exist_ok=True)
+    start_logging(os.path.join(output_dir, "logfile.txt"))
     os.makedirs(os.path.join(output_dir, "integrate"), exist_ok=True)
 
     if config_toml is not None and input_h5ad:
@@ -761,7 +760,6 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
             logging.info(f"Calculating Spearman correlation matrix using 1 CPU.")
             corr = geps.corr(config.integrate["corr_method"])
         save_df_to_npz(corr, corr_path)
-
     # Check that rows and columns of correlation matrix are identical
     assert (corr.index == corr.columns).all()
 

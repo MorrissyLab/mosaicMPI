@@ -162,15 +162,15 @@ class Config(SimpleNamespace):
         categorical_groups = [group for group, group_attr in self.metadata_colors_group.items() if isinstance(group_attr["colors"], dict)]
         n_columns = len(categorical_columns) + len(categorical_groups) + 1
         fig, axes = plt.subplots(1, n_columns, figsize=[3*n_columns, 200], squeeze=False)
-        for ax, track in zip(axes, categorical_columns):
-            ax = ax[0]
+        for ax, track in zip(axes[0], categorical_columns):
+            ax = ax
             color_def = self.metadata_colors[track]
             legend_elements = [Patch(label=cat, facecolor=color, edgecolor=None) for cat, color in color_def.items()]
             ax.legend(handles=legend_elements, loc='upper left')
             ax.set_title(track)
             ax.set_axis_off()
         for ax_id, group in enumerate(categorical_groups, len(categorical_columns)):
-            ax = axes[ax_id][0]
+            ax = axes[0][ax_id]
             color_def = self.metadata_colors_group[group]["colors"]
             legend_elements = [Patch(label=cat, facecolor=color, edgecolor=None) for cat, color in color_def.items()]
             ax.legend(handles=legend_elements, loc='upper left')
@@ -178,8 +178,8 @@ class Config(SimpleNamespace):
             ax.set_axis_off()
 
         # last column is missing data color
-        axes[-1][0].legend(handles=[Patch(label="Missing Data", facecolor=self.metadata_colors["missing_data"], edgecolor=None)], loc='upper left')
-        axes[-1][0].set_axis_off()
+        axes[0][-1].legend(handles=[Patch(label="Missing Data", facecolor=self.metadata_colors["missing_data"], edgecolor=None)], loc='upper left')
+        axes[0][-1].set_axis_off()
 
         plt.tight_layout()
         return fig
