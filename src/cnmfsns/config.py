@@ -36,7 +36,7 @@ config_defaults = {
                 "resolution": 0.01
             }
         },
-        "layout_algorithm": "neato",   # "neato", "spring", "community_weighted_spring"
+        "layout_algorithm": "community_weighted_spring",   # "neato", "spring", "community_weighted_spring"
         "layouts": {  # parameters for each layout algorithm
             "neato": {},
             "spring": {},

@@ -661,7 +661,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
     # plot legend
     fig = cfg.plot_metadata_colors_legend()
     fig.savefig(os.path.join(output_dir, f"metadata_legend.pdf"))
-    exclude_maxcat = adata.obs.select_dtypes(include=["object", "category"]).apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
+    exclude_maxcat = adata.obs.select_dtypes(include="category").apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
     if adata.obs.shape[1] > 0:
         metadata = adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index)
     else:
@@ -927,6 +927,33 @@ def create_network(output_dir, name, config_toml):
         tomli_w.dump(gep_communities, f)
     add_community_weights_to_graph(G, gep_communities, config)
 
+    geps = {}
+    for dataset_name, dataset in config.datasets.items():
+        adata = read_h5ad(dataset["filename"], backed="r")
+        df = adata.varm["cnmf_gep_score"]
+        df.columns = pd.MultiIndex.from_tuples([(int(gep[0]), int(gep[1])) for gep in df.columns.str.split(".")])
+        geps[dataset_name] = df
+    geps = pd.concat(geps, axis=1).sort_index(axis=1)
+    # get minimum k GEPs for each community/dataset combination.
+    selected_geps_labels = []
+    for community, nodes in communities.items():
+        nodes = pd.DataFrame([n.split("|") for n in nodes], columns=["dataset", "k", "GEP"])
+        for dataset_name in config.datasets:
+            dataset_nodes = nodes[nodes["dataset"] == dataset_name].copy()
+            if dataset_nodes.shape[0]:
+                block = dataset_nodes[dataset_nodes["k"].astype(int) == dataset_nodes["k"].astype(int).min()].copy()
+                block["Community"] = community
+                selected_geps_labels.append(block)
+    selected_geps_labels = pd.concat(selected_geps_labels).set_index("Community")
+    selected_geps_labels.to_csv(os.path.join(sns_output_dir, "selected_geps_labels.txt"), sep="\t") # outputs the GEP identities
+    
+    selected_geps = []
+    for community, gep in selected_geps_labels.iterrows():
+        selected_geps.append(geps[gep['dataset'], int(gep['k']), int(gep['GEP'])].rename(f"{community}|{gep['dataset']}|{gep['k']}|{gep['GEP']}"))
+    selected_geps = pd.concat(selected_geps, axis=1)
+    selected_geps.to_csv(os.path.join(sns_output_dir, "selected_geps.txt"), sep="\t") # outputs the GEPs themselves (ie., gene profiles in z-score units)
+    
+    # plot membership of datasets and ranks for each community
     fig = plot_community_by_dataset_rank(communities, config)
     fig.savefig(os.path.join(sns_output_dir, "communities_by_dataset_rank.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "communities_by_dataset_rank.png"), dpi=600)
@@ -1071,6 +1098,8 @@ def create_network(output_dir, name, config_toml):
         metadata.index = pd.MultiIndex.from_product([[dataset_name], metadata.index])  # adds dataset name to index to disambiguate samples with the same name but different datasets
         merged_metadata.append(metadata)
     merged_metadata = pd.concat(merged_metadata)
+    for col in merged_metadata.select_dtypes(include="object").columns:  # required to fix 'object' dtypes created during concatenation
+        merged_metadata[col] = merged_metadata[col].astype("category")
     merged_metadata.index.rename(["dataset", "sample"], inplace=True)
     metadata_colors = {col: config.get_metadata_colors(col) for col in merged_metadata.columns}
     metadata_colors["Dataset"] = {dsname: dsparam["color"] for dsname, dsparam in config.datasets.items()}
@@ -1165,9 +1194,6 @@ def create_network(output_dir, name, config_toml):
         points = np.array([layout[node] for node in nodes])
         centroid = (np.mean(points[:, 0]), np.mean(points[:, 1]))
         community_layout[community_name] = centroid
-
-    # # Neato layout
-    # community_layout = nx.nx_agraph.graphviz_layout(Gcomm, prog="neato", args='-Goverlap=true')
 
     # Community-level overrepresentation plots
     plot_data = {}

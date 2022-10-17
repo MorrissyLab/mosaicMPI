@@ -339,12 +339,8 @@ def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size):
             fontsize=label_font_size,
             verticalalignment="center")
 
-def plot_overrepresentation_network(graph, layout, title, overrepresentation, colordict, plot_size, node_size, edge_weights=None):
+def plot_overrepresentation_network(graph, layout, title, overrepresentation, colordict, node_size, ax, edge_weights=None, show_legends=True):
 
-    # Plot the network
-    fig, ax = plt.subplots(figsize=plot_size)
-    # fig = plt.figure(figsize=plot_size)
-    # ax = fig.add_axes([0.025, 0.025, 0.95, 0.95])
     ax.set_aspect("equal")
     ax.set_axis_off()
     ax.set_title(title)
@@ -368,27 +364,26 @@ def plot_overrepresentation_network(graph, layout, title, overrepresentation, co
             color_list = gep_or.index.map(colordict)
             draw_circle_bar_plot(position=layout[node], enrichments=gep_or, scale_factor=scale_factor, colors=color_list, size=node_size, ax=ax)
 
-    # Add legends
-    upper_right_position = (max([x for x, y in layout.values()]) * 1.1, max([y for x, y in layout.values()]) * 1.1)
-    lower_right_position = (max([x for x, y in layout.values()]) * 1.1, min([y for x, y in layout.values()]) * 0.9)
-    draw_circle_bar_plot(
-        position=upper_right_position,
-        enrichments=pd.Series(max_or, index=gep_or.index.sort_values().unique()),
-        colors=overrepresentation.index.map(colordict),
-        scale_factor=scale_factor,
-        size=node_size,
-        draw_labels=True,
-        label_font_size=6, ax=ax)
-    draw_circle_bar_scale(
-        position=lower_right_position,
-        scale_factor=scale_factor,
-        size=node_size,
-        label_font_size=6, ax=ax)
-    fig.tight_layout()
-    return fig
+    if show_legends:
+        # Add legends
+        upper_right_position = (max([x for x, y in layout.values()]) * 1.1, max([y for x, y in layout.values()]) * 1.1)
+        lower_right_position = (max([x for x, y in layout.values()]) * 1.1, min([y for x, y in layout.values()]) * 0.9)
+        draw_circle_bar_plot(
+            position=upper_right_position,
+            enrichments=pd.Series(max_or, index=gep_or.index.sort_values().unique()),
+            colors=overrepresentation.index.map(colordict),
+            scale_factor=scale_factor,
+            size=node_size,
+            draw_labels=True,
+            label_font_size=6, ax=ax)
+        draw_circle_bar_scale(
+            position=lower_right_position,
+            scale_factor=scale_factor,
+            size=node_size,
+            label_font_size=6, ax=ax)
+    return ax
 
 # overrepresentation bar plots
-
 def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config):
     # usage subset to dataset
     ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
