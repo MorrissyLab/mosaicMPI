@@ -18,6 +18,10 @@ from anndata import read_h5ad
 # Default parameters for the config files are used when missing as input to cnmfsns integrate
 
 config_defaults = {
+    "colormaps": {
+        "diverging": "RdBu_r",
+        "sequential": "YlOrRd"
+    },
     "integrate": {
         "corr_method": "pearson",
         "max_median_corr": 0,
@@ -46,7 +50,8 @@ config_defaults = {
             }
         },
         "node_size": 30,
-        "plot_size": [10, 10]
+        "plot_size_gep": [10, 10],
+        "plot_size_community": [4, 4],
         },
     "datasets": {},
     "metadata_colors": {"missing_data": "#dddddd"},

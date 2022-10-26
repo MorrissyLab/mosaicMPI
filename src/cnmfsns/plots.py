@@ -12,7 +12,7 @@ import networkx as nx
 from cnmfsns.sns import get_category_overrepresentation
 
 def annotated_heatmap(
-        data, title, metadata=None, metadata_colors=None, missing_data_color="#BBBBBB",
+        data, title, metadata=None, metadata_colors=None, missing_data_color="#BBBBBB", heatmap_cmap='YlOrRd', 
         row_cluster=True, col_cluster=True, plot_col_dendrogram=True, show_sample_labels=True):
     n_columns = data.shape[1]
     if metadata is None:
@@ -54,7 +54,7 @@ def annotated_heatmap(
         yind = np.arange(0, data.shape[1])
 
     xmin,xmax = ax_col_dendrogram.get_xlim()
-    im_heatmap = ax_heatmap.imshow(data.iloc[xind,yind].T, aspect='auto', extent=[xmin,xmax,0,1], cmap='YlOrRd', vmin=0, vmax=1, interpolation='none')
+    im_heatmap = ax_heatmap.imshow(data.iloc[xind,yind].T, aspect='auto', extent=[xmin,xmax,0,1], cmap=heatmap_cmap, vmin=0, vmax=1, interpolation='none')
     ax_heatmap.set_yticks((data.columns.astype("int").to_series() - 0.5).div(data.shape[1]))
     ax_heatmap.set_yticklabels(data.columns[yind][::-1])
     ax_heatmap.set_ylabel("GEP", rotation=0, ha='right', va='center')
@@ -454,7 +454,7 @@ def plot_metadata_correlation_geps_bar(usage, metadata, communities, dataset_nam
     fig.tight_layout()
     return fig
 
-def plot_metadata_correlation_network(graph, layout, title, correlation, plot_size, node_size, edge_weights=None):
+def plot_metadata_correlation_network(graph, layout, title, correlation, plot_size, node_size, config, edge_weights=None):
      
     if edge_weights is None:
         width = 0.2
@@ -462,7 +462,7 @@ def plot_metadata_correlation_network(graph, layout, title, correlation, plot_si
         width = np.array(list(nx.get_edge_attributes(graph, edge_weights).values()))
         width = width / np.max(width)   
 
-    color_map = matplotlib.cm.ScalarMappable(norm=matplotlib.colors.Normalize(-1, 1), cmap=matplotlib.cm.RdBu_r)
+    color_map = matplotlib.cm.ScalarMappable(norm=matplotlib.colors.Normalize(-1, 1), cmap=config.colormaps["diverging"])
     nodes_in_dataset = []
     colors = []
     for node in graph:
@@ -524,7 +524,7 @@ def plot_number_of_patients(usage, sample_to_patient, G, layout, config):
         colors = [node.partition("|")[2] for node in G]
         node_sizes = [(sizes[n] if n in sizes else 0) for n in G]
         colors = [dataset_colors[node.split("|")[0]] for node in G]
-        fig, ax = plt.subplots(figsize=config.sns["plot_size"])
+        fig, ax = plt.subplots(figsize=config.sns["plot_size_gep"])
         nx.draw(G, pos=layout,
         with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color=config.sns["edge_color"], font_size=3, ax=ax)
         ax.legend(handles=dataset_legend)

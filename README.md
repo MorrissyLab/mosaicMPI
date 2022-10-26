@@ -190,11 +190,37 @@ Once the command has completed, outputs are located in `<output_directory>/integ
 - UpSet plot of OD Genes between datasets
 - plot correlation between cohorts
 - rank reduction plots to exclude high ranks with highly correlated GEPs
+- `node_stats.txt`: number of nodes before and after node and edge filters, per dataset.
 
 ### 2. Network-based analyses
 
-```
-cnmfsns create-network -o output_directory
-```
+To run integrative analyses on multiple datasets, you can run the following command using the same output directory you specified for `cnmfsns integrate`.
 
-Outputs from this command are located in `<output_directory>/sns_networks/<timestamp>/`
+```
+cnmfsns create-network -o output_directory -n name
+```
+once the command has completed, outputs are located in `<output_directory>/sns_networks/<name>/`. Plots include:
+- GEP network plots:
+  - `gep_network.pdf`: GEPs are labelled
+  - `gep_network_communities.pdf`: Colored by community
+  - `gep_network_datasets.pdf`: Colored by dataset
+  - `gep_network_rank.pdf`: Colored by dataset, size inversely proportional to rank (k)
+  - `npatients_discrete.pdf`: Node size is proportional to the number of patients with this GEP as its maximum
+  - `nsamples_continuous.pdf`: Node size is proportional to the sum of the usage across samples
+  - `nsamples_discrete.pdf`: Node size is proportional to the number of samples with this GEP as its maximum
+  - `annotated_geps/overrepresentation_network/<dataset>/<annotation_layer>.pdf`: plots overrepresentation of each category on the network for categorical metadata
+  - `annotated_geps/correlation_network/<dataset>/<annotation_layer>.pdf`: plots correlation of numerical metadata to GEP usage across samples on the network
+
+- GEP bar plots:
+  - `annotated_geps/overrepresentation_bar/<dataset>/<annotation_layer>.pdf`: plots overrepresentation of each category for each GEP for categorical metadata
+  - `annotated_geps/correlation_bar/<dataset>/<annotation_layer>.pdf`: plots correlation of numerical metadata to GEP usage across samples for each GEP
+
+- Community network plots:
+  - `community_network.pdf`: Each community is represented as a single node located in the centroid of the community in the GEP network plots. Nodes are colored by community, and the edges are proportional to the number of edges in the GEP networks.
+  - `annotated_communities/overrepresentation_network/<dataset>/<annotation_layer>.pdf`: plots overrepresentation of each category on the network for categorical metadata
+  - `annotated_communities/correlation_network/<dataset>/<annotation_layer>.pdf`: plots correlation of numerical metadata to GEP usage across samples on the network
+  - `annotated_communities/patient_network/<annotation_layer>/<n>samplesperpatient.pdf`: plots the community usage for each sample within a patient, averaged and colored by sample category for categorical metadata.
+
+- Community bar plots:
+  - `annotated_communities/overrepresentation_bar/<dataset>/<annotation_layer>.pdf`: plots overrepresentation of each category for each community for categorical metadata
+  - `annotated_communities/correlation_bar/<dataset>/<annotation_layer>.pdf`: plots correlation of numerical metadata to GEP usage across samples for each community
