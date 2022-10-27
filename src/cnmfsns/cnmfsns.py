@@ -50,6 +50,7 @@ import distinctipy
 from matplotlib.lines import Line2D
 
 import matplotlib as mpl
+from scipy.stats import entropy
 
 #To make sure we have always the same matplotlib settings
 #(the ones in comments are the ipython notebook settings)
@@ -1392,7 +1393,40 @@ def create_network(output_dir, name, config_toml):
     for plot_name, fig in plots.items():
         fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all", plot_name + ".pdf"))
         fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all", plot_name + ".png"), dpi=600)
-            
+    
+    
+    # calculate diversity (Shannon entropy)
+
+    diversity = ic_usage.apply(lambda x: entropy(x.dropna()), axis=1)
+    diversity.to_csv(os.path.join(sns_output_dir, "icu_diversity.txt"), sep="\t")
+    os.makedirs(os.path.join(sns_output_dir, "icu_diversity"), exist_ok=True)
+
+    for col in merged_metadata.select_dtypes("float").columns:
+        df = pd.DataFrame({"diversity": diversity, col: merged_metadata[col]})
+        fig, ax = plt.subplots(figsize=[4,4])
+        sns.scatterplot(data=df, x=col, y="diversity", ax=ax)
+        correlation = merged_metadata[col].corr(diversity, method="spearman")
+        ax.text(s=f"Spearman ρ = {correlation:.3f}", x=0.01, y=0.01, va="bottom", transform=ax.transAxes)
+        ax.set_title(col)
+        fig.savefig(os.path.join(sns_output_dir, "icu_diversity", f"{col}.pdf"))
+        
+    for col in merged_metadata.select_dtypes("category").columns:
+        if merged_metadata[col].dropna().unique().shape[0] < 10:
+            df = pd.DataFrame({"diversity": diversity, col: merged_metadata[col]})
+            fig, ax = plt.subplots(figsize=[merged_metadata[col].dropna().unique().shape[0],10])
+            if col == "Dataset":
+                palette = {ds: ds_attr["color"] for ds, ds_attr in config.datasets.items()}
+            else:
+                palette = config.get_metadata_colors(col)
+            sns.stripplot(data=df, hue=col, x=col, y="diversity", palette=palette)
+            ax.set_ybound(lower=0)
+            ax.set_yscale("log")
+            ax.set_title(col)
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
+            sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
+            fig.savefig(os.path.join(sns_output_dir, "icu_diversity", f"{col}.pdf"))
+    
+    
 cli.add_command(txt_to_h5ad)
 cli.add_command(update_h5ad_metadata)
 cli.add_command(check_h5ad)
