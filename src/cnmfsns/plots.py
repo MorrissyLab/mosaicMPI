@@ -13,7 +13,7 @@ from cnmfsns.sns import get_category_overrepresentation
 
 def annotated_heatmap(
         data, title, metadata=None, metadata_colors=None, missing_data_color="#BBBBBB", heatmap_cmap='YlOrRd', 
-        row_cluster=True, col_cluster=True, plot_col_dendrogram=True, show_sample_labels=True):
+        row_cluster=True, col_cluster=True, plot_col_dendrogram=True, show_sample_labels=True, ylabel=""):
     n_columns = data.shape[1]
     if metadata is None:
         n_metadata_columns = 0
@@ -57,7 +57,7 @@ def annotated_heatmap(
     im_heatmap = ax_heatmap.imshow(data.iloc[xind,yind].T, aspect='auto', extent=[xmin,xmax,0,1], cmap=heatmap_cmap, vmin=0, vmax=1, interpolation='none')
     ax_heatmap.set_yticks((data.columns.astype("int").to_series() - 0.5).div(data.shape[1]))
     ax_heatmap.set_yticklabels(data.columns[yind][::-1])
-    ax_heatmap.set_ylabel("GEP", rotation=0, ha='right', va='center')
+    ax_heatmap.set_ylabel(ylabel, rotation=0, ha='right', va='center')
     ax_heatmap.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
     
 
@@ -102,11 +102,11 @@ def annotated_heatmap(
     plt.colorbar(im_heatmap, ax=ax, location="top")
     return fig
 
-def plot_annotated_usages(df, metadata, metadata_colors, missing_data_color, title, filename, cluster_geps, cluster_samples, show_sample_labels):
+def plot_annotated_usages(df, metadata, metadata_colors, missing_data_color, title, filename, cluster_geps, cluster_samples, show_sample_labels, ylabel):
     samples = df.index.to_series()
     df = df.div(df.sum(axis=1), axis=0)
     annotations = metadata.loc[samples]
-    fig = annotated_heatmap(data=df, metadata=annotations, metadata_colors=metadata_colors, missing_data_color=missing_data_color, title=title, row_cluster=cluster_geps, col_cluster=cluster_samples, show_sample_labels=show_sample_labels)
+    fig = annotated_heatmap(data=df, metadata=annotations, metadata_colors=metadata_colors, missing_data_color=missing_data_color, title=title, row_cluster=cluster_geps, col_cluster=cluster_samples, show_sample_labels=show_sample_labels, ylabel=ylabel)
     fig.savefig(filename, transparent=False, bbox_inches = "tight")
     plt.close(fig)
     return fig

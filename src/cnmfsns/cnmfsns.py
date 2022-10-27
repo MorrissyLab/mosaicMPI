@@ -685,7 +685,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
         
         plot_annotated_usages(
             df=k_usage, metadata=metadata, metadata_colors=metadata_colors, missing_data_color=cfg.metadata_colors["missing_data"], title=title, filename=filename,
-            cluster_samples=True, cluster_geps=False, show_sample_labels=(not hide_sample_labels))
+            cluster_samples=True, cluster_geps=False, show_sample_labels=(not hide_sample_labels), ylabel="GEP")
             
 
 @click.command()
@@ -1113,7 +1113,8 @@ def create_network(output_dir, name, config_toml):
         missing_data_color=config.metadata_colors["missing_data"],
         title="Community Usage",
         filename=os.path.join(sns_output_dir, "integrated_community_usage.pdf"),
-        cluster_samples=True, cluster_geps=False, show_sample_labels=False)
+        cluster_samples=True, cluster_geps=False, show_sample_labels=False,
+        ylabel="Community")
 
     # GEP level, categorical data, overrepresentation plots
     
@@ -1420,7 +1421,6 @@ def create_network(output_dir, name, config_toml):
                 palette = config.get_metadata_colors(col)
             sns.stripplot(data=df, hue=col, x=col, y="diversity", palette=palette)
             ax.set_ybound(lower=0)
-            ax.set_yscale("log")
             ax.set_title(col)
             ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
             sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
