@@ -1,5 +1,5 @@
 
-[cNMF-SNS logo](logo.png)
+![cNMF-SNS logo](logo.png)
 
 
 
