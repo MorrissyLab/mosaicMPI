@@ -14,6 +14,7 @@ import distinctipy
 import os
 from types import SimpleNamespace
 from anndata import read_h5ad
+from cnmfsns.utils import newline_wrap
 
 # Default parameters for the config files are used when missing as input to cnmfsns integrate
 
@@ -162,7 +163,7 @@ class Config(SimpleNamespace):
             sys.exit(1)
         return layer_colors
 
-    def plot_metadata_colors_legend(self):
+    def plot_metadata_colors_legend(self, char_per_line=20):
         categorical_columns = [track for track, color_def in self.metadata_colors.items() if isinstance(color_def, dict)]
         categorical_groups = [group for group, group_attr in self.metadata_colors_group.items() if isinstance(group_attr["colors"], dict)]
         n_columns = len(categorical_columns) + len(categorical_groups) + 1
@@ -170,17 +171,17 @@ class Config(SimpleNamespace):
         for ax, track in zip(axes[0], categorical_columns):
             ax = ax
             color_def = self.metadata_colors[track]
-            legend_elements = [Patch(label=cat, facecolor=color, edgecolor=None) for cat, color in color_def.items()]
-            ax.legend(handles=legend_elements, loc='upper left')
+            legend_elements = [Patch(label=newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+            ax.legend(handles=legend_elements, loc='upper center')
             ax.set_title(track)
-            ax.set_axis_off()
+            # ax.set_axis_off()
         for ax_id, group in enumerate(categorical_groups, len(categorical_columns)):
             ax = axes[0][ax_id]
             color_def = self.metadata_colors_group[group]["colors"]
-            legend_elements = [Patch(label=cat, facecolor=color, edgecolor=None) for cat, color in color_def.items()]
-            ax.legend(handles=legend_elements, loc='upper left')
+            legend_elements = [Patch(label=newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+            ax.legend(handles=legend_elements, loc='upper center')
             ax.set_title(group)
-            ax.set_axis_off()
+            # ax.set_axis_off()
 
         # last column is missing data color
         axes[0][-1].legend(handles=[Patch(label="Missing Data", facecolor=self.metadata_colors["missing_data"], edgecolor=None)], loc='upper left')
