@@ -174,14 +174,14 @@ class Config(SimpleNamespace):
             legend_elements = [Patch(label=newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
             ax.legend(handles=legend_elements, loc='upper center')
             ax.set_title(track)
-            # ax.set_axis_off()
+            ax.set_axis_off()
         for ax_id, group in enumerate(categorical_groups, len(categorical_columns)):
             ax = axes[0][ax_id]
             color_def = self.metadata_colors_group[group]["colors"]
             legend_elements = [Patch(label=newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
             ax.legend(handles=legend_elements, loc='upper center')
             ax.set_title(group)
-            # ax.set_axis_off()
+            ax.set_axis_off()
 
         # last column is missing data color
         axes[0][-1].legend(handles=[Patch(label="Missing Data", facecolor=self.metadata_colors["missing_data"], edgecolor=None)], loc='upper left')

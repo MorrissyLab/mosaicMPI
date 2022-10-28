@@ -7,7 +7,7 @@
 
 cNMF Solution Network Space
 
-![](https://img.shields.io/badge/version-0.4.4-blue)
+![](https://img.shields.io/badge/version-0.4.5-blue)
 
 ## Installation
 
@@ -98,7 +98,7 @@ Deconvolution of a gene expression dataset using cNMF requires a set of overdisp
 
 Since cNMF performs variance scaling on the input matrix, it is important to remove genes whose variance could be attributable to noise. cNMF-SNS supports two methods for overdispersed gene selection:
   - `cnmf`: v-score and minimum expression threshold (cNMF method: Kotliar, et al. eLife, 2019). This method is only suitable for count data.
-  - `default`: residual standard deviation after modeling mean-variance dependence. (STdeconvolve method: Miller, et al. Nat. Comm. 2022) This method makes fewer assumptions about the input data but requires a visual check since the optimal threshold depends on the data type.
+  - `default`: residual standard deviation after modeling mean-variance dependence. (STdeconvolve method: Miller, et al. Nat. Comm. 2022) This method makes fewer assumptions about the input data but requires a visual check since the optimal threshold depends on the data type. Differently than all other methods, this method does not make assumptions about mean/sum of expression across samples, permitting the discovery of rare cell types.
 
 To produce plots to guide selection of overdispersed genes, run the following command:
 
