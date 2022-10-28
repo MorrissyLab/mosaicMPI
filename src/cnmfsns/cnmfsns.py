@@ -28,7 +28,8 @@ from cnmfsns.plots import (
     plot_overrepresentation_geps_bar,
     plot_metadata_correlation_geps_bar,
     plot_metadata_correlation_network,
-    plot_number_of_patients)
+    plot_number_of_patients,
+    plot_icu_diversity)
 
 from cnmfsns.sns import (
     add_community_weights_to_graph, 
@@ -1396,35 +1397,38 @@ def create_network(output_dir, name, config_toml):
         fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all", plot_name + ".png"), dpi=600)
     
     
-    # calculate diversity (Shannon entropy)
+    # Diversity analysis (shannon entropy of community-level usage)
 
     diversity = ic_usage.apply(lambda x: entropy(x.dropna()), axis=1)
     diversity.to_csv(os.path.join(sns_output_dir, "icu_diversity.txt"), sep="\t")
     os.makedirs(os.path.join(sns_output_dir, "icu_diversity"), exist_ok=True)
 
-    for col in merged_metadata.select_dtypes("float").columns:
+    for col in merged_metadata.select_dtypes("float").columns:  # association of diversity with numerical metadata
         df = pd.DataFrame({"diversity": diversity, col: merged_metadata[col]})
+        df["Dataset"] = df.index.get_level_values(0)
         fig, ax = plt.subplots(figsize=[4,4])
-        sns.scatterplot(data=df, x=col, y="diversity", ax=ax)
+        sns.scatterplot(data=df, x=col, y="diversity", hue="Dataset", ax=ax)
         correlation = merged_metadata[col].corr(diversity, method="spearman")
         ax.text(s=f"Spearman ρ = {correlation:.3f}", x=0.01, y=0.01, va="bottom", transform=ax.transAxes)
         ax.set_title(col)
+        sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
         fig.savefig(os.path.join(sns_output_dir, "icu_diversity", f"{col}.pdf"))
-        
-    for col in merged_metadata.select_dtypes("category").columns:
-        if merged_metadata[col].dropna().unique().shape[0] < 10:
-            df = pd.DataFrame({"diversity": diversity, col: merged_metadata[col]})
-            fig, ax = plt.subplots(figsize=[merged_metadata[col].dropna().unique().shape[0],10])
-            if col == "Dataset":
-                palette = {ds: ds_attr["color"] for ds, ds_attr in config.datasets.items()}
-            else:
-                palette = config.get_metadata_colors(col)
-            sns.stripplot(data=df, hue=col, x=col, y="diversity", palette=palette)
-            ax.set_ybound(lower=0)
-            ax.set_title(col)
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
-            sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
-            fig.savefig(os.path.join(sns_output_dir, "icu_diversity", f"{col}.pdf"))
+
+    sample_groups = merged_metadata["Dataset"]  # association of diversity with dataset
+    fig = plot_icu_diversity(sample_groups, diversity, config, title=f"Datasets")
+    fig.savefig(os.path.join(sns_output_dir, "icu_diversity", f"datasets.pdf"), bbox_inches="tight")
+    fig.savefig(os.path.join(sns_output_dir, "icu_diversity", f"datasets.png"), bbox_inches="tight", dpi=400)
+    plt.close(fig)
+
+    for dataset in config.datasets: # association of diversity with categorical data by dataset
+        os.makedirs(os.path.join(sns_output_dir, "icu_diversity", dataset), exist_ok=True)   
+        for annotation_layer in merged_metadata.select_dtypes("category").columns:
+            sample_groups = merged_metadata.loc[dataset, annotation_layer]
+            if 0 < sample_groups.nunique() < 20:
+                fig = plot_icu_diversity(sample_groups, diversity.loc[dataset], config, title=f"{dataset}\n{annotation_layer}")
+                fig.savefig(os.path.join(sns_output_dir, "icu_diversity", dataset, f"{annotation_layer}.pdf"), bbox_inches="tight")
+                fig.savefig(os.path.join(sns_output_dir, "icu_diversity", dataset, f"{annotation_layer}.png"), bbox_inches="tight", dpi=400)
+                plt.close(fig)
     
     
 cli.add_command(txt_to_h5ad)

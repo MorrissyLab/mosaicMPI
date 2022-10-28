@@ -532,3 +532,31 @@ def plot_number_of_patients(usage, sample_to_patient, G, layout, config):
         fig.tight_layout()
         figs[method] = fig
     return figs
+
+def plot_icu_diversity(metadata, diversity, config, title):
+    metadata = metadata.cat.add_categories("").fillna("").cat.remove_unused_categories()
+    df = pd.concat([diversity.rename("diversity"), metadata], axis=1)
+    fig, ax = plt.subplots(figsize=[df[metadata.name].nunique() + 1,10])
+    if metadata.name == "Dataset":
+        palette = {ds: ds_attr["color"] for ds, ds_attr in config.datasets.items()}
+    else:
+        palette = config.get_metadata_colors(metadata.name)
+    palette[""] = config.metadata_colors["missing_data"]
+    sns.stripplot(data=df, hue=metadata.name, x=metadata.name, y="diversity", palette=palette)
+    ax.set_ybound(lower=0)
+    ax.set_title(title)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
+    sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
+    
+    sns.boxplot(
+        meanprops={'color': 'k', 'ls': '-', 'lw': 2},
+        whiskerprops={'visible': False},
+        zorder=10,
+        x=metadata.name,
+        y="diversity",
+        data=df,
+        showfliers=False,
+        showbox=False,
+        showcaps=False,
+        ax=ax)
+    return fig
