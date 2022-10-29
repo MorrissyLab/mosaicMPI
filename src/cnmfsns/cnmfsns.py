@@ -1400,8 +1400,8 @@ def create_network(output_dir, name, config_toml):
     # Diversity analysis (shannon entropy of community-level usage)
 
     diversity = ic_usage.apply(lambda x: entropy(x.dropna()), axis=1)
-    diversity.to_csv(os.path.join(sns_output_dir, "icu_diversity.txt"), sep="\t")
-    os.makedirs(os.path.join(sns_output_dir, "icu_diversity"), exist_ok=True)
+    diversity.to_csv(os.path.join(sns_output_dir, "integrated_community_usage", "diversity.txt"), sep="\t")
+    os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "diversity"), exist_ok=True)
 
     for col in merged_metadata.select_dtypes("float").columns:  # association of diversity with numerical metadata
         df = pd.DataFrame({"diversity": diversity, col: merged_metadata[col]})
@@ -1412,23 +1412,23 @@ def create_network(output_dir, name, config_toml):
         ax.text(s=f"Spearman ρ = {correlation:.3f}", x=0.01, y=0.01, va="bottom", transform=ax.transAxes)
         ax.set_title(col)
         sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
-        fig.savefig(os.path.join(sns_output_dir, "icu_diversity", f"{col}.pdf"))
+        fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"{col}.pdf"))
 
     sample_groups = merged_metadata["Dataset"]  # association of diversity with dataset
     fig = plot_icu_diversity(sample_groups, diversity, config, title=f"Datasets")
-    fig.savefig(os.path.join(sns_output_dir, "icu_diversity", f"datasets.pdf"), bbox_inches="tight")
-    fig.savefig(os.path.join(sns_output_dir, "icu_diversity", f"datasets.png"), bbox_inches="tight", dpi=400)
-    plt.close(fig)
+    fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"datasets.pdf"), bbox_inches="tight")
+    fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"datasets.png"), bbox_inches="tight", dpi=400)
+    plt.close('all')
 
     for dataset in config.datasets: # association of diversity with categorical data by dataset
-        os.makedirs(os.path.join(sns_output_dir, "icu_diversity", dataset), exist_ok=True)   
+        os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset), exist_ok=True)   
         for annotation_layer in merged_metadata.select_dtypes("category").columns:
             sample_groups = merged_metadata.loc[dataset, annotation_layer]
             if 0 < sample_groups.nunique() < 20:
                 fig = plot_icu_diversity(sample_groups, diversity.loc[dataset], config, title=f"{dataset}\n{annotation_layer}")
-                fig.savefig(os.path.join(sns_output_dir, "icu_diversity", dataset, f"{annotation_layer}.pdf"), bbox_inches="tight")
-                fig.savefig(os.path.join(sns_output_dir, "icu_diversity", dataset, f"{annotation_layer}.png"), bbox_inches="tight", dpi=400)
-                plt.close(fig)
+                fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset, f"{annotation_layer}.pdf"), bbox_inches="tight")
+                fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset, f"{annotation_layer}.png"), bbox_inches="tight", dpi=400)
+                plt.close('all')
     
     
 cli.add_command(txt_to_h5ad)
