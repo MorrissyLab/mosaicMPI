@@ -125,7 +125,7 @@ def plot_rank_reduction(df, max_median_corr_threshold):
 
 def plot_pairwise_corr(tril, thresholds=None):
     n_datasets = len(tril.index.levels[0])
-    fig, axes = plt.subplots(n_datasets, n_datasets, figsize=[3 * n_datasets, 3 * n_datasets], sharex=True, sharey=True)
+    fig, axes = plt.subplots(n_datasets, n_datasets, figsize=[3 * n_datasets, 3 * n_datasets], sharex=True, sharey=True, squeeze=False)
     for row, dataset_row in enumerate(tril.index.levels[0]):
         for col, dataset_col in enumerate(tril.columns.levels[0]):
             ax = axes[row,col]
@@ -158,7 +158,7 @@ def plot_pairwise_corr(tril, thresholds=None):
 
 def plot_pairwise_corr_overlaid(tril, thresholds):
     n_datasets = len(tril.index.levels[0])
-    fig, axes = plt.subplots(n_datasets, n_datasets, figsize=[3 * n_datasets, 3 * n_datasets], sharex=True, sharey=True)
+    fig, axes = plt.subplots(n_datasets, n_datasets, figsize=[3 * n_datasets, 3 * n_datasets], sharex=True, sharey=True, squeeze=False)
     for row, dataset_row in enumerate(tril.index.levels[0]):
         for col, dataset_col in enumerate(tril.columns.levels[0]):
             ax = axes[row,col]

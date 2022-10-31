@@ -856,9 +856,10 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
     fig.savefig(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.png"), dpi=600)
 
     # UpSet plot of odgenes and all genes in each dataset
-    for fig_name, fig in plot_genelist_upsets(config).items():
-        fig.savefig(os.path.join(output_dir, "integrate", fig_name + ".pdf"))
-        fig.savefig(os.path.join(output_dir, "integrate", fig_name + ".png"), dpi=600)
+    if len(config.datasets) > 1:
+        for fig_name, fig in plot_genelist_upsets(config).items():
+            fig.savefig(os.path.join(output_dir, "integrate", fig_name + ".pdf"))
+            fig.savefig(os.path.join(output_dir, "integrate", fig_name + ".png"), dpi=600)
 
     # Table with node stats
     nodetable = {}
