@@ -53,6 +53,12 @@ from matplotlib.lines import Line2D
 import matplotlib as mpl
 from scipy.stats import entropy
 
+if hasattr(os, "sched_getaffinity"):
+    cpus_available = len(os.sched_getaffinity(0))
+else:
+    cpus_available = os.cpu_count()
+
+
 #To make sure we have always the same matplotlib settings
 #(the ones in comments are the ipython notebook settings)
 
@@ -693,7 +699,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), required=True, help="TOML config file")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results. Can be used to specify multiple datasets for integration instead of a TOML config file.")
-@click.option('--cpus', type=int, default=len(os.sched_getaffinity(0)), show_default=True, help="Number of CPUs to use for calculating correlation matrix")
+@click.option('--cpus', type=int, default=cpus_available, show_default=True, help="Number of CPUs to use for calculating correlation matrix")
 def integrate(output_dir, config_toml, cpus, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.

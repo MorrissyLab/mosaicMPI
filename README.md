@@ -15,7 +15,7 @@ cNMF Solution Network Space
 
 Before installing cNMF-SNS from pip, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
 ```
-conda create --name py39 python=3.9 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph
+conda create --name py39  -c conda-forge python=3.9 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph
 conda activate py39
 ```
 
