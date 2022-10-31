@@ -1413,6 +1413,7 @@ def create_network(output_dir, name, config_toml):
         ax.set_title(col)
         sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
         fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"{col}.pdf"))
+        plt.close('all')
 
     sample_groups = merged_metadata["Dataset"]  # association of diversity with dataset
     fig = plot_icu_diversity(sample_groups, diversity, config, title=f"Datasets")
