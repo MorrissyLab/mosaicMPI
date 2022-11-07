@@ -403,7 +403,7 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
         ]), default="default_minscore", show_default=True,
     help="Select the model and method of overdispersed gene selection.")
 @click.option(
-    "-ppa", '--odg_param', default="1.0", show_default=True,
+    "-p", '--odg_param', default="1.0", show_default=True,
     help="Parameter for odg_method.")
 @click.option(
     '--k_range', type=int, nargs=3,
