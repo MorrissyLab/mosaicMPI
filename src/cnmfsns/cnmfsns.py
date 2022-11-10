@@ -1112,7 +1112,7 @@ def create_network(output_dir, name, config_toml):
     # plot integrated community usage as an annotated heatmap
     merged_metadata = []
     for dataset_name, dataset_params in config.datasets.items():
-        metadata = read_h5ad(dataset_params["filename"], backed="r").obs.dropna(axis=1, how="all")
+        metadata = read_h5ad(dataset_params["filename"], backed="r").obs.dropna(axis=1, how="all").copy()
         metadata["Dataset"] = dataset_name  # adds a column for displaying dataset as a metadata layer
         metadata.index = pd.MultiIndex.from_product([[dataset_name], metadata.index])  # adds dataset name to index to disambiguate samples with the same name but different datasets
         merged_metadata.append(metadata)
