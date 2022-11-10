@@ -90,7 +90,7 @@ class Config(SimpleNamespace):
         c = {
             "datasets": {os.path.basename(fn).replace(".h5ad",""): {"filename": fn} for fn in h5ad_files}
         }
-        return cls(c)
+        return cls(**c)
 
     def to_toml(self, toml_file):
         with open(toml_file, "wb") as f:
@@ -106,6 +106,16 @@ class Config(SimpleNamespace):
             logging.error(f"Datasets were given these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
             sys.exit(1)
 
+        # fill in missing values with random colors distinct from existing colors
+        uncolored_datasets = set(name for name, d in self.datasets.items() if "color" not in d)
+        existing_colors = set(d["color"] for name, d in self.datasets.items() if "color" in d) | {"#FFFFFF", "#000000"}
+        if uncolored_datasets:
+            logging.info(f"Choosing distinct dataset colors")
+            new_colors = distinctipy.get_colors(len(uncolored_datasets), exclude_colors=[colors.to_rgb(c) for c in existing_colors])
+            new_colors = [colors.to_hex(c) for c in new_colors]
+            for name, color in zip(uncolored_datasets, new_colors):
+                self.datasets[name]["color"] = color
+                    
     def add_missing_metadata_colors(self, metadata_df=None):
         """
         Identify missing colors based on metadata. If metadata_df is provided, categorical columns are used; otherwise, metadata_df is derived from the config datasets.

@@ -170,7 +170,7 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
         logging.error("Index and Columns of counts and normalized matrices are not the same")
         sys.exit(1)
     if metadata is not None:
-        metadata = pd.read_table(metadata, index_col=0)
+        metadata = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
         # convert 'object' dtype to categorical, converting bool values to strings as these are not supported by AnnData on-disk format
         for col in metadata.select_dtypes(include="object").columns:
             metadata[col] = metadata[col].replace({True: "True", False: "False"}).astype("category")
@@ -211,7 +211,7 @@ def update_h5ad_metadata(input_h5ad, metadata):
     """
     start_logging()
 
-    metadata = pd.read_table(metadata, index_col=0)
+    metadata = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
     # convert 'object' dtype to categorical, converting bool values to strings as these are not supported by AnnData on-disk format
     for col in metadata.select_dtypes(include="object").columns:
         metadata[col] = metadata[col].replace({True: "True", False: "False"}).astype("category")
@@ -545,6 +545,12 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
     """
     cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
+    
+    run_params = cnmf.cnmf.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
+    if run_params.shape[0] == 0:
+        logging.error("No factorization to do: either no values of k were selected using `cnmfsns set-parameters` or iterations were set to 0.")
+
+    
     if slurm_script is None:
         cnmf_obj.factorize(worker_i=worker_index, total_workers=total_workers)
     else:
@@ -671,9 +677,10 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
     fig.savefig(os.path.join(output_dir, f"metadata_legend.pdf"))
     exclude_maxcat = adata.obs.select_dtypes(include="category").apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
     if adata.obs.shape[1] > 0:
-        metadata = adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index)
+        metadata = adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index).dropna(axis=1, how="all")
     else:
-        metadata = adata.obs
+        metadata = adata.obs.dropna(axis=1, how="all")
+    
     if "cnmf_usage" not in adata.obsm:
         logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `cnmfsns postprocess` before creating annotated usage heatmaps.")
         sys.exit(1)
@@ -697,7 +704,7 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
 
 @click.command()
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
-@click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), required=True, help="TOML config file")
+@click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), required=False, help="TOML config file")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results. Can be used to specify multiple datasets for integration instead of a TOML config file.")
 @click.option('--cpus', type=int, default=cpus_available, show_default=True, help="Number of CPUs to use for calculating correlation matrix")
 def integrate(output_dir, config_toml, cpus, input_h5ad):
@@ -714,9 +721,11 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
         logging.warning(f"Integration directory {output_dir} is not empty. Files may be overwritten.")
     start_logging(os.path.join(output_dir, "logfile.txt"))
     os.makedirs(os.path.join(output_dir, "integrate"), exist_ok=True)
-
+    if config_toml is None and len(input_h5ad) == 0:
+        logging.error("Datasets for integration must be specified in a config TOML file using `-c` or using `-i` for individual .h5ad files. ")
+        sys.exit(1)
     if config_toml is not None and input_h5ad:
-        logging.error("A TOML config file can be specified, or 1 or more h5mu files can be specified, but not both.")
+        logging.error("A TOML config file can be specified, or 1 or more .h5ad files can be specified, but not both.")
         sys.exit(1)
     if not all(fn.endswith(".h5ad") for fn in input_h5ad):
         logging.error("Input files must be AnnData .h5ad files.")
@@ -727,7 +736,6 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
         config = Config.from_toml(config_toml)
     elif input_h5ad:
         config = Config.from_h5ad_files(input_h5ad)
-        print(config)
 
     # add missing colors to config
     logging.info("Checking metadata colors for completeness...")
@@ -1104,7 +1112,7 @@ def create_network(output_dir, name, config_toml):
     # plot integrated community usage as an annotated heatmap
     merged_metadata = []
     for dataset_name, dataset_params in config.datasets.items():
-        metadata = read_h5ad(dataset_params["filename"], backed="r").obs
+        metadata = read_h5ad(dataset_params["filename"], backed="r").obs.dropna(axis=1, how="all")
         metadata["Dataset"] = dataset_name  # adds a column for displaying dataset as a metadata layer
         metadata.index = pd.MultiIndex.from_product([[dataset_name], metadata.index])  # adds dataset name to index to disambiguate samples with the same name but different datasets
         merged_metadata.append(metadata)
@@ -1128,7 +1136,10 @@ def create_network(output_dir, name, config_toml):
     
     logging.info("Creating GEP network plots for categorical metadata")
     for dataset_name, dataset in config.datasets.items():
-        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
+        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category").dropna(axis=1, how="all")  # only use categorical data
+        if metadata.shape[1] == 0:
+            continue
+        
         # bar charts
         fig = plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config)
         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar_by_community"), exist_ok=True)
@@ -1164,7 +1175,7 @@ def create_network(output_dir, name, config_toml):
     # GEP level, numerical data, correlation plots
     logging.info("Creating GEP network plots for numerical metadata")
     for dataset_name, dataset in config.datasets.items():
-        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(exclude="category")  # exclude categorical data
+        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(exclude="category").dropna(axis=1, how="all")  # exclude categorical data
         if metadata.shape[1] == 0:
             continue
         # bar charts
@@ -1213,7 +1224,7 @@ def create_network(output_dir, name, config_toml):
         community_layout[community_name] = centroid
 
     ### Plot network layout ###
-    fig, ax = plt.subplots(figsize=config.sns["plot_size"])
+    fig, ax = plt.subplots(figsize=config.sns["plot_size_gep"])
     ax.set_aspect(1)
     width = np.array(list(nx.get_edge_attributes(Gcomm, "n_edges").values()))
     width = 20 * width / np.max(width)
@@ -1229,7 +1240,7 @@ def create_network(output_dir, name, config_toml):
     logging.info("Creating community network plots for categorical metadata")
     plot_data = {}
     for dataset_name, dataset in config.datasets.items():
-        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
+        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category").dropna(axis=1, how="all")  # only use categorical data
         for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
             # usage subset to dataset
             ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
@@ -1282,7 +1293,7 @@ def create_network(output_dir, name, config_toml):
     logging.info("Creating community network plots for numerical metadata")
     plot_data = {}
     for dataset_name, dataset in config.datasets.items():
-        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(exclude="category")  # only use categorical data
+        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(exclude="category").dropna(axis=1, how="all")  # only use categorical data
         for row, (annotation_layer, sample_to_numeric) in enumerate(metadata.items()):
             # usage subset to dataset
             ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
@@ -1331,47 +1342,48 @@ def create_network(output_dir, name, config_toml):
         
         
     # per patient community level plots
-    patient_to_samples = {patient: [] for sample, patient in sample_to_patient.items()}
-    for sample, patient in sample_to_patient.items():
-        patient_to_samples[patient].append(sample)
-    patient_to_samples = pd.Series(patient_to_samples).explode()
+    if any(["patient_id_column" in d for d in config.datasets.values()]):
+        patient_to_samples = {patient: [] for sample, patient in sample_to_patient.items()}
+        for sample, patient in sample_to_patient.items():
+            patient_to_samples[patient].append(sample)
+        patient_to_samples = pd.Series(patient_to_samples).explode()
 
-    n_cols = 4
-    for annotation_layer in merged_metadata.select_dtypes("category").columns:
-        if annotation_layer == "Dataset":
-            colordict = {dsname: dsparam["color"] for dsname, dsparam in config.datasets.items()}
-        else:
-            colordict = config.get_metadata_colors(annotation_layer)
-            colordict[""] = config.metadata_colors["missing_data"]
-        for min_samples_per_patient in [1,2]:
-            n_plots = (patient_to_samples.groupby(axis=0, level=[0,1]).count() >= min_samples_per_patient).sum() + 1  # one plot per patient as well as an extra for the legend.
-            n_rows = 1 + n_plots // n_cols
-            fig, axes = plt.subplots(n_rows, n_cols, figsize = [config.sns["plot_size"][0]*n_cols, config.sns["plot_size"][1]*n_rows], squeeze=False, layout="constrained")
-            for row in range(n_rows):
-                for col in range(n_cols):
-                    axes[row,col].set_axis_off()
+        n_cols = 4
+        for annotation_layer in merged_metadata.select_dtypes("category").columns:
+            if annotation_layer == "Dataset":
+                colordict = {dsname: dsparam["color"] for dsname, dsparam in config.datasets.items()}
+            else:
+                colordict = config.get_metadata_colors(annotation_layer)
+                colordict[""] = config.metadata_colors["missing_data"]
+            for min_samples_per_patient in [1,2]:
+                n_plots = (patient_to_samples.groupby(axis=0, level=[0,1]).count() >= min_samples_per_patient).sum() + 1  # one plot per patient as well as an extra for the legend.
+                n_rows = 1 + n_plots // n_cols
+                fig, axes = plt.subplots(n_rows, n_cols, figsize = [config.sns["plot_size_community"][0]*n_cols, config.sns["plot_size_community"][1]*n_rows], squeeze=False, layout="constrained")
+                for row in range(n_rows):
+                    for col in range(n_cols):
+                        axes[row,col].set_axis_off()
 
-            # Add legend
-            ax = axes[0, 0]  # get lower right axes
-            legend_elements = []
-            for name, color in colordict.items():
-                legend_elements.append(Line2D([0], [0], marker='o', color='w', label=name, markerfacecolor=color, markersize=10))
-            ax.legend(handles=legend_elements, loc='center')
-            ax.set_title("Legend", fontdict={'fontsize': 26})
+                # Add legend
+                ax = axes[0, 0]  # get lower right axes
+                legend_elements = []
+                for name, color in colordict.items():
+                    legend_elements.append(Line2D([0], [0], marker='o', color='w', label=name, markerfacecolor=color, markersize=10))
+                ax.legend(handles=legend_elements, loc='center')
+                ax.set_title("Legend", fontdict={'fontsize': 26})
 
-            plot_count = 1
-            for (dataset, patient), patient_samples in patient_to_samples.groupby(axis=0, level=[0,1]):
-                if patient_samples.shape[0] >= min_samples_per_patient:
-                    ax = axes[plot_count // n_cols, plot_count % n_cols]
-                    bar_data = ic_usage.loc[patient_samples].fillna(0)
-                    bar_data.index = merged_metadata.loc[bar_data.index][annotation_layer].cat.add_categories("").fillna("")
-                    bar_data = bar_data.groupby(axis=0, level=0).mean().dropna(how="any")
-                    plot_overrepresentation_network(Gcomm, community_layout, f"{dataset}\n{patient}", overrepresentation=bar_data, colordict=colordict, node_size=config.sns["node_size"], ax=ax, edge_weights=None, show_legends=False)
-                    plot_count += 1
-            os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer), exist_ok=True)
-            fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.pdf"))
-            fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.png"), dpi=100)
-            plt.close("all")
+                plot_count = 1
+                for (dataset, patient), patient_samples in patient_to_samples.groupby(axis=0, level=[0,1]):
+                    if patient_samples.shape[0] >= min_samples_per_patient:
+                        ax = axes[plot_count // n_cols, plot_count % n_cols]
+                        bar_data = ic_usage.loc[patient_samples].fillna(0)
+                        bar_data.index = merged_metadata.loc[bar_data.index][annotation_layer].cat.add_categories("").fillna("")
+                        bar_data = bar_data.groupby(axis=0, level=0).mean().dropna(how="any")
+                        plot_overrepresentation_network(Gcomm, community_layout, f"{dataset}\n{patient}", overrepresentation=bar_data, colordict=colordict, node_size=config.sns["node_size"], ax=ax, edge_weights=None, show_legends=False)
+                        plot_count += 1
+                os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer), exist_ok=True)
+                fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.pdf"))
+                fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.png"), dpi=100)
+                plt.close("all")
         
     # Plot pairwise correlation heatmaps of community usage across samples
     def plot_icusage_correlation(ic_usage_corr, title=None):

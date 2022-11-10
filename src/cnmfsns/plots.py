@@ -204,6 +204,7 @@ def plot_annotated_geps_by_community(usage, config, communities):
     figs = {}
     for dataset_name, dataset in config.datasets.items():
         metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category")  # only use categorical data
+        metadata = metadata.dropna(axis=1, how="all")
         # number of bars in each community for this dataset
         community_gep_counts = [len([node for node in communities[c] if node.split("|")[0] == dataset_name]) for c in sorted(list(communities))]
         width_ratios = [1 + gep_counts for gep_counts in community_gep_counts]
@@ -385,6 +386,7 @@ def plot_overrepresentation_network(graph, layout, title, overrepresentation, co
 
 # overrepresentation bar plots
 def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config):
+    metadata = metadata.dropna(axis=1, how="all")
     # usage subset to dataset
     ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
     # number of bars in each community for this dataset
@@ -420,6 +422,7 @@ def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name,
     return fig
 
 def plot_metadata_correlation_geps_bar(usage, metadata, communities, dataset_name, config):
+    metadata = metadata.dropna(axis=1, how="all")
     # usage subset to dataset
     ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
     # number of bars in each community for this dataset
