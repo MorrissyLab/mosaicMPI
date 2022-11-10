@@ -1163,7 +1163,7 @@ def create_network(output_dir, name, config_toml):
                 title=f"Dataset: {dataset_name}\nMetadata Layer: {annotation_layer}",
                 overrepresentation=overrepresentation,
                 colordict=colordict,
-                node_size=config.sns["node_size"],
+                pie_size=config.sns["pie_size_gep"],
                 ax=ax
                 )
                 
@@ -1279,7 +1279,7 @@ def create_network(output_dir, name, config_toml):
             title=f"Dataset: {dataset_name}\nAnnotations: {annotation_layer}",
             overrepresentation=community_es,
             colordict=config.get_metadata_colors(annotation_layer),
-            node_size=np.array(config.sns["node_size"]),
+            node_size=np.array(config.sns["pie_size_community"]),
             edge_weights="n_edges",
             ax=ax
         )
@@ -1378,7 +1378,7 @@ def create_network(output_dir, name, config_toml):
                         bar_data = ic_usage.loc[patient_samples].fillna(0)
                         bar_data.index = merged_metadata.loc[bar_data.index][annotation_layer].cat.add_categories("").fillna("")
                         bar_data = bar_data.groupby(axis=0, level=0).mean().dropna(how="any")
-                        plot_overrepresentation_network(Gcomm, community_layout, f"{dataset}\n{patient}", overrepresentation=bar_data, colordict=colordict, node_size=config.sns["node_size"], ax=ax, edge_weights=None, show_legends=False)
+                        plot_overrepresentation_network(Gcomm, community_layout, f"{dataset}\n{patient}", overrepresentation=bar_data, colordict=colordict, node_size=config.sns["pie_size_community"], ax=ax, edge_weights=None, show_legends=False)
                         plot_count += 1
                 os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer), exist_ok=True)
                 fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.pdf"))

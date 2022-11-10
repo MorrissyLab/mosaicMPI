@@ -340,7 +340,7 @@ def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size):
             fontsize=label_font_size,
             verticalalignment="center")
 
-def plot_overrepresentation_network(graph, layout, title, overrepresentation, colordict, node_size, ax, edge_weights=None, show_legends=True):
+def plot_overrepresentation_network(graph, layout, title, overrepresentation, colordict, pie_size, ax, edge_weights=None, show_legends=True):
 
     ax.set_aspect("equal")
     ax.set_axis_off()
@@ -363,7 +363,7 @@ def plot_overrepresentation_network(graph, layout, title, overrepresentation, co
     for node, gep_or in overrepresentation.iteritems():
         if node in graph and gep_or.any():
             color_list = gep_or.index.map(colordict)
-            draw_circle_bar_plot(position=layout[node], enrichments=gep_or, scale_factor=scale_factor, colors=color_list, size=node_size, ax=ax)
+            draw_circle_bar_plot(position=layout[node], enrichments=gep_or, scale_factor=scale_factor, colors=color_list, size=pie_size, ax=ax)
 
     if show_legends:
         # Add legends
@@ -374,13 +374,13 @@ def plot_overrepresentation_network(graph, layout, title, overrepresentation, co
             enrichments=pd.Series(max_or, index=gep_or.index.sort_values().unique()),
             colors=overrepresentation.index.map(colordict),
             scale_factor=scale_factor,
-            size=node_size,
+            size=pie_size,
             draw_labels=True,
             label_font_size=6, ax=ax)
         draw_circle_bar_scale(
             position=lower_right_position,
             scale_factor=scale_factor,
-            size=node_size,
+            size=pie_size,
             label_font_size=6, ax=ax)
     return ax
 
