@@ -23,7 +23,7 @@ def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_densit
     # infer from filenames which local density threshold was used
     sensed_ldts = set()
     for fn in glob(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}*.*spectra*.k_*")):
-        ldt_str = os.path.basename(fn).split(".")[3]
+        ldt_str = os.path.basename(fn).split(".")[-3]
         try:
             ldt = float(ldt_str.replace("dt_", "").replace("_", "."))
         except ValueError:
