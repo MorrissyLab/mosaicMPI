@@ -50,7 +50,7 @@ def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_densit
         logging.info(f"Importing GEPs: {matchstr}")  
         meta_w = []
         for fn in glob(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}*.{matchstr}.k_*.{ldt_str}.*txt")):
-            k = int(os.path.basename(fn).split(".")[2].replace("k_", ""))
+            k = int(os.path.basename(fn).removeprefix(f"{cnmf_name}.{matchstr}.").split(".")[0].replace("k_", ""))
             w = pd.read_table(fn, index_col=0)
             w.index = str(k) + "." + w.index.astype(str)
             meta_w.append(w)
@@ -61,7 +61,7 @@ def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_densit
     logging.info(f"Importing Usages")  
     usage = []
     for fn in glob(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}*.usages.k_*.{ldt_str}.*txt")):
-        k = int(os.path.basename(fn).split(".")[2].replace("k_", ""))
+        k = int(os.path.basename(fn).removeprefix(f"{cnmf_name}.usages.").split(".")[0].replace("k_", ""))
         h = pd.read_table(fn, index_col=0)
         h.columns = str(k) + "." + h.columns.astype(str)
         usage.append(h)
