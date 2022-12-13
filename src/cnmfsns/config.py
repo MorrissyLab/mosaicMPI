@@ -29,16 +29,19 @@ config_defaults = {
         "negative_corr_quantile": 0.95,
         },
     "sns": {
+        "subset_nodes": None,
         "edge_color": "#bbbbbb20",
         "edge_weight": "none",
         "community_algorithm": "greedy_modularity",
         "communities": {
             "greedy_modularity": {
                 "resolution": 2,
-                "best_n": "none"
+                "best_n": "none",
+                "resolution_sweep": [0.5, 0.75, 1, 1.25, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.25, 3.5, 3.75, 4.0, 4.5, 5.0, 5.5, 6.0]
             },
             "leiden": {
-                "resolution": 0.01
+                "resolution": 0.01,
+                "resolution_sweep": [0.001, 0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08]
             }
         },
         "layout_algorithm": "community_weighted_spring",   # "neato", "spring", "community_weighted_spring"
@@ -53,7 +56,7 @@ config_defaults = {
         "node_size": 30,
         "plot_size_gep": [10, 10],
         "pie_size_gep": 50,
-        "pie_size_community": 200,
+        "pie_size_community": 50,
         "plot_size_community": [4, 4],
         },
     "datasets": {},

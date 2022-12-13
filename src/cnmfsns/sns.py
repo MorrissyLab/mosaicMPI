@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 from anndata import read_h5ad
+import igraph
+from networkx.algorithms.community.modularity_max import greedy_modularity_communities
 
 def save_df_to_npz(obj, filename):
     np.savez_compressed(filename, data=obj.values, index=obj.index.values, columns=obj.columns.values)
@@ -80,6 +82,11 @@ def create_graph(output_dir, config):
             links.loc[ds_pair_indices, "postfilter_quantile"] = links_ds_pair["corr"].rank() / links_ds_pair["corr"].count()
 
     G = nx.from_pandas_edgelist(links, 'node1', 'node2', ["corr", "prefilter_quantile", "postfilter_quantile"])
+    
+    # filter nodes using the sns.subset_nodes parameter
+    if config.sns["subset_nodes"] is not None:
+        G = nx.subgraph(G, config.sns["subset_nodes"])
+        
     return G
 
 def add_community_weights_to_graph(G, gep_communities, config):
@@ -93,8 +100,7 @@ def add_community_weights_to_graph(G, gep_communities, config):
         edge_attr[edge] = weight
     nx.set_edge_attributes(G, edge_attr, name="community_weight")
 
-
-def community_search(G, config):
+def sweep_community_resolution(G, config):
     weight_method = config.sns["edge_weight"]
     if weight_method == "none":
         weight_method = None
@@ -103,29 +109,30 @@ def community_search(G, config):
 
     # Community search
     community_algorithm = config.sns["community_algorithm"]
-    if community_algorithm == "greedy_modularity":
-        from networkx.algorithms.community.modularity_max import greedy_modularity_communities
-        best_n_param = config.sns["communities"]["greedy_modularity"]["best_n"]
-        if best_n_param == 'none':
-            best_n_param = None
-        communities = {
-            name: nodes for name, nodes in
-            enumerate(greedy_modularity_communities(G, resolution=config.sns["communities"]["greedy_modularity"]["resolution"],
-                weight=weight_method,
-                best_n=best_n_param), start=1)
-            }
-    elif community_algorithm == "leiden":
-        import igraph
-        G_igraph = igraph.Graph.from_networkx(G)
-        communities = {}
-        leiden_comm = G_igraph.community_leiden(resolution_parameter=config.sns["communities"]["leiden"]["resolution"], weights=weight_method)
-        for community, member_nodes in enumerate(leiden_comm, start=1):
-            communities[community] = G_igraph.vs[member_nodes]['_nx_name']
-    else:
-        logging.error(f"{community_algorithm} is not a valid community algorithm ")
-        sys.exit(1)
-    logging.info(f"Identified {len(communities)} communities")
-    return communities
+    resolutions = config.sns["communities"][community_algorithm]["resolution_sweep"]
+    resolutions = sorted(set(resolutions) | set([config.sns["communities"][community_algorithm]["resolution"]]))
+    sweep = {}
+    for resolution in resolutions:
+        logging.info(f"Community search: algorithm = {community_algorithm}, resolution = {resolution}")
+        if community_algorithm == "greedy_modularity":
+            communities = {
+                name: nodes for name, nodes in
+                enumerate(greedy_modularity_communities(G, resolution=resolution,
+                    weight=weight_method), start=1)
+                }
+        elif community_algorithm == "leiden":
+            G_igraph = igraph.Graph.from_networkx(G)
+            communities = {}
+            leiden_comm = G_igraph.community_leiden(resolution_parameter=resolution, weights=weight_method)
+            for community, member_nodes in enumerate(leiden_comm, start=1):
+                communities[community] = G_igraph.vs[member_nodes]['_nx_name']
+        else:
+            logging.error(f"{community_algorithm} is not a valid community algorithm ")
+            sys.exit(1)
+
+        sweep[resolution] = communities
+    return sweep, config.sns["communities"][community_algorithm]["resolution"]
+
 
 def get_graph_layout(G, config):
     logging.info(f"Computing network layout for {len(G)} nodes")

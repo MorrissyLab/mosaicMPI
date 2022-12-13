@@ -384,6 +384,24 @@ def plot_overrepresentation_network(graph, layout, title, overrepresentation, co
             label_font_size=6, ax=ax)
     return ax
 
+def plot_community_network(graph, layout, title, plot_size, node_sizes, community_colors, config, edge_weights=None):
+    fig, ax = plt.subplots(figsize=plot_size)
+    ax.set_aspect(1)
+    ax.set_title(title)
+    if edge_weights is None:
+        width = 0.2
+    else:
+        width = np.array(list(nx.get_edge_attributes(graph, edge_weights).values()))
+        width = width / np.max(width)
+    width = 5 * width
+        
+    sizes = np.array([node_sizes[node] for node in graph.nodes])
+    sizes = 5 * config.sns["node_size"] * sizes / np.max(sizes)
+    node_colors = [community_colors[node] for node in graph]
+    nx.draw(graph, pos=layout, node_color=node_colors, node_size=sizes, linewidths=0, width=width, edge_color=config.sns["edge_color"], with_labels=True, font_size=8)
+    plt.tight_layout()
+    return fig
+
 # overrepresentation bar plots
 def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config):
     metadata = metadata.dropna(axis=1, how="all")
