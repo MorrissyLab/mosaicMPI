@@ -9,7 +9,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 import cnmf
 
-def model_overdispersion(adata, odg_default_spline_degree=3, odg_default_dof=8, odg_cnmf_mean_threshold=0.5):
+def model_overdispersion(adata, odg_default_spline_degree=3, odg_default_dof=8, minimum_counts_mean=0):
 
     # create dataframe of per-gene statistics
     df = pd.DataFrame(index=adata.var.index)
@@ -19,6 +19,7 @@ def model_overdispersion(adata, odg_default_spline_degree=3, odg_default_dof=8, 
     df["sd"] = np.sqrt(df["variance"])
     df["missingness"] = np.isnan(adata.X).sum(0)/adata.shape[0]
     df[["log_mean", "log_variance"]] = np.log10(df[["mean", "variance"]])
+    df["mean_counts"] = adata.raw.X.mean(0)
     df["odscore_excluded"] = (df["missingness"] > 0) | df["log_mean"].isnull() | (df["mean"] == 0) | df["log_variance"].isnull()
     df = df.sort_values("mean")
 
@@ -32,11 +33,9 @@ def model_overdispersion(adata, odg_default_spline_degree=3, odg_default_dof=8, 
 
 
     # model mean-variance relationship using cNMF's method based on v-score and minimum expression threshold
-    vscore_stats = pd.DataFrame(cnmf.cnmf.get_highvar_genes(input_counts=adata.X)[0])
+    vscore_stats = pd.DataFrame(cnmf.cnmf.get_highvar_genes(input_counts=adata.X, minimal_mean=0)[0])
     vscore_stats.index = adata.var.index
     df["vscore"] = vscore_stats["fano_ratio"]
-    df["vscore_excluded"] = df["mean"] < odg_cnmf_mean_threshold
-    df.loc[df["vscore_excluded"], "vscore"] = np.NaN
     return df
 
 def odg_plots(df, show_selected):

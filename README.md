@@ -7,7 +7,7 @@
 
 cNMF Solution Network Space
 
-![](https://img.shields.io/badge/version-0.4.10-blue)
+![](https://img.shields.io/badge/version-0.5.0-blue)
 
 ## Installation
 

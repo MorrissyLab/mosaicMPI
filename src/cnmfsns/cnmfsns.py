@@ -165,6 +165,9 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
         normalized = pd.read_table(normalized, index_col=0)
         counts = normalized
     elif normalized and counts:
+        logging.warning("Specifying both count and normalized data may lead to unintended consequences and is not recommended. "
+                        "If count data is available, do not specify normalized data. "
+                        "For non-count datasets including microarrays and MS proteomics, specify only a normalized input file.")
         counts = pd.read_table(counts, index_col=0)
         normalized = pd.read_table(normalized, index_col=0)
     if (counts.index != normalized.index).all() or (counts.columns != normalized.columns).all():
@@ -196,7 +199,7 @@ def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
     if sparsify:
         adata = AnnData(X=sp.csr_matrix(normalized.values), raw=AnnData(X=sp.csr_matrix(counts)), obs=metadata)
     else:
-        adata = AnnData(X=normalized, dtype=normalized.values.dtype, raw=AnnData(X=counts, dtype=counts.values.dtype), obs=metadata)
+        adata = AnnData(X=normalized, dtype=normalized.values.dtype.name, raw=AnnData(X=counts, dtype=counts.values.dtype.name), obs=metadata)
     adata.write_h5ad(output)
 
 @click.command()
@@ -309,7 +312,7 @@ def check_h5ad(input, output):
     if output is not None:
         adata = adata[:, normalized.columns]
         adata.X = normalized
-        adata.raw = AnnData(counts, dtype=counts.values.dtype)
+        adata.raw = AnnData(counts, dtype=counts.values.dtype.name)
         adata.write(output)
 
 
@@ -330,13 +333,10 @@ def check_h5ad(input, output):
     "--default_dof", type=int, default=20, show_default=True,
     help="Degrees of Freedom (number of components) for the Generalized Additive Model (default method).")
 @click.option(
-    "--cnmf_mean_threshold", type=float, default=0.5, show_default=True,
-    help="Minimum mean for overdispersed genes (cnmf method).")
-@click.option(
     "--annotate_hgnc_protein_coding", is_flag=True,
     help="Annotate whether features have a protein-coding locus type from HGNC, assuming that features are HGNC symbols"
 )
-def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_mean_threshold, annotate_hgnc_protein_coding):
+def model_odg(name, output_dir, input, default_spline_degree, default_dof, annotate_hgnc_protein_coding):
     """
     Model gene overdispersion and plot calibration plots for selection of overdispersed genes, using two methods:
     
@@ -359,8 +359,7 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
     df = model_overdispersion(
             adata=adata,
             odg_default_spline_degree=default_spline_degree,
-            odg_default_dof=default_dof,
-            odg_cnmf_mean_threshold=cnmf_mean_threshold
+            odg_default_dof=default_dof
             )
     if annotate_hgnc_protein_coding:
         protein_coding_genes = fetch_hgnc_protein_coding_genes()
@@ -377,7 +376,6 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
     uns_odg = {
         "default_spline_degree": default_spline_degree,
         "default_dof": default_dof,
-        "cnmf_mean_threshold": cnmf_mean_threshold,
         "gene_stats": df
     }
     adata.uns["odg"] = uns_odg
@@ -407,6 +405,9 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
     "-p", '--odg_param', default="1.0", show_default=True,
     help="Parameter for odg_method.")
 @click.option(
+    "--min_mean", default=0.0, show_default=True,
+    help="Exclude genes from overdispersed gene lists if mean of counts data (or normalized data, if no count data exists) is less than this threshold.")
+@click.option(
     '--k_range', type=int, nargs=3,
     help="Specify a range of components for factorization, using three numbers: first, last, step_size. Eg. '4 23 4' means `k`=4,8,12,16,20")
 @click.option(
@@ -422,7 +423,7 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, cnmf_
     '--beta_loss', type=click.Choice(["frobenius", "kullback-leibler"]), default="kullback-leibler", show_default=True,
     help="Measure of Beta divergence to be minimized.")
 
-def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, seed, beta_loss):
+def set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_range, k, n_iter, seed, beta_loss):
     """
     Set parameters for factorization, including selecting overdispersed genes.
     
@@ -463,24 +464,33 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
     else:
         raise RuntimeError
 
+    if "mean_counts" in df:
+        df_filtered = df.loc[df["mean_counts"] >= min_mean]
+    elif min_mean == 0:
+        df_filtered = df
+    else:
+        logging.error("the min_mean parameter was introduced in cNMF-SNS 0.5.0 but values other than the default "
+                      "are not compatible with .h5ad files produced by earlier versions of cNMF-SNS. For older datasets, "
+                      "please re-run `cnmfsns model-odg` to eliminate this error.")        
+                         
     if odg_method == "default_topn":
         # top N genes ranked by od-score
-        genes = df["odscore"].sort_values(ascending=False).head(odg_param).index
+        genes = df_filtered["odscore"].sort_values(ascending=False).head(odg_param).index
     elif odg_method == "default_minscore":
         # filters genes by od-score
-        genes = df[(df["odscore"] >= odg_param)]["odscore"].sort_values(ascending=False).index
+        genes = df_filtered.loc[(df_filtered["odscore"] >= odg_param), "odscore"].sort_values(ascending=False).index
     elif odg_method == "default_quantile":
         # takes the specified quantile of genes after removing NaNs
-        genes = df["odscore"].sort_values(ascending=False).head(int(odg_param * df["odscore"].notnull().sum())).index
+        genes = df_filtered["odscore"].sort_values(ascending=False).head(int(odg_param * df["odscore"].notnull().sum())).index
     elif odg_method == "cnmf_topn":
         # top N genes ranked by v-score
-        genes = df["vscore"].sort_values(ascending=False).head(odg_param).index
+        genes = df_filtered["vscore"].sort_values(ascending=False).head(odg_param).index
     elif odg_method == "cnmf_minscore":
         # filters genes by v-score
-        genes = df[(df["vscore"] >= odg_param)]["vscore"].sort_values(ascending=False).index
+        genes = df_filtered[(df_filtered["vscore"] >= odg_param)]["vscore"].sort_values(ascending=False).index
     elif odg_method == "cnmf_quantile":
         # takes the specified quantile of genes after removing NaNs
-        genes = df["vscore"].sort_values(ascending=False).head(int(odg_param * df["vscore"].notnull().sum())).index
+        genes = df_filtered["vscore"].sort_values(ascending=False).head(int(odg_param * df_filtered["vscore"].notnull().sum())).index
     elif odg_method == "genes_file":
         genes = open(odg_param).read().rstrip().split(os.linesep)
 
@@ -520,6 +530,7 @@ def set_parameters(name, output_dir, odg_method, odg_param, k_range, k, n_iter, 
     adata.uns["odg"]["genestats"] = df
     adata.uns["odg"]["method"] = odg_method
     adata.uns["odg"]["param"] = odg_param
+    adata.uns["odg"]["min_mean"] = min_mean
     adata.uns["cnmf"] = cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss)[1]  # dict of cnmf parameters
     adata.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
 
