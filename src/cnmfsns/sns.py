@@ -1,4 +1,6 @@
 import os
+import tomli
+import tomli_w
 import sys
 import logging
 import numpy as np
@@ -133,7 +135,12 @@ def sweep_community_resolution(G, config):
         sweep[resolution] = communities
     return sweep, config.sns["communities"][community_algorithm]["resolution"]
 
-
+def write_communities_toml(communities, filename):
+    toml_conformed = {str(community): sorted(geps, key=lambda x: int(x.split("|")[1])) for community, geps in communities.items()}
+    with open(filename, "wb") as fh:
+        tomli_w.dump(toml_conformed, fh)
+    
+    
 def get_graph_layout(G, config):
     logging.info(f"Computing network layout for {len(G)} nodes")
     layout_algorithm = config.sns["layout_algorithm"]

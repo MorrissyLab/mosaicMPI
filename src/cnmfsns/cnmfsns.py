@@ -37,7 +37,8 @@ from cnmfsns.sns import (
     save_df_to_npz, 
     load_df_from_npz, 
     create_graph, 
-    sweep_community_resolution, 
+    sweep_community_resolution,
+    write_communities_toml,
     get_graph_layout, 
     get_max_corr_communities,
     get_category_overrepresentation)
@@ -932,6 +933,9 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
     '-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), 
     help="TOML config file. Defaults to file output from `cnmfsns integrate` step: [output_dir]/integrate/config.toml")
 def create_network(output_dir, name, config_toml):
+    """
+    Create network integration.
+    """
     start_logging(os.path.join(output_dir, "logfile.txt"))
 
     if config_toml is None:
@@ -953,6 +957,7 @@ def create_network(output_dir, name, config_toml):
     G = create_graph(output_dir, config)
     communities_resolution_sweep, selected_resolution = sweep_community_resolution(G, config)
     communities = communities_resolution_sweep[selected_resolution]
+    write_communities_toml(communities, os.path.join(sns_output_dir, "communities.toml"))
     gep_communities = {gep: community for community, geps in communities.items() for gep in geps}
     pd.DataFrame.from_dict(data=gep_communities, orient='index').to_csv(os.path.join(sns_output_dir, 'gep_communities.txt'), sep="\t", header=False)
         
