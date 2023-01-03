@@ -86,7 +86,7 @@ def create_graph(output_dir, config):
     G = nx.from_pandas_edgelist(links, 'node1', 'node2', ["corr", "prefilter_quantile", "postfilter_quantile"])
     
     # filter nodes using the sns.subset_nodes parameter
-    if config.sns["subset_nodes"] is not None:
+    if config.sns["subset_nodes"] != "none":
         G = nx.subgraph(G, config.sns["subset_nodes"])
         
     return G

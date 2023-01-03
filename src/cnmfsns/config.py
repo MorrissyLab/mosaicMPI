@@ -29,7 +29,7 @@ config_defaults = {
         "negative_corr_quantile": 0.95,
         },
     "sns": {
-        "subset_nodes": None,
+        "subset_nodes": "none",
         "edge_color": "#bbbbbb20",
         "edge_weight": "none",
         "community_algorithm": "greedy_modularity",
