@@ -84,6 +84,7 @@ def create_graph(output_dir, config):
             links.loc[ds_pair_indices, "postfilter_quantile"] = links_ds_pair["corr"].rank() / links_ds_pair["corr"].count()
 
     G = nx.from_pandas_edgelist(links, 'node1', 'node2', ["corr", "prefilter_quantile", "postfilter_quantile"])
+    G.add_nodes_from(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in selected_k_index])
     
     # filter nodes using the sns.subset_nodes parameter
     if config.sns["subset_nodes"] != "none":

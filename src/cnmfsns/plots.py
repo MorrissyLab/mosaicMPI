@@ -346,7 +346,7 @@ def plot_overrepresentation_network(graph, layout, title, overrepresentation, co
     ax.set_axis_off()
     ax.set_title(title)
     
-    if edge_weights is None:
+    if edge_weights is None or not graph.edges:
         width = 0.2
     else:
         width = np.array(list(nx.get_edge_attributes(graph, edge_weights).values()))
@@ -360,7 +360,7 @@ def plot_overrepresentation_network(graph, layout, title, overrepresentation, co
 
     max_or = np.max(overrepresentation.values.flatten())
     scale_factor = 1 / max_or
-    for node, gep_or in overrepresentation.iteritems():
+    for node, gep_or in overrepresentation.items():
         if node in graph and gep_or.any():
             color_list = gep_or.index.map(colordict)
             draw_circle_bar_plot(position=layout[node], enrichments=gep_or, scale_factor=scale_factor, colors=color_list, size=pie_size, ax=ax)
@@ -388,7 +388,7 @@ def plot_community_network(graph, layout, title, plot_size, node_sizes, communit
     fig, ax = plt.subplots(figsize=plot_size)
     ax.set_aspect(1)
     ax.set_title(title)
-    if edge_weights is None:
+    if edge_weights is None or not graph.edges:
         width = 0.2
     else:
         width = np.array(list(nx.get_edge_attributes(graph, edge_weights).values()))
@@ -412,7 +412,7 @@ def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name,
     fig, axes = plt.subplots(
         metadata.shape[1], len(communities),
         figsize=[len(communities) + 0.05 * sum(community_gep_counts), metadata.shape[1] * 2],
-        sharey='row',
+        sharey='row', squeeze=False,
         gridspec_kw={"width_ratios": [gep_counts for gep_counts in community_gep_counts]})
     for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
         overrepresentation = get_category_overrepresentation(ds_usage, sample_to_class)
@@ -477,7 +477,7 @@ def plot_metadata_correlation_geps_bar(usage, metadata, communities, dataset_nam
 
 def plot_metadata_correlation_network(graph, layout, title, correlation, plot_size, node_size, config, edge_weights=None):
      
-    if edge_weights is None:
+    if edge_weights is None or not graph.edges:
         width = 0.2
     else:
         width = np.array(list(nx.get_edge_attributes(graph, edge_weights).values()))
@@ -564,11 +564,7 @@ def plot_icu_diversity(metadata, diversity, config, title):
         palette = config.get_metadata_colors(metadata.name)
     palette[""] = config.metadata_colors["missing_data"]
     sns.stripplot(data=df, hue=metadata.name, x=metadata.name, y="diversity", palette=palette)
-    ax.set_ybound(lower=0)
-    ax.set_title(title)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
     sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
-    
     sns.boxplot(
         meanprops={'color': 'k', 'ls': '-', 'lw': 2},
         whiskerprops={'visible': False},
@@ -580,4 +576,7 @@ def plot_icu_diversity(metadata, diversity, config, title):
         showbox=False,
         showcaps=False,
         ax=ax)
+    ax.set_ybound(lower=0)
+    ax.set_title(title)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
     return fig
