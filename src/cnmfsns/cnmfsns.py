@@ -1166,6 +1166,7 @@ def create_network(output_dir, name, config_toml):
     for dataset_name, dataset_params in config.datasets.items():
         metadata = read_h5ad(dataset_params["filename"], backed="r").obs.dropna(axis=1, how="all").copy()
         metadata["Dataset"] = dataset_name  # adds a column for displaying dataset as a metadata layer
+        metadata = metadata[ ['Dataset'] + [col for col in metadata.columns if col != 'Dataset'] ]  # Move to front
         metadata.index = pd.MultiIndex.from_product([[dataset_name], metadata.index])  # adds dataset name to index to disambiguate samples with the same name but different datasets
         merged_metadata.append(metadata)
     merged_metadata = pd.concat(merged_metadata)
@@ -1193,6 +1194,10 @@ def create_network(output_dir, name, config_toml):
             continue
         
         # bar charts
+        dataset_is_in_nodes = any([node.split("|")[0] == dataset_name for community in communities.values() for node in community])
+        if not dataset_is_in_nodes:
+            continue
+        
         fig = plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config)
         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar_by_community"), exist_ok=True)
         fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar_by_community", dataset_name + ".pdf"))

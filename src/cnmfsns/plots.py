@@ -413,7 +413,7 @@ def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name,
         metadata.shape[1], len(communities),
         figsize=[len(communities) + 0.05 * sum(community_gep_counts), metadata.shape[1] * 2],
         sharey='row', squeeze=False,
-        gridspec_kw={"width_ratios": [gep_counts for gep_counts in community_gep_counts]})
+        gridspec_kw={"width_ratios": community_gep_counts})
     for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
         overrepresentation = get_category_overrepresentation(ds_usage, sample_to_class)
         for col, community in enumerate(sorted(list(communities))):
