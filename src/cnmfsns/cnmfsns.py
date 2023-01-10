@@ -1235,6 +1235,11 @@ def create_network(output_dir, name, config_toml):
         metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(exclude="category").dropna(axis=1, how="all")  # exclude categorical data
         if metadata.shape[1] == 0:
             continue
+        
+        dataset_is_in_nodes = any([node.split("|")[0] == dataset_name for community in communities.values() for node in community])
+        if not dataset_is_in_nodes:
+            continue
+        
         # bar charts
         fig = plot_metadata_correlation_geps_bar(usage, metadata, communities, dataset_name, config)
         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation_bar_by_community"), exist_ok=True)
