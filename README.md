@@ -1,19 +1,36 @@
 
 ![cNMF-SNS logo](logo.png)
 
+-----------------
 
-
-# cNMF-SNS
+# cNMF-SNS: powerful factorization-based multi-omics integration toolkit
 
 cNMF Solution Network Space
 
 ![](https://img.shields.io/badge/version-0.5.3-blue)
 
-## Installation
+<details>
+  <summary> *future badges* </summary>
 
-### 1. Using `pip` to install the latest version from GitHub:
+```
+[![PyPI Latest Release](https://img.shields.io/pypi/v/cnmfsns.svg)](https://pypi.org/project/cnmfsns/)
+[![Conda Latest Release](https://anaconda.org/conda-forge/cnmfsns/badges/version.svg)](https://anaconda.org/anaconda/cnmfsns/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3509134.svg)](https://doi.org/10.5281/zenodo.3509134)
+[![Package Status](https://img.shields.io/pypi/status/cnmfsns.svg)](https://pypi.org/project/cnmfsns/)
+[![License](https://img.shields.io/pypi/l/cnmfsns.svg)](https://github.com/morrissylab/cnmfsns/blob/main/LICENSE)
+[![Downloads](https://static.pepy.tech/personalized-badge/cnmfsns?period=month&units=international_system&left_color=black&right_color=orange&left_text=PyPI%20downloads%20per%20month)](https://pepy.tech/project/cnmfsns)
+```
 
-Before installing cNMF-SNS from pip, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
+</details>
+
+## Introduction
+
+
+## How to get it
+
+### 1. Installing from GitHub private repository
+
+Before installing cNMF-SNS using pip, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
 ```
 conda create --name py39  -c conda-forge python=3.9 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph
 conda activate py39
@@ -28,6 +45,7 @@ If you have installed a [personal access token from GitHub](https://github.com/s
 ```
 pip install git+https://<token>@github.com/MorrissyLab/cNMF-SNS.git
 ```
+### 2. Installing from public repositories
 
 ### 2. Using `pip` (PyPI version)
 
@@ -44,6 +62,12 @@ pip install cnmfsns
 ```
 conda install -c conda-forge cnmfsns
 ```
+## Dependencies
+
+
+## Installation
+
+
 
 ## Workflow 1A: Factorization for individual datasets
 

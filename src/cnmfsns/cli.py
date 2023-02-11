@@ -4,7 +4,6 @@ import shutil
 import subprocess
 import collections
 import click
-import cnmf
 import sys
 import numpy as np
 import pandas as pd
@@ -14,8 +13,8 @@ from multiprocessing.pool import Pool
 from datetime import datetime
 from typing import Optional, Mapping
 from anndata import AnnData, read_h5ad
-from cnmfsns.containers import add_cnmf_results_to_h5ad
 from cnmfsns.config import Config
+from cnmfsns.cnmf import cNMF
 from cnmfsns.odg import model_overdispersion, odg_plots, fetch_hgnc_protein_coding_genes
 from cnmfsns.plots import (
     plot_annotated_usages,
@@ -31,11 +30,12 @@ from cnmfsns.plots import (
     plot_metadata_correlation_network,
     plot_number_of_patients,
     plot_icu_diversity)
-
+from cnmfsns.io import (
+    save_df_to_npz, 
+    load_df_from_npz,
+    add_cnmf_results_to_h5ad)
 from cnmfsns.sns import (
     add_community_weights_to_graph, 
-    save_df_to_npz, 
-    load_df_from_npz, 
     create_graph, 
     sweep_community_resolution,
     write_communities_toml,
@@ -352,7 +352,7 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, annot
         # Explicitly use a linear model instead of a BSpline Generalized Additive Model
         cnmfsns model-odg -n test -i test.h5ad --odg_default_spline_degree 0 --odg_default_dof 1
     """
-    cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
+    cnmf_obj = cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
     adata = read_h5ad(input)
     
@@ -448,7 +448,7 @@ def set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_range, k
         # input a gene list from text file
         cnmfsns set_parameters -n test -m genes_file -p path/to/genesfile.txt
     """
-    cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
+    cnmf_obj = cNMF(output_dir=output_dir, name=name)
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
     adata = read_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     df = adata.uns["odg"]["gene_stats"]
@@ -514,7 +514,7 @@ def set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_range, k
     gene_tpm_mean = np.array(tpm.X.mean(axis=0)).reshape(-1)
     gene_tpm_stddev = np.array(tpm.X.std(axis=0, ddof=0)).reshape(-1)
     input_tpm_stats = pd.DataFrame([gene_tpm_mean, gene_tpm_stddev], index = ['__mean', '__std']).T
-    cnmf.cnmf.save_df_to_npz(input_tpm_stats, cnmf_obj.paths['tpm_stats'])
+    save_df_to_npz(input_tpm_stats, cnmf_obj.paths['tpm_stats'])
     norm_counts = cnmf_obj.get_norm_counts(input_counts, tpm, high_variance_genes_filter=genes)
     if norm_counts.X.dtype != np.float64:
         norm_counts.X = norm_counts.X.astype(np.float64)
@@ -556,10 +556,10 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
     """
     Performs factorization according to parameters specified using `cnmfsns set-parameters`.
     """
-    cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
+    cnmf_obj = cNMF(output_dir=output_dir, name=name)
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
     
-    run_params = cnmf.cnmf.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
+    run_params = load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
     if run_params.shape[0] == 0:
         logging.error("No factorization to do: either no values of k were selected using `cnmfsns set-parameters` or iterations were set to 0.")
 
@@ -595,8 +595,8 @@ def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborh
     iterations, calculating consensus GEPs and usage matrices, and creating the k-selection and annotated usage plots.
     """
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
-    cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
-    run_params = cnmf.cnmf.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
+    cnmf_obj = cNMF(output_dir=output_dir, name=name)
+    run_params = load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
     # first check for combined outputs:
     missing_combined = []
     for k in sorted(set(run_params.n_components)):
@@ -1547,6 +1547,3 @@ cli.add_command(postprocess)
 cli.add_command(annotated_heatmap)
 cli.add_command(integrate)
 cli.add_command(create_network)
-
-if __name__ == "__main__":
-    cli()

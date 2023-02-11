@@ -1,3 +1,6 @@
+
+from cnmfsns.io import load_df_from_npz
+
 import os
 import tomli
 import tomli_w
@@ -9,22 +12,6 @@ import networkx as nx
 from anndata import read_h5ad
 import igraph
 from networkx.algorithms.community.modularity_max import greedy_modularity_communities
-
-def save_df_to_npz(obj, filename):
-    np.savez_compressed(filename, data=obj.values, index=obj.index.values, columns=obj.columns.values)
-
-def load_df_from_npz(filename, multiindex=False):
-    with np.load(filename, allow_pickle=True) as f:
-        if any([isinstance(c, tuple) for c in (f["index"])]):
-            index = pd.MultiIndex.from_tuples(f["index"])
-        else:
-            index = f["index"]
-        if any([isinstance(c, tuple) for c in (f["columns"])]):
-            columns = pd.MultiIndex.from_tuples(f["columns"])
-        else:
-            columns = f["columns"]
-        obj = pd.DataFrame(f["data"], index=index, columns=columns)
-    return obj
 
 def get_corr_matrix(output_dir, config):
     corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")
