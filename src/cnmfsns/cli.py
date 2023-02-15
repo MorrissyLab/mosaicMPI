@@ -31,6 +31,7 @@ from cnmfsns.plots import (
     plot_number_of_patients,
     plot_icu_diversity)
 from cnmfsns.io import (
+    Dataset,
     save_df_to_npz, 
     load_df_from_npz,
     add_cnmf_results_to_h5ad)
@@ -131,121 +132,64 @@ def cli():
     cNMF-SNS is a tool for deconvolution and integration of multiple datasets based on consensus Non-Negative Matrix Factorization (cNMF).
     """
 
-@click.command()
+@click.command(name="txt-to-h5ad")
 @click.option(
-    "-c", "--counts", type=click.Path(dir_okay=False, exists=True), required=False,
-    help="Input (cell/sample x gene) counts matrix as tab-delimited text file. "
-         "This is the matrix which will be variance normalized and used for factorization. "
-         "If not provided, the normalized matrix will be used instead.")
+    "-d", "--data_file", type=click.Path(dir_okay=False, exists=True), required=True,
+    help="Input counts or normalized matrix as tab-delimited text file. Columns are samples/cells and rows are genes/features.")
 @click.option(
-    "-n", "--normalized", type=click.Path(dir_okay=False, exists=True), required=False,
-    help="Pre-computed (cell/sample x gene) normalized matrix as tab delimited text file. "
-         "This is the matrix which is used to select overdispersed genes and to which final GEPs will be scaled. "
-         "If not provided, TPM normalization will be calculated from the count matrix.")
+    "--is_normalized", is_flag=True, help="Specify if input data is normalized instead of count data.")
 @click.option(
     "-m", "--metadata", type=click.Path(dir_okay=False, exists=True), required=False,
-    help="Optional tab-separated text file with metadata for samples/cells/spots with one row each. Columns are annotation layers.")
+    help="Optional tab-separated text file with metadata for samples/cells with one row each. Columns are annotation layers.")
 @click.option(
     "--sparsify", is_flag=True,
-    help="Save resulting data in sparse format. Recommended for sparse datasets such as scRNA-Seq, scATAC-Seq, and 10X Visium, but not for bulk expression data.")
+    help="Save resulting data in sparse format. Recommended to increase performance for sparse datasets such as scRNA-Seq, scATAC-Seq, and 10X Visium, but not for bulk expression data.")
 @click.option(
     "-o", '--output', type=click.Path(dir_okay=False, exists=False), required=True,
     help="Path to output .h5ad file.")
-def txt_to_h5ad(counts, normalized, metadata, output, sparsify):
+def cmd_txt_to_h5ad(data_file, is_normalized, metadata, output, sparsify):
     """
-    Create .h5ad file with normalized and raw expression data, as well as metadata.
+    Create .h5ad file with data and metadata (`adata.obs`).
     """
     start_logging()
-    if counts is None and normalized is None:
-        logging.error("Either a counts matrix or normalized matrix of gene expression must be supplied.")
-        sys.exit(1)
-    elif counts is not None and normalized is None:
-        counts = pd.read_table(counts, index_col=0)
-        normalized = counts.div(counts.sum(axis=1), axis=0) * 1e6 # compute TPM
-    elif normalized and counts is None:
-        normalized = pd.read_table(normalized, index_col=0)
-        counts = normalized
-    elif normalized and counts:
-        logging.warning("Specifying both count and normalized data may lead to unintended consequences and is not recommended. "
-                        "If count data is available, do not specify normalized data. "
-                        "For non-count datasets including microarrays and MS proteomics, specify only a normalized input file.")
-        counts = pd.read_table(counts, index_col=0)
-        normalized = pd.read_table(normalized, index_col=0)
-    if (counts.index != normalized.index).all() or (counts.columns != normalized.columns).all():
-        logging.error("Index and Columns of counts and normalized matrices are not the same")
-        sys.exit(1)
-    if metadata is not None:
-        metadata = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
-        # convert 'object' dtype to categorical, converting bool values to strings as these are not supported by AnnData on-disk format
-        for col in metadata.select_dtypes(include="object").columns:
-            metadata[col] = metadata[col].replace({True: "True", False: "False"}).astype("category")
-        
-        # print final summary for review before saving to *.h5ad file]
-        msg = ""
-        for col in metadata.columns:
-            msg += "Column: " + col + "\n"
-            for value_type, count in metadata[col].dropna().map(type).value_counts().items():
-                msg += f"   {value_type}: {count}\n"
-        
-        logging.info("Data types for non-missing values in each layer of metadata:\n" + msg)
-        missing_samples_in_X = metadata.index.difference(normalized.index).astype(str).to_list()
-        if missing_samples_in_X:
-            logging.warning("The following samples in the metadata were not present in the data (`adata.X`):\n  - " + "\n  - ".join(missing_samples_in_X))
-        missing_samples_in_md = normalized.index.difference(metadata.index).astype(str).to_list()
-        if missing_samples_in_md:
-            logging.warning("The following samples in the data (`adata.X`) were absent in the metadata:\n  - " + "\n  - ".join(missing_samples_in_md))
-        
-        metadata = metadata.reindex(normalized.index)
+    df = pd.read_table(data_file, index_col=0)
 
-    if sparsify:
-        adata = AnnData(X=sp.csr_matrix(normalized.values), raw=AnnData(X=sp.csr_matrix(counts)), obs=metadata)
-    else:
-        adata = AnnData(X=normalized, dtype=normalized.values.dtype.name, raw=AnnData(X=counts, dtype=counts.values.dtype.name), obs=metadata)
-    adata.write_h5ad(output)
+    dataset = Dataset.from_df(data=df, sparsify=sparsify, is_normalized=is_normalized)
+    metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
+    dataset.update_metadata(metadata_df)
+    logging.info("Data types for non-missing values in each layer of metadata:\n"
+                 + dataset.get_metadata_type_summary())
+    dataset.write_h5ad(output)
 
-@click.command()
+@click.command(name="update-h5ad-metadata")
 @click.option(
     "-m", "--metadata", type=click.Path(dir_okay=False, exists=True), required=True,
     help="Tab-separated text file with metadata for samples/cells/spots with one row each. Columns are annotation layers.")
 @click.option(
     "-i", '--input_h5ad', type=click.Path(dir_okay=False, exists=True), required=True,
     help="Path to input .h5ad file.")
-def update_h5ad_metadata(input_h5ad, metadata):
+def cmd_update_h5ad_metadata(input_h5ad, metadata):
     """
     Update metadata in a .h5ad file at any point in the cNMF-SNS workflow. New metadata will overwrite (`adata.obs`).
     """
     start_logging()
+    dataset = Dataset.from_h5ad(input_h5ad)
+    metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
+    dataset.update_metadata(metadata_df)
+    logging.info("Data types for non-missing values in each layer of metadata:\n"
+                 + dataset.get_metadata_type_summary())
+    dataset.write_h5ad(input_h5ad)
 
-    metadata = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
-    # convert 'object' dtype to categorical, converting bool values to strings as these are not supported by AnnData on-disk format
-    for col in metadata.select_dtypes(include="object").columns:
-        metadata[col] = metadata[col].replace({True: "True", False: "False"}).astype("category")
-    
-    # print final summary for review before saving to *.h5ad file]
-    logging.info("Data types for non-missing values in each layer of metadata: ")
-    for col in metadata.columns:
-        print("Column:", col)
-        for value_type, count in metadata[col].dropna().map(type).value_counts().items():
-            print(f"   {value_type}:", count)
-
-    adata = read_h5ad(input_h5ad)
-    adata.obs = metadata.reindex(index=adata.obs.index)
-    adata.write(input_h5ad)
-
-
-@click.command()
+@click.command(name="check-h5ad")
 @click.option(
     "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=True,
     help="Input .h5ad file.")
 @click.option(
     "-o", "--output", type=click.Path(dir_okay=False, exists=False), required=False,
     help="Output .h5ad file. If not specified, no output file will be written.")
-def check_h5ad(input, output):
+def cmd_check_h5ad(input, output):
     start_logging()
-    adata = read_h5ad(input)
-    if adata.raw is None:
-        logging.error(f".h5ad file is missing count data (`adata.raw.X`).")
-        sys.exit(1)
+    dataset = Dataset.from_h5ad(input)
     if adata.X is None:
         logging.error(f".h5ad file is missing normalized data (`adata.X`).")
         sys.exit(1)
@@ -317,7 +261,7 @@ def check_h5ad(input, output):
         adata.write(output)
 
 
-@click.command()
+@click.command(name="model-odg")
 @click.option(
     "-n", "--name", type=str, required=True, 
     help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
@@ -337,7 +281,7 @@ def check_h5ad(input, output):
     "--annotate_hgnc_protein_coding", is_flag=True,
     help="Annotate whether features have a protein-coding locus type from HGNC, assuming that features are HGNC symbols"
 )
-def model_odg(name, output_dir, input, default_spline_degree, default_dof, annotate_hgnc_protein_coding):
+def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, annotate_hgnc_protein_coding):
     """
     Model gene overdispersion and plot calibration plots for selection of overdispersed genes, using two methods:
     
@@ -383,7 +327,7 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, annot
     adata.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
 
 
-@click.command()
+@click.command(name="set-parameters")
 @click.option(
     "-n", "--name", type=str, required=True, 
     help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
@@ -424,7 +368,7 @@ def model_odg(name, output_dir, input, default_spline_degree, default_dof, annot
     '--beta_loss', type=click.Choice(["frobenius", "kullback-leibler"]), default="kullback-leibler", show_default=True,
     help="Measure of Beta divergence to be minimized.")
 
-def set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_range, k, n_iter, seed, beta_loss):
+def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_range, k, n_iter, seed, beta_loss):
     """
     Set parameters for factorization, including selecting overdispersed genes.
     
@@ -535,7 +479,7 @@ def set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_range, k
     adata.uns["cnmf"] = cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss)[1]  # dict of cnmf parameters
     adata.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
 
-@click.command()
+@click.command(name="factorize")
 @click.option(
     "-n", "--name", type=str, required=True, 
     help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
@@ -552,7 +496,7 @@ def set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_range, k
     '--slurm_script', type=click.Path(dir_okay=False, exists=True),
     help="Submit jobs to SLURM scheduler using this job submission script. Sample scripts are located in `scripts/slurm.sh`.")
 
-def factorize(name, output_dir, worker_index, total_workers, slurm_script):
+def cmd_factorize(name, output_dir, worker_index, total_workers, slurm_script):
     """
     Performs factorization according to parameters specified using `cnmfsns set-parameters`.
     """
@@ -569,7 +513,7 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
     else:
         subprocess.Popen(['sbatch', slurm_script, os.getcwd(), output_dir, name])
     
-@click.command()
+@click.command(name="postprocess")
 @click.option(
     "-n", "--name", type=str, required=True, 
     help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
@@ -589,7 +533,7 @@ def factorize(name, output_dir, worker_index, total_workers, slurm_script):
 @click.option(
     '--force_h5ad_update', is_flag=True,
     help="If specified, overwrites cNMF results already saved to the .h5ad file.")
-def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborhood_size, skip_missing_iterations, force_h5ad_update):
+def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neighborhood_size, skip_missing_iterations, force_h5ad_update):
     """
     Perform post-processing routines on cNMF after factorization. This includes checking factorization outputs for completeness, combining individual
     iterations, calculating consensus GEPs and usage matrices, and creating the k-selection and annotated usage plots.
@@ -655,7 +599,7 @@ def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborh
     input_h5ad = os.path.join(output_dir, name, name + ".h5ad")
     add_cnmf_results_to_h5ad(output_dir, name, input_h5ad, local_density_threshold, local_neighborhood_size, force=force_h5ad_update)
 
-@click.command()
+@click.command("annotated-heatmap")
 @click.option(
     "-i", "--input_h5ad", type=click.Path(exists=True, dir_okay=False), required=True, help="Path to AnnData (.h5ad) file containing cNMF results.")
 @click.option(
@@ -671,7 +615,7 @@ def postprocess(name, output_dir, cpus, local_density_threshold, local_neighborh
     '--hide_sample_labels', is_flag=True,
     help="Hide sample labels on usage heatmap")
 
-def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categories_per_layer, hide_sample_labels):
+def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categories_per_layer, hide_sample_labels):
     """
     Create heatmaps of usages with annotation tracks.
     """
@@ -715,12 +659,12 @@ def annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categori
             cluster_samples=True, cluster_geps=False, show_sample_labels=(not hide_sample_labels), ylabel="GEP")
             
 
-@click.command()
+@click.command(name="integrate")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), required=False, help="TOML config file")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results. Can be used to specify multiple datasets for integration instead of a TOML config file.")
 @click.option('--cpus', type=int, default=cpus_available, show_default=True, help="Number of CPUs to use for calculating correlation matrix")
-def integrate(output_dir, config_toml, cpus, input_h5ad):
+def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.
     Although -i can be used multiple times to add .h5ad files directly, it is recommended to use a single TOML file instead for full customization.
@@ -922,7 +866,7 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
 
         
 
-@click.command()
+@click.command(name="create-network")
 @click.option(
     '-o', '--output_dir', type=click.Path(file_okay=False, exists=True), required=True,
     help="Output directory for cNMF-SNS results generated using `cnmfsns integrate`")
@@ -932,7 +876,7 @@ def integrate(output_dir, config_toml, cpus, input_h5ad):
 @click.option(
     '-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), 
     help="TOML config file. Defaults to file output from `cnmfsns integrate` step: [output_dir]/integrate/config.toml")
-def create_network(output_dir, name, config_toml):
+def cmd_create_network(output_dir, name, config_toml):
     """
     Create network integration.
     """
@@ -1537,13 +1481,13 @@ def create_network(output_dir, name, config_toml):
                 plt.close('all')
     
     
-cli.add_command(txt_to_h5ad)
-cli.add_command(update_h5ad_metadata)
-cli.add_command(check_h5ad)
-cli.add_command(model_odg)
-cli.add_command(set_parameters)
-cli.add_command(factorize)
-cli.add_command(postprocess)
-cli.add_command(annotated_heatmap)
-cli.add_command(integrate)
-cli.add_command(create_network)
+cli.add_command(cmd_txt_to_h5ad)
+cli.add_command(cmd_update_h5ad_metadata)
+cli.add_command(cmd_check_h5ad)
+cli.add_command(cmd_model_odg)
+cli.add_command(cmd_set_parameters)
+cli.add_command(cmd_factorize)
+cli.add_command(cmd_postprocess)
+cli.add_command(cmd_annotated_heatmap)
+cli.add_command(cmd_integrate)
+cli.add_command(cmd_create_network)

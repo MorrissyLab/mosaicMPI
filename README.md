@@ -7,10 +7,10 @@
 
 cNMF Solution Network Space
 
-![](https://img.shields.io/badge/version-0.5.3-blue)
+![](https://img.shields.io/badge/version-1.0.0-blue)
 
 <details>
-  <summary> *future badges* </summary>
+  <summary> future badges </summary>
 
 ```
 [![PyPI Latest Release](https://img.shields.io/pypi/v/cnmfsns.svg)](https://pypi.org/project/cnmfsns/)
@@ -32,7 +32,7 @@ cNMF Solution Network Space
 
 Before installing cNMF-SNS using pip, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
 ```
-conda create --name py39  -c conda-forge python=3.9 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph
+conda create --name py39  -c conda-forge python=3.9 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph semantic_version
 conda activate py39
 ```
 
@@ -47,27 +47,19 @@ pip install git+https://<token>@github.com/MorrissyLab/cNMF-SNS.git
 ```
 ### 2. Installing from public repositories
 
-### 2. Using `pip` (PyPI version)
-
 > Note: This will work only when cNMF-SNS has been published to PyPI.
 
 ```
 pip install cnmfsns
 ```
 
-### 3. Using `conda`
-
 > Note: This will work only when cNMF-SNS has been published to conda-forge.
 
 ```
 conda install -c conda-forge cnmfsns
 ```
+
 ## Dependencies
-
-
-## Installation
-
-
 
 ## Workflow 1A: Factorization for individual datasets
 

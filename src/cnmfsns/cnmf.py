@@ -15,19 +15,15 @@ import itertools
 import yaml
 import subprocess
 import scipy.sparse as sp
-
 from scipy.spatial.distance import squareform
 from sklearn.decomposition import non_negative_factorization
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import euclidean_distances
 from sklearn.utils import sparsefuncs
-
 from fastcluster import linkage
 from scipy.cluster.hierarchy import leaves_list
-
 import matplotlib.pyplot as plt
-
 import scanpy as sc
 
 

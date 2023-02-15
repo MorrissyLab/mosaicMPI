@@ -1,8 +1,7 @@
 import importlib.metadata
 __version__ = importlib.metadata.version('cnmfsns')
 
-
-
+from cnmfsns.io import Dataset
 
 
 
@@ -54,10 +53,6 @@ __version__ = importlib.metadata.version('cnmfsns')
 # # Use __all__ to let type checkers know what is part of the public API.
 # # cNMF-SNS is not (yet) a py.typed library: the public API is determined
 # # based on the documentation.
-# __all__ = [
-#     "ArrowDtype",
-#     "BooleanDtype",
-#     "Categorical",
-#     "CategoricalDtype",
-#     "CategoricalIndex"
-# ]
+__all__ = [
+    "Dataset"
+]

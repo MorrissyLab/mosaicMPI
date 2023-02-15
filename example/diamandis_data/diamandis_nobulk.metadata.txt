@@ -1,0 +1,78 @@
+Sample	patient_id	simple_category	detailed_category	age	sex	location of resection	ATRX	p53	MGMT
+sample_1	P1	CT	CT	70	M	Right temporo-parietal	retained	WT	-
+sample_58	P1	PAN	PAN	70	M	Right temporo-parietal	retained	WT	-
+sample_67	P1	MVP	MVP	70	M	Right temporo-parietal	retained	WT	-
+sample_9	P10	CT	CT	84	F	Left parietal	retained	Mutated	+
+sample_30	P10	IT	IT	84	F	Left parietal	retained	Mutated	+
+sample_10	P11	CT	CT	63	F	Right temporal	retained	WT	-
+sample_46	P11	LE	LE	63	F	Right temporal	retained	WT	-
+sample_63	P11	PAN	PAN	63	F	Right temporal	retained	WT	-
+sample_74	P11	MVP	MVP	63	F	Right temporal	retained	WT	-
+sample_13	P12	CT	CT	72	M	Right Temporal	retained	WT	-
+sample_47	P12	LE	LE	72	M	Right Temporal	retained	WT	-
+sample_11	P13	CT	CT	69	M	Frontal temporal parietal	lost	WT	+
+sample_19	P13	CT	CT	69	M	Frontal temporal parietal	lost	WT	+
+sample_20	P13	CT	CT	69	M	Frontal temporal parietal	lost	WT	+
+sample_21	P13	CT	CT	69	M	Frontal temporal parietal	lost	WT	+
+sample_22	P13	CT	CT	69	M	Frontal temporal parietal	lost	WT	+
+sample_23	P13	CT	CT	69	M	Frontal temporal parietal	lost	WT	+
+sample_24	P13	CT	CT	69	M	Frontal temporal parietal	lost	WT	+
+sample_37	P13	IT	IT	69	M	Frontal temporal parietal	lost	WT	+
+sample_38	P13	IT	IT	69	M	Frontal temporal parietal	lost	WT	+
+sample_39	P13	IT	IT	69	M	Frontal temporal parietal	lost	WT	+
+sample_40	P13	IT	IT	69	M	Frontal temporal parietal	lost	WT	+
+sample_41	P13	IT	IT	69	M	Frontal temporal parietal	lost	WT	+
+sample_52	P13	LE	LE	69	M	Frontal temporal parietal	lost	WT	+
+sample_53	P13	LE	LE	69	M	Frontal temporal parietal	lost	WT	+
+sample_54	P13	LE	LE	69	M	Frontal temporal parietal	lost	WT	+
+sample_55	P13	LE	LE	69	M	Frontal temporal parietal	lost	WT	+
+sample_56	P13	LE	LE	69	M	Frontal temporal parietal	lost	WT	+
+sample_57	P13	LE	LE	69	M	Frontal temporal parietal	lost	WT	+
+sample_64	P13	PAN	PAN	69	M	Frontal temporal parietal	lost	WT	+
+sample_12	P14	CT	CT	73	M	Left cerebral hemisphere	retained	WT	intermediate
+sample_31	P14	IT	IT	73	M	Left cerebral hemisphere	retained	WT	intermediate
+sample_48	P14	LE	LE	73	M	Left cerebral hemisphere	retained	WT	intermediate
+sample_14	P15	CT	CT	72	M	Right Parietal	retained	WT	+
+sample_34	P15	IT	IT	72	M	Right Parietal	retained	WT	+
+sample_49	P15	LE	LE	72	M	Right Parietal	retained	WT	+
+sample_15	P16	CT	CT	55	M	Right Parietal	retained	Mutated	+
+sample_50	P16	LE	LE	55	M	Right Parietal	retained	Mutated	+
+sample_16	P17	CT	CT	75	F	Left Frontal	retained	Mutated	+
+sample_65	P17	PAN	PAN	75	F	Left Frontal	retained	Mutated	+
+sample_73	P17	MVP	MVP	75	F	Left Frontal	retained	Mutated	+
+sample_75	P17	MVP	MVP	75	F	Left Frontal	retained	Mutated	+
+sample_17	P18	CT	CT	69	F	"Left parietal, occepital"	retained	WT	+
+sample_35	P18	IT	IT	69	F	"Left parietal, occepital"	retained	WT	+
+sample_51	P18	LE	LE	69	F	"Left parietal, occepital"	retained	WT	+
+sample_18	P19	CT	CT	55	F	Right frontal lobe	retained	WT	+
+sample_36	P19	IT	IT	55	F	Right frontal lobe	retained	WT	+
+sample_76	P19	MVP	MVP	55	F	Right frontal lobe	retained	WT	+
+sample_2	P2	CT	CT	66	F	Left temporo-parietal	retained	WT	-
+sample_25	P2	IT	IT	66	F	Left temporo-parietal	retained	WT	-
+sample_42	P2	LE	LE	66	F	Left temporo-parietal	retained	WT	-
+sample_59	P2	PAN	PAN	66	F	Left temporo-parietal	retained	WT	-
+sample_68	P2	MVP	MVP	66	F	Left temporo-parietal	retained	WT	-
+sample_32	P20	CT	CT	74	F	Right temporal	retained	heterogeneous	-
+sample_66	P20	PAN	PAN	74	F	Right temporal	retained	heterogeneous	-
+sample_77	P20	MVP	MVP	74	F	Right temporal	retained	heterogeneous	-
+sample_3	P3	CT	CT	66	F	Left frontal	retained	WT	+
+sample_60	P3	PAN	PAN	66	F	Left frontal	retained	WT	+
+sample_69	P3	MVP	MVP	66	F	Left frontal	retained	WT	+
+sample_4	P4	CT	CT	81	M	Left frontal	retained	WT	-
+sample_26	P4	IT	IT	81	M	Left frontal	retained	WT	-
+sample_44	P4	LE	LE	81	M	Left frontal	retained	WT	-
+sample_5	P5	CT	CT	56	M	Right frontal	retained	WT	+
+sample_70	P5	MVP	MVP	56	M	Right frontal	retained	WT	+
+sample_27	P6	IT	IT	58	M	Right parietal	retained	WT	
+sample_7	P7	CT	CT	60	M	Right parietal	retained	WT	
+sample_28	P7	IT	IT	60	M	Right parietal	retained	WT	
+sample_43	P7	LE	LE	60	M	Right parietal	retained	WT	
+sample_61	P7	PAN	PAN	60	M	Right parietal	retained	WT	
+sample_71	P7	MVP	MVP	60	M	Right parietal	retained	WT	
+sample_8	P8	CT	CT	58	M	Left temporal	retained	WT	-
+sample_29	P8	IT	IT	58	M	Left temporal	retained	WT	-
+sample_45	P8	LE	LE	58	M	Left temporal	retained	WT	-
+sample_6	P9	CT	CT	60	F	Right temporal	retained	WT	-
+sample_33	P9	IT	IT	60	F	Right temporal	retained	WT	-
+sample_62	P9	PAN	PAN	60	F	Right temporal	retained	WT	-
+sample_72	P9	MVP	MVP	60	F	Right temporal	retained	WT	-

@@ -1,16 +1,21 @@
 import numpy as np
 import pandas as pd
+import scipy as sp
 import logging
+from datetime import datetime
 import sys
-from anndata import AnnData, read_h5ad
+import typing
+import semantic_version
+import anndata as ad
 import seaborn as sns
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 from glob import glob
-from cnmfsns.config import Config
+import cnmfsns as cn
 
+# lower-level functions
 
 def save_df_to_text(obj, filename):
     obj.to_csv(filename, sep='\t')
@@ -31,7 +36,131 @@ def load_df_from_npz(filename, multiindex=False):
         obj = pd.DataFrame(f["data"], index=index, columns=columns)
     return obj
 
+def migrate_anndata(adata:ad.AnnData):
+    # migrates pre-1.0.0 anndata objects to newer format.
+    X = adata.to_df()
+    raw = pd.DataFrame(adata.raw.X, index=X.index, columns=X.columns)
+    corrdist = X.corrwith(raw, axis=1)
+    # checks that all samples are perfectly correlated between counts and normalized data
+    if ((corrdist - 1).abs() > 1e-6).any():
+        logging.error("Could not migrate AnnData object. Counts and normalized expression matrices are not perfectly correlated.")
+        sys.exit(1)
+    # check for whether user originally input normalized or counts data
+    is_normalized = ((X - raw).abs() < 1e-6).all().all()
+    X_is_tpm = ((X.sum(axis=1) - 1e6).abs() > 1e2).any()
+    if is_normalized and not X_is_tpm:
+        logging.warning("AnnData object contains non-TPM normalized data. New AnnData object will retain the count (unnormalized) data only.")
+        
+    # create new AnnData object
+    new_adata = ad.AnnData(X=raw, obs=adata.obs, var=adata.var, uns=adata.uns)
+    if "history" not in new_adata.uns:
+        new_adata.uns["history"] = {}
+    return new_adata, is_normalized
+        
 
+class Dataset():
+    
+    def __init__(self,
+                 adata: ad.AnnData,
+                 name: typing.Optional[str] = None,
+                 color: typing.Optional[str] = None
+                 ):
+        self.name = name
+        self.color = color
+        self.adata = adata
+    
+    @classmethod
+    def from_df(cls,
+                  data: pd.DataFrame,
+                  is_normalized: bool,
+                  sparsify: bool = False,
+                  obs: typing.Optional[pd.DataFrame] = None,
+                  var: typing.Optional[pd.DataFrame] = None,
+                  name: typing.Optional[str] = None,
+                  color: typing.Optional[str] = None,
+                  ):
+        if sparsify:
+            data = sp.csr_matrix(data.values)
+        uns = {"history": {}}
+        adata = ad.AnnData(X=data, obs=obs, var=var, uns=uns)  
+        dataset = cls(adata=adata, name=name, color=color)
+        dataset.is_normalized = is_normalized
+        dataset.cnmfsns_version = cn.__version__
+        dataset.append_to_history("Initialized new AnnData object")  
+        return dataset
+    
+    @classmethod
+    def from_h5ad(cls,
+                  h5ad_file: str,
+                  name: typing.Optional[str] = None,
+                  color: typing.Optional[str] = None
+                  ):
+        adata = ad.read_h5ad(h5ad_file)
+        dataset = cls(adata=adata, name=name, color=color)
+        version = semantic_version.Version(dataset.cnmfsns_version)
+        if version.major == 0:
+            # importing old versions requires updating
+            dataset.adata, dataset.is_normalized = migrate_anndata(adata)
+            dataset.cnmfsns_version = cn.__version__
+            dataset.append_to_history("Migrated pre-1.0.0 AnnData object")  
+        return dataset
+        
+    
+    def append_to_history(self, text):
+        self.adata.uns["history"][datetime.utcnow().isoformat()] = text
+        
+    def get_history(self):
+        return self.adata.uns["history"]
+    
+    @property
+    def is_normalized(self):
+        return self.adata.uns["is_normalized"]
+    
+    @is_normalized.setter
+    def is_normalized(self, value: bool):
+        self.adata.uns["is_normalized"] = value
+        
+    @property
+    def cnmfsns_version(self):
+        if "cnmfsns_version" in self.adata.uns:
+            version = self.adata.uns["cnmfsns_version"]
+        else:
+            version = "0.0.0"
+        return version
+    
+    @cnmfsns_version.setter
+    def cnmfsns_version(self, value: bool):
+        self.adata.uns["cnmfsns_version"] = value
+        
+    def update_metadata(self, obs_df):
+        # convert 'object' dtype to categorical, converting bool values to strings as these are not supported by AnnData on-disk format
+        for col in obs_df.select_dtypes(include="object").columns:
+            obs_df[col] = obs_df[col].replace({True: "True", False: "False"}).astype("category")
+        missing_samples_in_X = obs_df.index.difference(self.adata.obs.index).astype(str).to_list()
+        if missing_samples_in_X:
+            logging.warning("The following samples in the metadata were not present in the data (`adata.X`):\n  - " + "\n  - ".join(missing_samples_in_X))
+        missing_samples_in_md = self.adata.obs.index.difference(obs_df.index).astype(str).to_list()
+        if missing_samples_in_md:
+            logging.warning("The following samples in the data (`adata.X`) were absent in the metadata:\n  - " + "\n  - ".join(missing_samples_in_md))
+        self.adata.obs = obs_df.reindex(self.adata.obs.index)
+    
+    def get_metadata_type_summary(self):
+        msg = ""
+        for col in self.adata.obs.columns:
+            msg += "    Column: " + col + "\n"
+            for value_type, count in self.adata.obs[col].dropna().map(type).value_counts().items():
+                msg += f"        {value_type}: {count}\n"
+        return msg
+    
+    def write_h5ad(self, filename):
+        filename = os.path.abspath(filename)
+        logging.info(f"Writing to {filename}")
+        self.adata.write_h5ad(filename)
+        logging.info(f"Done")
+    
+    # def add_cnmf_results(self, cnmf_output_dir, cnmf_name, h5ad_path, local)
+
+        
 def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_density_threshold: float = None, local_neighborhood_size: float = None, force=False):
     adata = read_h5ad(h5ad_path)
     adata.uns["cnmf_name"] = cnmf_name
@@ -101,3 +230,4 @@ def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_densit
     logging.info(f"Writing h5ad file")  
 
     adata.write_h5ad(h5ad_path)
+
