@@ -180,13 +180,13 @@ class Dataset():
         
         if genes_with_missingvalues.any():
             n_missing = genes_with_missingvalues.sum()
-            logging.warning(f"{n_missing} of {dataset.adata.n_vars} variables are missing values (`adata.X`).")
+            logging.warning(f"{n_missing} of {self.adata.n_vars} variables are missing values (`adata.X`).")
             logging.warning(f"Subsetting variables to those with no missing values.")
                 
         # Check for genes with zero variance
         zerovargenes = (df.var() == 0).sum()
         if zerovargenes:
-            logging.warning(f"{zerovargenes} of {dataset.adata.n_vars} variables have a variance of zero in counts data (`adata.raw.X`).")
+            logging.warning(f"{zerovargenes} of {self.adata.n_vars} variables have a variance of zero in counts data (`adata.raw.X`).")
             logging.warning(f"Subsetting variables to those with nonzero variance.")
         
         genes_to_keep = ~genes_with_missingvalues & ~zerovargenes
@@ -195,7 +195,7 @@ class Dataset():
 
         
 def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_density_threshold: float = None, local_neighborhood_size: float = None, force=False):
-    adata = read_h5ad(h5ad_path)
+    adata = ad.read_h5ad(h5ad_path)
     adata.uns["cnmf_name"] = cnmf_name
     cnmf_data_loaded =  "cnmf_usage" in adata.obsm or\
                         "cnmf_gep_score" in adata.varm or\
