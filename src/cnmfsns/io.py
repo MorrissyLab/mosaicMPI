@@ -36,15 +36,18 @@ def load_df_from_npz(filename, multiindex=False):
         obj = pd.DataFrame(f["data"], index=index, columns=columns)
     return obj
 
-def migrate_anndata(adata:ad.AnnData):
+def migrate_anndata(adata:ad.AnnData, force: bool = False):
     # migrates pre-1.0.0 anndata objects to newer format.
     X = adata.to_df()
     raw = pd.DataFrame(adata.raw.X, index=X.index, columns=X.columns)
     corrdist = X.corrwith(raw, axis=1)
     # checks that all samples are perfectly correlated between counts and normalized data
     if ((corrdist - 1).abs() > 1e-6).any():
-        logging.error("Could not migrate AnnData object. Counts and normalized expression matrices are not perfectly correlated.")
-        sys.exit(1)
+        logging.warning("Counts and normalized expression matrices are not perfectly correlated. Counts data will be retained in migrated object.")
+        if not force:
+            errormsg = "Could not migrate AnnData object."
+            logging.error(errormsg)
+            raise ValueError(errormsg)
     # check for whether user originally input normalized or counts data
     is_normalized = ((X - raw).abs() < 1e-6).all().all()
     X_is_tpm = ((X.sum(axis=1) - 1e6).abs() > 1e2).any()
@@ -56,7 +59,7 @@ def migrate_anndata(adata:ad.AnnData):
     if "history" not in new_adata.uns:
         new_adata.uns["history"] = {}
     return new_adata, is_normalized
-        
+
 
 class Dataset():
     
@@ -65,6 +68,8 @@ class Dataset():
                  name: typing.Optional[str] = None,
                  color: typing.Optional[str] = None
                  ):
+        
+        
         self.name = name
         self.color = color
         self.adata = adata
@@ -93,16 +98,19 @@ class Dataset():
     def from_h5ad(cls,
                   h5ad_file: str,
                   name: typing.Optional[str] = None,
-                  color: typing.Optional[str] = None
+                  color: typing.Optional[str] = None, force_migrate=False
                   ):
         adata = ad.read_h5ad(h5ad_file)
         dataset = cls(adata=adata, name=name, color=color)
         version = semantic_version.Version(dataset.cnmfsns_version)
         if version.major == 0:
             # importing old versions requires updating
-            dataset.adata, dataset.is_normalized = migrate_anndata(adata)
+            dataset.adata, dataset.is_normalized = migrate_anndata(adata, force=force_migrate)
             dataset.cnmfsns_version = cn.__version__
             dataset.append_to_history("Migrated pre-1.0.0 AnnData object")  
+        if dataset.adata.X is None:
+            logging.error(f".h5ad file contains no expression data (adata.X)")
+            raise ValueError()
         return dataset
         
     
@@ -158,7 +166,32 @@ class Dataset():
         self.adata.write_h5ad(filename)
         logging.info(f"Done")
     
-    # def add_cnmf_results(self, cnmf_output_dir, cnmf_name, h5ad_path, local)
+    def to_df(self, normalized=False):
+        df = self.adata.to_df()
+        if normalized and not self.is_normalized:
+            df = df.div(df.sum(axis=1), axis=0) * 1e6  # TPM normalization
+        return df
+        
+    def remove_unfactorizable_genes(self):
+        df = self.to_df(normalized=False)
+        
+        # Check for variables with missing values
+        genes_with_missingvalues = df.isnull().any()
+        
+        if genes_with_missingvalues.any():
+            n_missing = genes_with_missingvalues.sum()
+            logging.warning(f"{n_missing} of {dataset.adata.n_vars} variables are missing values (`adata.X`).")
+            logging.warning(f"Subsetting variables to those with no missing values.")
+                
+        # Check for genes with zero variance
+        zerovargenes = (df.var() == 0).sum()
+        if zerovargenes:
+            logging.warning(f"{zerovargenes} of {dataset.adata.n_vars} variables have a variance of zero in counts data (`adata.raw.X`).")
+            logging.warning(f"Subsetting variables to those with nonzero variance.")
+        
+        genes_to_keep = ~genes_with_missingvalues & ~zerovargenes
+        
+        self.adata = self.adata[:,genes_to_keep]
 
         
 def add_cnmf_results_to_h5ad(cnmf_output_dir, cnmf_name, h5ad_path, local_density_threshold: float = None, local_neighborhood_size: float = None, force=False):

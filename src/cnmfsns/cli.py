@@ -190,75 +190,11 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
 def cmd_check_h5ad(input, output):
     start_logging()
     dataset = Dataset.from_h5ad(input)
-    if adata.X is None:
-        logging.error(f".h5ad file is missing normalized data (`adata.X`).")
-        sys.exit(1)
-
-    # convert sparse to dense matrices
-    if sp.issparse(adata.X):
-        X = adata.X.toarray()
-    else:
-        X = adata.X
-    if sp.issparse(adata.raw.X):
-        raw = adata.raw.X.toarray()
-    else:
-        raw = adata.raw.X
-    normalized = pd.DataFrame(data=X, index=adata.obs.index, columns=adata.var.index)
-    counts = pd.DataFrame(data=raw, index=adata.obs.index, columns=adata.var.index)
-    if adata.X is None and adata.raw.X is not None:
-        logging.warning("Normalized data matrix (`adata.X`) is empty.")
-        if output:
-            logging.warning("Normalized data matrix being generated from count matrix (`adata.raw.X`) using TPM normalization.")
-            normalized = counts * 1e6 / counts.sum(axis=1) # compute TPM
-    elif adata.raw.X is None and adata.X is not None:
-        logging.warning("Count data matrix (`adata.raw.X`) is empty.")
-        if output:
-            logging.warning("Normalized data matrix (`adata.X`) will be used instead.")
-            counts = normalized.copy()
-    elif adata.raw.X is None and adata.X is None:
-        logging.error(".h5ad file must contain a counts matrix (`adata.raw.X`) and/or a normalized matrix (`adata.X`).")
-        sys.exit(1)
-    
-    # Check counts for variables with missing values
-    genes_with_missingvalues = counts.isnull().any().sum()
-    if genes_with_missingvalues:
-        logging.warning(f"{genes_with_missingvalues} of {adata.n_vars} variables are missing values in counts data (`adata.raw.X`).")
-        if output:
-            logging.warning(f"Subsetting variables to those with no missing values.")
-            counts = counts.dropna(how="any", axis=1)
-    # Check normalized for variables with missing values
-    genes_with_missingvalues = normalized.isnull().any().sum()
-    if genes_with_missingvalues:
-        logging.warning(f"{genes_with_missingvalues} of {adata.n_vars} variables are missing values in normalized data (`adata.X`).")
-        if output:
-            logging.warning(f"Subsetting variables to those with no missing values.")
-            normalized = normalized.dropna(how="any", axis=1)
-    # Check for genes with zero variance
-    zerovargenes = (counts.var() == 0).sum()
-    if zerovargenes:
-        logging.warning(f"{zerovargenes} of {adata.n_vars} variables have a variance of zero in counts data (`adata.raw.X`).")
-        if output:
-            logging.warning(f"Subsetting variables to those with nonzero variance.")
-            counts = counts.loc[:, counts.var() > 0]
-    # Check for genes with zero variance
-    zerovargenes = (normalized.var() == 0).sum()
-    if zerovargenes:
-        logging.warning(f"{zerovargenes} of {adata.n_vars} variables have a variance of zero in normalized data (`adata.X`).")
-        if output:
-            logging.warning(f"Subsetting variables to those with nonzero variance.")
-            normalized = normalized.loc[:, normalized.var() > 0]
-    
-    # check for linear scaling of counts to normalized matrix (eg. TPM) for cNMF
-    is_nonlinear_scaling = (np.abs(normalized.corrwith(counts, axis=1, method="pearson") - 1) > 0.01).any()  # Uses pearson correlation to detect non-linear relationships
-    if is_nonlinear_scaling:
-        logging.warning(f"Normalized data (`adata.X`) does not appear to be a linear scaling of counts (`adata.raw.X`) data. Linear scaling such as TPM is recommended for cNMF.")
+    dataset.remove_unfactorizable_genes()
     
     # Save output to new h5ad file
     if output is not None:
-        adata = adata[:, normalized.columns]
-        adata.X = normalized
-        adata.raw = AnnData(counts, dtype=counts.values.dtype.name)
-        adata.write(output)
+        dataset.write_h5ad(output)
 
 
 @click.command(name="model-odg")
