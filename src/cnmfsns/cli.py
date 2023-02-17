@@ -15,7 +15,7 @@ from typing import Optional, Mapping
 from anndata import AnnData, read_h5ad
 from cnmfsns.config import Config
 from cnmfsns.cnmf import cNMF
-from cnmfsns.odg import model_overdispersion, odg_plots, fetch_hgnc_protein_coding_genes
+from cnmfsns.odg import odg_plots, fetch_hgnc_protein_coding_genes
 from cnmfsns.plots import (
     plot_annotated_usages,
     plot_rank_reduction,
@@ -30,7 +30,7 @@ from cnmfsns.plots import (
     plot_metadata_correlation_network,
     plot_number_of_patients,
     plot_icu_diversity)
-from cnmfsns.io import (
+from cnmfsns.core import (
     Dataset,
     save_df_to_npz, 
     load_df_from_npz,
@@ -234,22 +234,22 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, a
     """
     cnmf_obj = cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
-    adata = read_h5ad(input)
+    dataset = Dataset.from_h5ad(input)
     
     # Create gene stats table
-    df = model_overdispersion(
-            adata=adata,
-            odg_default_spline_degree=default_spline_degree,
-            odg_default_dof=default_dof
-            )
+    gene_stats = model_overdispersion(
+        dataset=dataset,
+        odg_default_spline_degree=default_spline_degree,
+        odg_default_dof=default_dof
+        )
     if annotate_hgnc_protein_coding:
         protein_coding_genes = fetch_hgnc_protein_coding_genes()
-        df["HGNC protein-coding"] = df.index.isin(protein_coding_genes)
+        gene_stats["HGNC protein-coding"] = gene_stats.index.isin(protein_coding_genes)
     os.makedirs(os.path.normpath(os.path.join(output_dir, name, "odgenes")), exist_ok=True)
-    df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
+    gene_stats.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
 
     # create od genes plots
-    for fig_id, fig in odg_plots(df, show_selected=False).items():
+    for fig_id, fig in odg_plots(gene_stats, show_selected=False).items():
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
         fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
 
@@ -257,7 +257,7 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, a
     uns_odg = {
         "default_spline_degree": default_spline_degree,
         "default_dof": default_dof,
-        "gene_stats": df
+        "gene_stats": gene_stats
     }
     adata.uns["odg"] = uns_odg
     adata.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))

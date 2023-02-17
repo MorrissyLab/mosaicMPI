@@ -1,5 +1,4 @@
 
-from cnmfsns.io import load_df_from_npz
 
 import os
 import tomli
@@ -12,6 +11,7 @@ import networkx as nx
 from anndata import read_h5ad
 import igraph
 from networkx.algorithms.community.modularity_max import greedy_modularity_communities
+from cnmfsns.core import load_df_from_npz
 
 def get_corr_matrix(output_dir, config):
     corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")

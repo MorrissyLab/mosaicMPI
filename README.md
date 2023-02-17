@@ -59,7 +59,12 @@ pip install cnmfsns
 conda install -c conda-forge cnmfsns
 ```
 
-## Dependencies
+## 1.0.0 release notes
+
+- completed python interface
+- single matrix input instead of count/normalized inputs
+- Jupyter notebook for common workflow from sample data
+
 
 ## Workflow 1A: Factorization for individual datasets
 

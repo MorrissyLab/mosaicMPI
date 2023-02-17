@@ -3,40 +3,10 @@ import logging
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from statsmodels.gam.api import GLMGam, BSplines
 from statsmodels.distributions.empirical_distribution import ECDF
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
-import cnmf
-
-def model_overdispersion(adata, odg_default_spline_degree=3, odg_default_dof=8, minimum_counts_mean=0):
-
-    # create dataframe of per-gene statistics
-    df = pd.DataFrame(index=adata.var.index)
-    df["mean"] = adata.X.mean(0)
-    df["rank_mean"] = df["mean"].rank()
-    df["variance"] = adata.X.var(0)
-    df["sd"] = np.sqrt(df["variance"])
-    df["missingness"] = np.isnan(adata.X).sum(0)/adata.shape[0]
-    df[["log_mean", "log_variance"]] = np.log10(df[["mean", "variance"]])
-    df["mean_counts"] = adata.raw.X.mean(0)
-    df["odscore_excluded"] = (df["missingness"] > 0) | df["log_mean"].isnull() | (df["mean"] == 0) | df["log_variance"].isnull()
-    df = df.sort_values("mean")
-
-    # model mean-variance relationship using generalized additive model with smooth components
-    df_model = df[~df["odscore_excluded"]]
-    bs = BSplines(df_model["mean"], df=odg_default_dof, degree=odg_default_spline_degree)
-    gam = GLMGam.from_formula("log_variance ~ log_mean", data=df_model, smoother=bs).fit()
-    df["resid_log_variance"] = gam.resid_response
-    df["odscore"] = np.sqrt(10 ** df["resid_log_variance"])
-    df["gam_fittedvalues"] = gam.fittedvalues
-
-
-    # model mean-variance relationship using cNMF's method based on v-score and minimum expression threshold
-    vscore_stats = pd.DataFrame(cnmf.cnmf.get_highvar_genes(input_counts=adata.X, minimal_mean=0)[0])
-    vscore_stats.index = adata.var.index
-    df["vscore"] = vscore_stats["fano_ratio"]
-    return df
+import cnmfsns as cn
 
 def odg_plots(df, show_selected):
     """

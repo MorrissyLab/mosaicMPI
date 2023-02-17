@@ -1,6 +1,6 @@
 ## Code adapted and optimized from https://github.com/dylkot/cNMF/blob/master/src/cnmf/cnmf.py
 
-from cnmfsns.io import (
+from cnmfsns.core import (
     load_df_from_npz,
     save_df_to_npz,
     save_df_to_text
