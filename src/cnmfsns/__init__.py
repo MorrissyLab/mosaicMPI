@@ -1,8 +1,12 @@
 import importlib.metadata
 __version__ = importlib.metadata.version('cnmfsns')
 
-from cnmfsns.core import Dataset
-from cnmfsns.odg import odg_plots
+from cnmfsns.dataset import Dataset
+from cnmfsns.config import Config
+from cnmfsns.sns import SNS
+from cnmfsns import cnmf, colors, dataset, plots, sns, utils, cli
+
+
 
 
 

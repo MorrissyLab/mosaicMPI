@@ -1,59 +1,22 @@
 import os
 import logging
-import shutil
 import subprocess
 import collections
-import click
 import sys
-import numpy as np
-import pandas as pd
-import scipy.sparse as sp
-from functools import partial
-from multiprocessing.pool import Pool
 from datetime import datetime
 from typing import Optional, Mapping
-from anndata import AnnData, read_h5ad
-from cnmfsns.config import Config
-from cnmfsns.cnmf import cNMF
-from cnmfsns.odg import odg_plots, fetch_hgnc_protein_coding_genes
-from cnmfsns.plots import (
-    plot_annotated_usages,
-    plot_rank_reduction,
-    plot_pairwise_corr,
-    plot_pairwise_corr_overlaid,
-    plot_genelist_upsets,
-    plot_community_by_dataset_rank,
-    plot_community_network,
-    plot_overrepresentation_network,
-    plot_overrepresentation_geps_bar,
-    plot_metadata_correlation_geps_bar,
-    plot_metadata_correlation_network,
-    plot_number_of_patients,
-    plot_icu_diversity)
-from cnmfsns.core import (
-    Dataset,
-    save_df_to_npz, 
-    load_df_from_npz,
-    add_cnmf_results_to_h5ad)
-from cnmfsns.sns import (
-    add_community_weights_to_graph, 
-    create_graph, 
-    sweep_community_resolution,
-    write_communities_toml,
-    get_graph_layout, 
-    get_max_corr_communities,
-    get_category_overrepresentation)
-from cnmfsns import __version__
 
-
+import click
+import numpy as np
+import pandas as pd
+import cnmfsns as cn
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import networkx as nx
 import seaborn as sns
 import tomli_w
 import distinctipy
 from matplotlib.lines import Line2D
-
-import matplotlib as mpl
 from scipy.stats import entropy
 
 if hasattr(os, "sched_getaffinity"):
@@ -70,29 +33,6 @@ mpl.rcParams['font.size']=10                #10
 mpl.rcParams['savefig.dpi']=72             #72 
 mpl.rcParams['figure.subplot.bottom']=.125    #.125
 
-def get_and_check_consensus(k, cnmf_obj, local_density_threshold, local_neighborhood_size):
-    logging.info(f"Creating consensus GEPs and usages for k={k}")
-    cnmf_obj.consensus(k, density_threshold=local_density_threshold,
-        local_neighborhood_size=local_neighborhood_size,
-        show_clustering=True,
-        close_clustergram_fig=True)
-    density_threshold_repl = str(local_density_threshold).replace(".", "_")
-    filenames = [
-        cnmf_obj.paths['consensus_spectra']%(k, density_threshold_repl),
-        cnmf_obj.paths['consensus_spectra']%(k, density_threshold_repl),
-        cnmf_obj.paths['consensus_usages']%(k, density_threshold_repl),
-        cnmf_obj.paths['consensus_stats']%(k, density_threshold_repl),
-        cnmf_obj.paths['consensus_spectra__txt']%(k, density_threshold_repl),
-        cnmf_obj.paths['consensus_usages__txt']%(k, density_threshold_repl),
-        cnmf_obj.paths['gene_spectra_tpm']%(k, density_threshold_repl),
-        cnmf_obj.paths['gene_spectra_tpm__txt']%(k, density_threshold_repl),
-        cnmf_obj.paths['gene_spectra_score']%(k, density_threshold_repl),
-        cnmf_obj.paths['gene_spectra_score__txt']%(k, density_threshold_repl)
-        ]
-    for filename in filenames:
-        if not os.path.exists(filename):
-            logging.error(f"cNMF postprocessing could not find output file {filename}. This can arise in low memory conditions.")
-            sys.exit(1)
 
 def start_logging(output_path=None):
     if output_path is None:
@@ -112,6 +52,7 @@ def start_logging(output_path=None):
         )
     return
 
+
 class OrderedGroup(click.Group):
     """
     Overwrites Groups in click to allow ordered commands.
@@ -126,7 +67,7 @@ class OrderedGroup(click.Group):
 
 
 @click.group(cls=OrderedGroup)
-@click.version_option(version=__version__)
+@click.version_option(version=cn.__version__)
 def cli():
     """
     cNMF-SNS is a tool for deconvolution and integration of multiple datasets based on consensus Non-Negative Matrix Factorization (cNMF).
@@ -153,10 +94,8 @@ def cmd_txt_to_h5ad(data_file, is_normalized, metadata, output, sparsify):
     """
     start_logging()
     df = pd.read_table(data_file, index_col=0)
-
-    dataset = Dataset.from_df(data=df, sparsify=sparsify, is_normalized=is_normalized)
     metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
-    dataset.update_metadata(metadata_df)
+    dataset = cn.Dataset.from_df(data=df, obs=metadata_df, sparsify=sparsify, is_normalized=is_normalized)
     logging.info("Data types for non-missing values in each layer of metadata:\n"
                  + dataset.get_metadata_type_summary())
     dataset.write_h5ad(output)
@@ -173,9 +112,9 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
     Update metadata in a .h5ad file at any point in the cNMF-SNS workflow. New metadata will overwrite (`adata.obs`).
     """
     start_logging()
-    dataset = Dataset.from_h5ad(input_h5ad)
+    dataset = cn.Dataset.from_h5ad(input_h5ad)
     metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
-    dataset.update_metadata(metadata_df)
+    dataset.update_obs(metadata_df)
     logging.info("Data types for non-missing values in each layer of metadata:\n"
                  + dataset.get_metadata_type_summary())
     dataset.write_h5ad(input_h5ad)
@@ -189,7 +128,7 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
     help="Output .h5ad file. If not specified, no output file will be written.")
 def cmd_check_h5ad(input, output):
     start_logging()
-    dataset = Dataset.from_h5ad(input)
+    dataset = cn.Dataset.from_h5ad(input)
     dataset.remove_unfactorizable_genes()
     
     # Save output to new h5ad file
@@ -213,11 +152,7 @@ def cmd_check_h5ad(input, output):
 @click.option(
     "--default_dof", type=int, default=20, show_default=True,
     help="Degrees of Freedom (number of components) for the Generalized Additive Model (default method).")
-@click.option(
-    "--annotate_hgnc_protein_coding", is_flag=True,
-    help="Annotate whether features have a protein-coding locus type from HGNC, assuming that features are HGNC symbols"
-)
-def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, annotate_hgnc_protein_coding):
+def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof):
     """
     Model gene overdispersion and plot calibration plots for selection of overdispersed genes, using two methods:
     
@@ -232,35 +167,23 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, a
         # Explicitly use a linear model instead of a BSpline Generalized Additive Model
         cnmfsns model-odg -n test -i test.h5ad --odg_default_spline_degree 0 --odg_default_dof 1
     """
-    cnmf_obj = cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
+    cn.cnmf.cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
-    dataset = Dataset.from_h5ad(input)
+    dataset = cn.Dataset.from_h5ad(input)
     
-    # Create gene stats table
-    gene_stats = model_overdispersion(
-        dataset=dataset,
-        odg_default_spline_degree=default_spline_degree,
-        odg_default_dof=default_dof
-        )
-    if annotate_hgnc_protein_coding:
-        protein_coding_genes = fetch_hgnc_protein_coding_genes()
-        gene_stats["HGNC protein-coding"] = gene_stats.index.isin(protein_coding_genes)
+    # Create gene stats table and save h5ad file
+    dataset.compute_gene_stats()
+    dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
+    
+    # output text file
+    gene_stats = dataset.adata.var
     os.makedirs(os.path.normpath(os.path.join(output_dir, name, "odgenes")), exist_ok=True)
     gene_stats.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
 
-    # create od genes plots
-    for fig_id, fig in odg_plots(gene_stats, show_selected=False).items():
-        fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
-        fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
-
-    # update/copy h5ad
-    uns_odg = {
-        "default_spline_degree": default_spline_degree,
-        "default_dof": default_dof,
-        "gene_stats": gene_stats
-    }
-    adata.uns["odg"] = uns_odg
-    adata.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
+    # create mean vs variance plots
+    fig = cn.plots.plot_feature_dispersion(gene_stats, show_selected=False)["default"]
+    fig.savefig(os.path.join(output_dir, name, "odgenes.pdf"), facecolor='white')
+    fig.savefig(os.path.join(output_dir, name, "odgenes.png"), dpi=400, facecolor='white')
 
 
 @click.command(name="set-parameters")
@@ -328,92 +251,40 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
         # input a gene list from text file
         cnmfsns set_parameters -n test -m genes_file -p path/to/genesfile.txt
     """
-    cnmf_obj = cNMF(output_dir=output_dir, name=name)
+    os.makedirs(os.path.join(output_dir, name), exist_ok=True)
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
-    adata = read_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
-    df = adata.uns["odg"]["gene_stats"]
+    dataset = cn.Dataset.from_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
 
-    # Convert parameter to expected type
-    if odg_method.endswith("topn"):
-        odg_param = int(odg_param)
-    elif odg_method.endswith("minscore"):
-        odg_param = float(odg_param)
-    elif odg_method.endswith("quantile"):
-        odg_param = float(odg_param)
-    elif odg_method == "genes_file":
+    if odg_method == "genes_file":
         odg_param = click.Path(exists=True, dir_okay=False)(odg_param)
-    else:
-        raise RuntimeError
-
-    if "mean_counts" in df:
-        df_filtered = df.loc[df["mean_counts"] >= min_mean]
-    elif min_mean == 0:
-        df_filtered = df
-    else:
-        logging.error("the min_mean parameter was introduced in cNMF-SNS 0.5.0 but values other than the default "
-                      "are not compatible with .h5ad files produced by earlier versions of cNMF-SNS. For older datasets, "
-                      "please re-run `cnmfsns model-odg` to eliminate this error.")        
-                         
-    if odg_method == "default_topn":
-        # top N genes ranked by od-score
-        genes = df_filtered["odscore"].sort_values(ascending=False).head(odg_param).index
-    elif odg_method == "default_minscore":
-        # filters genes by od-score
-        genes = df_filtered.loc[(df_filtered["odscore"] >= odg_param), "odscore"].sort_values(ascending=False).index
-    elif odg_method == "default_quantile":
-        # takes the specified quantile of genes after removing NaNs
-        genes = df_filtered["odscore"].sort_values(ascending=False).head(int(odg_param * df["odscore"].notnull().sum())).index
-    elif odg_method == "cnmf_topn":
-        # top N genes ranked by v-score
-        genes = df_filtered["vscore"].sort_values(ascending=False).head(odg_param).index
-    elif odg_method == "cnmf_minscore":
-        # filters genes by v-score
-        genes = df_filtered[(df_filtered["vscore"] >= odg_param)]["vscore"].sort_values(ascending=False).index
-    elif odg_method == "cnmf_quantile":
-        # takes the specified quantile of genes after removing NaNs
-        genes = df_filtered["vscore"].sort_values(ascending=False).head(int(odg_param * df_filtered["vscore"].notnull().sum())).index
-    elif odg_method == "genes_file":
         genes = open(odg_param).read().rstrip().split(os.linesep)
+        dataset.select_overdispersed_genes_from_genelist(genes)
+    else:
+        overdispersion_metric = odg_method.split("_")[0]
+        
+        method = {odg_method.split("_")[1]: odg_param}
+        dataset.select_overdispersed_genes(overdispersion_metric=overdispersion_metric, min_mean=min_mean,
+                                           **method)
 
-    logging.info(f"{len(genes)} genes selected for factorization")
-    df["selected"] = df.index.isin(genes)
-
-    # update plots with threshold information
-    for fig_id, fig in odg_plots(df, show_selected=True).items():
-        fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".pdf"), facecolor='white')
-        fig.savefig(os.path.join(output_dir, name, "odgenes", ".".join(fig_id) + ".png"), dpi=400, facecolor='white')
+    # create mean vs variance plots, updated with selected genes
+    fig = cn.plots.plot_feature_dispersion(df=dataset.adata.var, show_selected=True)["default"]
+    fig.savefig(os.path.join(output_dir, name, "odgenes.pdf"), facecolor='white')
+    fig.savefig(os.path.join(output_dir, name, "odgenes.png"), dpi=400, facecolor='white')
 
     # output table with gene overdispersion measures
-    df.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
-
-    # write TPM (normalized) data
-    input_counts = AnnData(X=adata.raw.X, obs=adata.obs, var=adata.var, dtype=np.float64)
-    tpm = AnnData(X=adata.X, obs=adata.obs, var=adata.var, dtype=np.float64)
-    tpm.write_h5ad(cnmf_obj.paths["tpm"])
-
-    gene_tpm_mean = np.array(tpm.X.mean(axis=0)).reshape(-1)
-    gene_tpm_stddev = np.array(tpm.X.std(axis=0, ddof=0)).reshape(-1)
-    input_tpm_stats = pd.DataFrame([gene_tpm_mean, gene_tpm_stddev], index = ['__mean', '__std']).T
-    save_df_to_npz(input_tpm_stats, cnmf_obj.paths['tpm_stats'])
-    norm_counts = cnmf_obj.get_norm_counts(input_counts, tpm, high_variance_genes_filter=genes)
-    if norm_counts.X.dtype != np.float64:
-        norm_counts.X = norm_counts.X.astype(np.float64)
-    cnmf_obj.save_norm_counts(norm_counts)
-
+    dataset.adata.var.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
+    
+    # process k-value selection inputs
     kvals = set(k)
     if k_range is not None:
         kvals |= set(range(k_range[0], k_range[1] + 1, k_range[2]))
     kvals = sorted(list(kvals))
-    # save parameters for factorization step
-    cnmf_obj.save_nmf_iter_params(*cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss))
-
-    # save parameters in AnnData object
-    adata.uns["odg"]["genestats"] = df
-    adata.uns["odg"]["method"] = odg_method
-    adata.uns["odg"]["param"] = odg_param
-    adata.uns["odg"]["min_mean"] = min_mean
-    adata.uns["cnmf"] = cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss)[1]  # dict of cnmf parameters
-    adata.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
+    # prepare cNMF directory for factorization
+    dataset.initialize_cnmf(output_dir = output_dir, name=name, kvals=kvals, n_iter=n_iter, beta_loss=beta_loss, seed=seed)
+    
+    # output dataset with new information on overdispersed genes and cNMF parameters
+    dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
+    
 
 @click.command(name="factorize")
 @click.option(
@@ -436,14 +307,13 @@ def cmd_factorize(name, output_dir, worker_index, total_workers, slurm_script):
     """
     Performs factorization according to parameters specified using `cnmfsns set-parameters`.
     """
-    cnmf_obj = cNMF(output_dir=output_dir, name=name)
+    cnmf_obj = cn.cnmf.cNMF(output_dir=output_dir, name=name)
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
     
-    run_params = load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
+    run_params = cn.io.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
     if run_params.shape[0] == 0:
         logging.error("No factorization to do: either no values of k were selected using `cnmfsns set-parameters` or iterations were set to 0.")
 
-    
     if slurm_script is None:
         cnmf_obj.factorize(worker_i=worker_index, total_workers=total_workers)
     else:
@@ -474,67 +344,33 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
     Perform post-processing routines on cNMF after factorization. This includes checking factorization outputs for completeness, combining individual
     iterations, calculating consensus GEPs and usage matrices, and creating the k-selection and annotated usage plots.
     """
+    cnmf_obj = cn.cnmf.cNMF(output_dir=output_dir, name=name)
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
-    cnmf_obj = cNMF(output_dir=output_dir, name=name)
-    run_params = load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
-    # first check for combined outputs:
-    missing_combined = []
-    for k in sorted(set(run_params.n_components)):
-        merged_result = cnmf_obj.paths['merged_spectra'] % k
-        if not os.path.exists(merged_result) or os.path.getsize(merged_result) == 0:
-            missing_combined.append(merged_result)
-    if missing_combined:
-        failed = []
-        # Check if all output files and iterations exist
-        for _, row in run_params.iterrows():
-            iter_result = cnmf_obj.paths['iter_spectra'] % (row['n_components'], row['iter'])
-            if not os.path.exists(iter_result) or os.path.getsize(iter_result) == 0:
-                failed.append(iter_result)
-        if failed:
-            logging.error(
-                f"{(len(failed))} files from the factorization step are missing or empty:\n  - " + 
-                "\n  - ".join(failed)
-            )
-        if failed and not skip_missing_iterations:
-            logging.error(
-                f"Postprocessing could not proceed. To skip missing iterations, use --skip_missing_iterations."
-            )
-            sys.exit(1)
-        elif failed and skip_missing_iterations:
-            logging.warning("Missing files will be skipped")
-        else:
-            logging.info(f"Factorization outputs (individual iterations) were found for all values of k. No missing files were detected.")
-
-        # combine individual iterations
-        for k in sorted(set(run_params.n_components)):
-            logging.info(f"Merging iterations for k={k}")
-            cnmf_obj.combine_nmf(k, skip_missing_files=skip_missing_iterations)
-    else:
-        logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
-    # calculate consensus GEPs and usages
-    logging.info(f"Creating consensus GEPs and usages using {cpus} CPUs")
-    call_consensus = partial(
-        get_and_check_consensus,
-        cnmf_obj=cnmf_obj,
-        local_density_threshold=local_density_threshold,
-        local_neighborhood_size=local_neighborhood_size)
+    cnmf_obj.postprocess(cpus=cpus,
+                         local_density_threshold=local_density_threshold,
+                         local_neighborhood_size=local_neighborhood_size,
+                         skip_missing_iterations=skip_missing_iterations)
+    h5ad_path = os.path.join(output_dir, name, name + ".h5ad")
+    dataset = cn.Dataset.from_h5ad(h5ad_path)
     
-    if cpus > 1:
-        Pool(processes=cpus).map(call_consensus, sorted(set(run_params.n_components)))
-    elif cpus == 1:
-        for k in sorted(set(run_params.n_components)):
-            call_consensus(k)
-    else:
-        logging.error(f"{cpus} is an invalid number of cpus. Please specify a positive integer.")
+    cnmf_data_loaded =  "cnmf_usage" in dataset.adata.obsm or\
+                        "cnmf_gep_score" in dataset.adata.varm or\
+                        "cnmf_gep_tpm" in dataset.adata.varm or\
+                        "cnmf_gep_raw" in dataset.adata.varm
+    if cnmf_data_loaded and not force_h5ad_update:
+        logging.Error(f"Error: AnnData already contains cNMF results. Use --force_h5ad_update to overwrite.")
+        sys.exit(1)
 
-    # create k-selection plot
-    cnmf_obj.k_selection_plot(close_fig=True)
-   
-    # update h5ad file with cnmf results
-    logging.info(f"Updating h5ad file with cNMF results")
-    input_h5ad = os.path.join(output_dir, name, name + ".h5ad")
-    add_cnmf_results_to_h5ad(output_dir, name, input_h5ad, local_density_threshold, local_neighborhood_size, force=force_h5ad_update)
-
+    dataset.add_cnmf_results(cnmf_output_dir=output_dir,
+                             cnmf_name=name,
+                             h5ad_path=h5ad_path,
+                             local_density_threshold=local_density_threshold,
+                             local_neighborhood_size=local_neighborhood_size,
+                             skip_missing_iterations=skip_missing_iterations
+                             )
+    logging.info(f"Writing h5ad file to {h5ad_path}")
+    dataset.to_h5ad(h5ad_path)
+    
 @click.command("annotated-heatmap")
 @click.option(
     "-i", "--input_h5ad", type=click.Path(exists=True, dir_okay=False), required=True, help="Path to AnnData (.h5ad) file containing cNMF results.")
@@ -557,43 +393,41 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
     """
     start_logging()
     os.makedirs(output_dir, exist_ok=True)
-    adata = read_h5ad(input_h5ad, backed="r")
-    # annotate usage plots
+    dataset = cn.Dataset.from_h5ad(input_h5ad)
+    
+    # get metadata colors
     if metadata_colors_toml:
-        cfg = Config.from_toml(metadata_colors_toml)
+        cfg = cn.Config.from_toml(metadata_colors_toml)
     else:
-        cfg = Config()
-    cfg.add_missing_metadata_colors(metadata_df=adata.obs)
-    cfg.to_toml(os.path.join(output_dir, "metadata_colors.toml"))
+        cfg = cn.Config()
+    cfg.add_missing_metadata_colors(dataset)
+    cfg.to_toml(os.path.join(output_dir, "metadata_colors.toml"), section_subset=["metadata_colors"])
     # plot legend
     fig = cfg.plot_metadata_colors_legend()
     fig.savefig(os.path.join(output_dir, f"metadata_legend.pdf"))
-    exclude_maxcat = adata.obs.select_dtypes(include="category").apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
-    if adata.obs.shape[1] > 0:
-        metadata = adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index).dropna(axis=1, how="all")
-    else:
-        metadata = adata.obs.dropna(axis=1, how="all")
     
-    if "cnmf_usage" not in adata.obsm:
+    # filter metadata layers with too many categories
+    exclude_maxcat = dataset.adata.obs.select_dtypes(include="category").apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
+    if dataset.adata.obs.shape[1] > 0:
+        metadata = dataset.adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index).dropna(axis=1, how="all")
+    else:
+        metadata = dataset.adata.obs.dropna(axis=1, how="all")
+    
+    if not dataset.has_cnmf_results:
         logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `cnmfsns postprocess` before creating annotated usage heatmaps.")
         sys.exit(1)
-    usage = adata.obsm["cnmf_usage"]
-    usage.columns=pd.MultiIndex.from_tuples(usage.columns.str.split(".").to_list())
 
-
-    # create annotated plots
-    metadata_colors = {col: cfg.get_metadata_colors(col) for col in adata.obs.columns}
-    for k in usage.columns.levels[0].astype(int).sort_values():
+    # create annotated plots for each k
+    metadata_colors = {col: cfg.get_metadata_colors(col) for col in dataset.adata.obs.columns}
+    for k in dataset.adata.uns["kvals"].index:
         logging.info(f"Creating annotated usage heatmap for k={k}")
-        k_usage = usage.loc[:, str(k)]
-        cnmf_name = adata.uns["cnmf_name"]
+        cnmf_name = dataset.adata.uns["cnmf_name"]
         title = f"{cnmf_name} k={k}"
         filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{k:03}.pdf")
-        
-        plot_annotated_usages(
-            df=k_usage, metadata=metadata, metadata_colors=metadata_colors, missing_data_color=cfg.metadata_colors["missing_data"], title=title, filename=filename,
+        fig = cn.plots.plot_annotated_usages(
+            dataset=dataset, k=k, metadata=metadata, metadata_colors=metadata_colors, missing_data_color=cfg.metadata_colors["missing_data"], title=title, filename=filename,
             cluster_samples=True, cluster_geps=False, show_sample_labels=(not hide_sample_labels), ylabel="GEP")
-            
+        fig.savefig(filename, transparent=False, bbox_inches = "tight")
 
 @click.command(name="integrate")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")

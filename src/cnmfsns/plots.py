@@ -1,15 +1,141 @@
 import pandas as pd
 import numpy as np
 import seaborn as sns
+import cnmfsns as cn
 import matplotlib
 from matplotlib.lines import Line2D
-from matplotlib.patches import Polygon, Rectangle
+from matplotlib.patches import Polygon, Rectangle, Patch
 import matplotlib.pyplot as plt
 import upsetplot
+import typing
 from scipy.cluster.hierarchy import linkage, dendrogram
 from anndata import read_h5ad
 import networkx as nx
-from cnmfsns.sns import get_category_overrepresentation
+
+def plot_feature_dispersion(dataset: cn.Dataset, show_selected:bool = False, all_plots: bool = False):
+    """
+    Create diagnostic plots for data from model_overdispersion()
+    """
+    df = dataset.adata.var.sort_values("mean")
+    
+    figs = {}
+
+    # Figure: Default model mean and variance
+    fig, axes = plt.subplots(1, 3, figsize=[12, 4], layout="tight")
+    
+    ax = axes[0]  # untransformed
+    if show_selected:
+        sns.histplot(df, x="log_mean", y="log_variance", hue="selected", bins=[100,100], ax=ax, alpha=0.5, palette={True: "red", False: "blue"})
+        ax.legend(handles=[
+            Patch(color="blue", alpha=0.5, label="False"),
+            Patch(color="red", alpha=0.5, label="True"),
+            Line2D([0], [0], color='green', label="model")
+        ], title="selected")
+    else:
+        sns.histplot(df, x="log_mean", y="log_variance", bins=[100,100], ax=ax, color="blue")
+    ax.plot(df["log_mean"], df["gam_fittedvalues"], color="green")
+    ax.set_title("Mean-Variance")
+    ax.set_xlabel("log10(mean)")
+    ax.set_ylabel("log10(variance)")
+
+    ax = axes[1]  # transformed
+    if show_selected:
+        sns.histplot(df, x="log_mean", y="odscore", hue="selected", bins=[100,100], ax=ax, palette={True: "red", False: "blue"})
+        ax.legend(handles=[
+            Patch(color="blue", alpha=0.5, label="False"),
+            Patch(color="red", alpha=0.5, label="True"),
+            Line2D([0], [0], color='green', label="model")
+        ], title="selected")
+    else:
+        sns.histplot(df, x="log_mean", y="odscore", bins=[100,100], ax=ax, color="blue")
+    ax.hlines(1, xmin=df["log_mean"].min(), xmax=df["log_mean"].max(), color="green")
+    ax.set_title("Mean-Overdispersion (Default)")
+    ax.set_xlabel("log10(mean)")
+    ax.set_ylabel("od-score")
+    
+    ax=axes[2]  # thresholds
+    ax.set_title("od-score Distribution")
+    if df["odscore"].notnull().any():
+        if show_selected:
+            sns.histplot(df, x="odscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
+            ax.legend(handles=[
+                Patch(color="blue", alpha=0.5, label="False"),
+                Patch(color="red", alpha=0.5, label="True")
+            ], title="selected")
+        else:
+            sns.histplot(df, x="odscore", bins=100, linewidth=0, ax=ax, color="blue")
+    ax.set_xlabel("od-score")
+    figs["default"] = fig
+
+    if all_plots:
+        # Figure: cnmf model mean and variance
+        fig, axes = plt.subplots(1, 3, figsize=[12, 4], layout="tight")
+        ax = axes[0]
+        if show_selected:
+            sns.histplot(df, x="log_mean", y="log_variance", hue="selected", bins=[100,100], ax=ax, alpha=0.5, palette={True: "red", False: "blue"})
+        else:
+            sns.histplot(df, x="log_mean", y="log_variance", bins=[100,100], ax=ax, color="blue")
+        ax.set_title("Mean-Variance")
+        ax.set_xlabel("log10(mean)")
+        ax.set_ylabel("log10(variance)")
+        ax = axes[1]
+        if show_selected:
+            sns.histplot(df, x="log_mean", y="vscore", hue="selected", bins=[100,100], ax=ax, palette={True: "red", False: "blue"})
+        else:
+            sns.histplot(df, x="log_mean", y="vscore", bins=[100,100], ax=ax, color="blue")
+        ax.set_title("Mean-Overdispersion (cnmf)")
+        ax.set_xlabel("log10(mean)")
+        ax.set_ylabel("v-score")
+        ax=axes[2]  # thresholds
+        ax.set_title("v-score Distribution")
+        if df["vscore"].notnull().any():
+            if show_selected:
+                sns.histplot(df, x="vscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
+                ax.legend(handles=[
+                    Patch(color="blue", alpha=0.5, label="False"),
+                    Patch(color="red", alpha=0.5, label="True")
+                ], title="selected")
+            else:
+                sns.histplot(df, x="vscore", bins=100, linewidth=0, ax=ax, color="blue")
+        ax.set_xlabel("v-score")
+        figs["cnmf"] = fig
+
+        fig, ax = plt.subplots(figsize=[12,12], layout="tight")
+        sns.histplot(data=df.fillna(0), x="odscore", y="vscore", bins=[100, 100], ax=ax)
+        ax.set_xlabel("od-score")
+        ax.set_ylabel("v-score")
+        figs["score_comparison"] = fig
+        
+    return figs
+
+
+def plot_stability_error(dataset: cn.Dataset, figsize=(6, 4)):
+    '''
+    Borrowed from Alexandrov Et Al. 2013 Deciphering Mutational Signatures
+    publication in Cell Reports
+    '''
+    
+    stats = dataset.adata.uns["kvals"]
+
+    fig, ax1 = plt.subplots(figsize=figsize, layout="tight")
+    ax2 = ax1.twinx()
+
+
+    ax1.plot(stats.index, stats.stability, 'o-', color='b')
+    ax1.set_ylabel('Stability', color='b', fontsize=15)
+    for tl in ax1.get_yticklabels():
+        tl.set_color('b')
+
+    ax2.plot(stats.index, stats.prediction_error, 'o-', color='r')
+    ax2.set_ylabel('Error', color='r', fontsize=15)
+    for tl in ax2.get_yticklabels():
+        tl.set_color('r')
+
+    ax1.set_xlabel('Number of Components (k)', fontsize=15)
+    ax1.grid('on')
+    return fig
+
+
 
 def annotated_heatmap(
         data, title, metadata=None, metadata_colors=None, missing_data_color="#BBBBBB", heatmap_cmap='YlOrRd', 
@@ -35,17 +161,20 @@ def annotated_heatmap(
     ax_heatmap = fig.add_subplot(gs1[1])
     ax_col_dendrogram = fig.add_subplot(gs1[0], sharex=ax_heatmap)
     ax_col_dendrogram.set_axis_off()
+    # ax_col_dendrogram.set_xlim(0, 10 * data.shape[1])
 
     # HAC clustering (compute linkage matrices)
     if col_cluster:
         col_links = linkage(data.dropna(axis=1), method='average', metric='euclidean')
-        if plot_col_dendrogram:
-            col_dendrogram = dendrogram(col_links, color_threshold=0, ax=ax_col_dendrogram)
-        else:
-            col_dendrogram = dendrogram(col_links, no_plot=True)
-        xind = col_dendrogram['leaves']
+        col_dendrogram = dendrogram(col_links, color_threshold=0, ax=ax_col_dendrogram, no_plot=not plot_col_dendrogram)
+        xind = np.array(col_dendrogram['leaves'])
     else:
         xind = np.arange(0, data.shape[0])
+    
+    ax_col_dendrogram.set_xticks(np.arange(5, xind.shape[0] * 10 + 5, 10))
+    ax_col_dendrogram.set_xticklabels(xind)
+
+    
     if row_cluster:
         row_links = linkage(data.T, method='average', metric='euclidean')
         row_dendrogram = dendrogram(row_links, no_plot=True)
@@ -83,7 +212,6 @@ def annotated_heatmap(
             ax.set_ylabel(track, rotation=0, ha='right', va='center')
             if ax.get_subplotspec().is_last_row():
                 if show_sample_labels:
-                    # print(ax.get_xticks())
                     # ax.set_xticks(np.linspace(0, 1, data.shape[0], endpoint=False) + 1/(2 * data.shape[0]))
                     ax.set_xticklabels(data.index[xind], rotation=90)
                 else:
@@ -95,20 +223,32 @@ def annotated_heatmap(
             ax.spines['bottom'].set_visible(False)
             ax.spines['left'].set_visible(False)
     
-    
     # Colormap for heatmap
     ax = fig.add_subplot(gs0[1])
     ax.set_axis_off()
     plt.colorbar(im_heatmap, ax=ax, location="top")
     return fig
 
-def plot_annotated_usages(df, metadata, metadata_colors, missing_data_color, title, filename, cluster_geps, cluster_samples, show_sample_labels, ylabel):
+def plot_annotated_usages(dataset: cn.Dataset, k: typing.Optional[int], metadata_colors, missing_data_color = "#dddddd", subset_metadata = None, subset_samples = None, title = None, cluster_geps = False, cluster_samples = True, show_sample_labels = True):
+    assert dataset.has_cnmf_results
+    df = dataset.get_usages(k=k)
+    if subset_samples is not None:
+        df = df.loc[subset_samples]
     samples = df.index.to_series()
+    metadata = dataset.adata.obs.loc[samples]
+    if subset_metadata is not None:
+        metadata = metadata.loc[:, subset_metadata]
+    
     df = df.div(df.sum(axis=1), axis=0)
-    annotations = metadata.loc[samples]
-    fig = annotated_heatmap(data=df, metadata=annotations, metadata_colors=metadata_colors, missing_data_color=missing_data_color, title=title, row_cluster=cluster_geps, col_cluster=cluster_samples, show_sample_labels=show_sample_labels, ylabel=ylabel)
-    fig.savefig(filename, transparent=False, bbox_inches = "tight")
-    plt.close(fig)
+    fig = annotated_heatmap(data=df, metadata=dataset.adata.obs.loc[samples],
+                            metadata_colors=metadata_colors, 
+                            missing_data_color=missing_data_color, 
+                            title=title,
+                            row_cluster=cluster_geps,
+                            col_cluster=cluster_samples,
+                            show_sample_labels=show_sample_labels,
+                            plot_col_dendrogram=True,
+                            ylabel="GEP")
     return fig
 
 def plot_rank_reduction(df, max_median_corr_threshold):
@@ -415,7 +555,7 @@ def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name,
         sharey='row', squeeze=False,
         gridspec_kw={"width_ratios": community_gep_counts})
     for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
-        overrepresentation = get_category_overrepresentation(ds_usage, sample_to_class)
+        overrepresentation = cn.sns.get_category_overrepresentation(ds_usage, sample_to_class)
         for col, community in enumerate(sorted(list(communities))):
             ax = axes[row, col]
             geps = []

@@ -5,23 +5,44 @@ import tomli
 import tomli_w
 import sys
 import logging
+import collections
 import numpy as np
 import pandas as pd
 import networkx as nx
 from anndata import read_h5ad
 import igraph
 from networkx.algorithms.community.modularity_max import greedy_modularity_communities
-from cnmfsns.core import load_df_from_npz
+from cnmfsns.dataset import load_df_from_npz
 
-def get_corr_matrix(output_dir, config):
-    corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")
-    if not os.path.exists(corr_path):
-        logging.error(f"No correlation matrix found at {corr_path}. Make sure you have run `cnmfsns integrate` before running `cnmfsns create-sns`.")
-    corr = load_df_from_npz(corr_path)
-    logging.info(f"Loaded correlation matrix from {corr_path}")
-    # Check that rows and columns of correlation matrix are identical
-    assert (corr.index == corr.columns).all()
-    return corr
+class SNS():
+    
+    def __init__(self, datasets: collections.abc.Iterable):
+        self.datasets = datasets
+        pass
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    def get_corr_matrix(output_dir, config):
+        corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")
+        if not os.path.exists(corr_path):
+            logging.error(f"No correlation matrix found at {corr_path}. Make sure you have run `cnmfsns integrate` before running `cnmfsns create-sns`.")
+        corr = load_df_from_npz(corr_path)
+        logging.info(f"Loaded correlation matrix from {corr_path}")
+        # Check that rows and columns of correlation matrix are identical
+        assert (corr.index == corr.columns).all()
+        return corr
 
 def create_graph(output_dir, config):
     corr = get_corr_matrix(output_dir, config)

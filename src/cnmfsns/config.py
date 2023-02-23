@@ -2,6 +2,7 @@ import tomli
 import tomli_w
 import pandas as pd
 import numpy as np
+import cnmfsns as cn
 import sys
 import logging
 import collections.abc
@@ -13,8 +14,6 @@ from datetime import datetime
 import distinctipy
 import os
 from types import SimpleNamespace
-from anndata import read_h5ad
-from cnmfsns.utils import newline_wrap
 
 # Default parameters for the config files are used when missing as input to cnmfsns integrate
 
@@ -97,7 +96,11 @@ class Config(SimpleNamespace):
         }
         return cls(**c)
 
-    def to_toml(self, toml_file):
+    def to_toml(self, toml_file, section_subset=None):
+        if section_subset is None:
+            to_write = self.__dict__
+        else:
+            to_write = {k:v for k, v in self.__dict__.items() if k in section_subset}
         with open(toml_file, "wb") as f:
             tomli_w.dump(self.__dict__, f)
 
@@ -121,17 +124,18 @@ class Config(SimpleNamespace):
             for name, color in zip(uncolored_datasets, new_colors):
                 self.datasets[name]["color"] = color
                     
-    def add_missing_metadata_colors(self, metadata_df=None):
+    def add_missing_metadata_colors(self, dataset=None, pastel_factor=0.3, colorblind_type=None):
         """
         Identify missing colors based on metadata. If metadata_df is provided, categorical columns are used; otherwise, metadata_df is derived from the config datasets.
         """
 
         # get categorical data for which colors should match
-        if metadata_df is None:
+        if dataset is None:
             # read from h5ad files
-            metadata_df = pd.concat({name: read_h5ad(d["filename"], backed="r").obs.select_dtypes(include="category") for name, d in self.datasets.items()})
+            metadata_df = pd.concat({name: cn.Dataset.from_h5ad(d["filename"], backed="r").adata.obs.select_dtypes(include="category") for name, d in self.datasets.items()})
         else:
-            metadata_df = metadata_df.select_dtypes(include="category")
+            metadata_df = dataset.adata.obs.select_dtypes(include="category")
+            
         # check provided metadata colors
         invalid_colors = []
         for layer, layer_colors in self.metadata_colors.items():
@@ -155,7 +159,7 @@ class Config(SimpleNamespace):
                 logging.info(f"Choosing distinct colors for metadata layer {layer}")
                 if layer not in self.metadata_colors:
                     self.metadata_colors[layer] = {}
-                new_colors = distinctipy.get_colors(len(colorless_values), exclude_colors=[colors.to_rgb(c) for c in existing_colors])
+                new_colors = distinctipy.get_colors(len(colorless_values), exclude_colors=[colors.to_rgb(c) for c in existing_colors], pastel_factor=pastel_factor, colorblind_type=colorblind_type)
                 new_colors = [colors.to_hex(c) for c in new_colors]
                 for value, color in zip(colorless_values, new_colors):
                     self.metadata_colors[layer][value] = color
@@ -178,22 +182,28 @@ class Config(SimpleNamespace):
             sys.exit(1)
         return layer_colors
 
-    def plot_metadata_colors_legend(self, char_per_line=20):
+    def plot_metadata_colors_legend(self, char_per_line: int = 20, figsize: collections.abc.Iterable = None):
         categorical_columns = [track for track, color_def in self.metadata_colors.items() if isinstance(color_def, dict)]
         categorical_groups = [group for group, group_attr in self.metadata_colors_group.items() if isinstance(group_attr["colors"], dict)]
         n_columns = len(categorical_columns) + len(categorical_groups) + 1
-        fig, axes = plt.subplots(1, n_columns, figsize=[3*n_columns, 200], squeeze=False)
+        legend_lengths = [
+            len(color_def) for color_def in (self.metadata_colors | self.metadata_colors_group).values()
+            if isinstance(color_def, dict)
+        ]
+        if figsize is None:
+            figsize = [3*n_columns, 0.3 * max(legend_lengths)]
+        fig, axes = plt.subplots(1, n_columns, figsize=figsize, squeeze=False)
         for ax, track in zip(axes[0], categorical_columns):
             ax = ax
             color_def = self.metadata_colors[track]
-            legend_elements = [Patch(label=newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+            legend_elements = [Patch(label=cn.utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
             ax.legend(handles=legend_elements, loc='upper center')
             ax.set_title(track)
             ax.set_axis_off()
         for ax_id, group in enumerate(categorical_groups, len(categorical_columns)):
             ax = axes[0][ax_id]
             color_def = self.metadata_colors_group[group]["colors"]
-            legend_elements = [Patch(label=newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+            legend_elements = [Patch(label=cn.utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
             ax.legend(handles=legend_elements, loc='upper center')
             ax.set_title(group)
             ax.set_axis_off()
@@ -209,7 +219,7 @@ class Config(SimpleNamespace):
         usage = []
         sample_to_patient = {}
         for dataset_name, dataset in self.datasets.items():
-            adata = read_h5ad(dataset["filename"])
+            adata = cn.Dataset.from_h5ad(dataset["filename"]).adata
             # if "patient_id_column" in dataset:   # this code can be removed once patient-id mapping is implemented elsewhere
             #     for sample, patient in adata.obs[dataset["patient_id_column"]].items():
             #         sample_to_patient[(dataset_name, sample)] = (dataset_name, patient)
@@ -225,7 +235,7 @@ class Config(SimpleNamespace):
     def get_sample_patient_mapping(self):
         sample_to_patient = {}
         for dataset_name, dataset in self.datasets.items():
-            adata = read_h5ad(dataset["filename"])
+            adata = cn.Dataset.from_h5ad(dataset["filename"]).adata
             if "patient_id_column" in dataset:   # this code can be removed once patient-id mapping is implemented elsewhere
                 for sample, patient in adata.obs[dataset["patient_id_column"]].items():
                     sample_to_patient[(dataset_name, sample)] = (dataset_name, patient)

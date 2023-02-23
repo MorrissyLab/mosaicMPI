@@ -1,6 +1,6 @@
 ## Code adapted and optimized from https://github.com/dylkot/cNMF/blob/master/src/cnmf/cnmf.py
 
-from cnmfsns.core import (
+from cnmfsns.dataset import (
     load_df_from_npz,
     save_df_to_npz,
     save_df_to_text
@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import os, errno
 import datetime
+import logging
 import uuid
 import itertools
 import yaml
@@ -21,6 +22,8 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import euclidean_distances
 from sklearn.utils import sparsefuncs
+from functools import partial
+from multiprocessing.pool import Pool
 from fastcluster import linkage
 from scipy.cluster.hierarchy import leaves_list
 import matplotlib.pyplot as plt
@@ -113,7 +116,7 @@ def get_highvar_genes(input_counts, expected_fano_threshold=None,
     gene_counts_fano = pd.Series(gene_counts_var/gene_counts_mean)
 
     # Find parameters for expected fano line
-    top_genes = gene_counts_mean.sort_values(ascending=False)[:20].index
+    top_genes = gene_counts_mean.sort_values(ascending=False).iloc[:20].index
     A = (np.sqrt(gene_counts_var)/gene_counts_mean)[top_genes].min()
 
     w_mean_low, w_mean_high = gene_counts_mean.quantile([0.10, 0.90])
@@ -526,7 +529,7 @@ class cNMF():
 
 
     def factorize(self,
-                worker_i=0, total_workers=1,
+                worker_i=0, total_workers=1, verbose=True
                 ):
         """
         Iteratively run NMF with prespecified parameters.
@@ -564,9 +567,9 @@ class cNMF():
 
         jobs_for_this_worker = worker_filter(range(len(run_params)), worker_i, total_workers)
         for idx in jobs_for_this_worker:
-
             p = run_params.iloc[idx, :]
-            print('[Worker %d]. Starting task %d.' % (worker_i, idx))
+            if verbose:
+                logging.info('[Worker %d] Starting task %d.' % (worker_i, idx))
             _nmf_kwargs['random_state'] = p['nmf_seed']
             _nmf_kwargs['n_components'] = p['n_components']
 
@@ -579,7 +582,7 @@ class cNMF():
 
     def combine_nmf(self, k, skip_missing_files=False, remove_individual_iterations=False):
         run_params = load_df_from_npz(self.paths['nmf_replicate_parameters'])
-        print('Combining factorizations for k=%d.'%k)
+        logging.info('Combining factorizations for k=%d.'%k)
 
         run_params_subset = run_params[run_params.n_components==k].sort_values('iter')
         combined_spectra = []
@@ -869,6 +872,28 @@ class cNMF():
             if close_clustergram_fig:
                 plt.close(fig)
 
+    def get_and_check_consensus(self, k, local_density_threshold, local_neighborhood_size):
+        logging.info(f"Creating consensus GEPs and usages for k={k}")
+        self.consensus(k, density_threshold=local_density_threshold,
+            local_neighborhood_size=local_neighborhood_size,
+            show_clustering=True,
+            close_clustergram_fig=True)
+        density_threshold_repl = str(local_density_threshold).replace(".", "_")
+        filenames = [
+            self.paths['consensus_spectra']%(k, density_threshold_repl),
+            self.paths['consensus_spectra']%(k, density_threshold_repl),
+            self.paths['consensus_usages']%(k, density_threshold_repl),
+            self.paths['consensus_stats']%(k, density_threshold_repl),
+            self.paths['consensus_spectra__txt']%(k, density_threshold_repl),
+            self.paths['consensus_usages__txt']%(k, density_threshold_repl),
+            self.paths['gene_spectra_tpm']%(k, density_threshold_repl),
+            self.paths['gene_spectra_tpm__txt']%(k, density_threshold_repl),
+            self.paths['gene_spectra_score']%(k, density_threshold_repl),
+            self.paths['gene_spectra_score__txt']%(k, density_threshold_repl)
+            ]
+        for filename in filenames:
+            if not os.path.exists(filename):
+                raise ValueError(f"cNMF postprocessing could not find output file {filename}. This can arise in low memory conditions.")
 
     def k_selection_plot(self, close_fig=False):
         '''
@@ -909,3 +934,62 @@ class cNMF():
         fig.savefig(self.paths['k_selection_plot'], dpi=250)
         if close_fig:
             plt.close(fig)
+            
+    def postprocess(self,
+                    cpus: int = 1,
+                    local_density_threshold: float = 2.0,
+                    local_neighborhood_size: float = 0.3,
+                    skip_missing_iterations: bool = False):
+        
+        run_params = load_df_from_npz(self.paths['nmf_replicate_parameters'])
+        # first check for combined outputs:
+        missing_combined = []
+        for k in sorted(set(run_params.n_components)):
+            merged_result = self.paths['merged_spectra'] % k
+            if not os.path.exists(merged_result) or os.path.getsize(merged_result) == 0:
+                missing_combined.append(merged_result)
+        if missing_combined:
+            failed = []
+            # Check if all output files and iterations exist
+            for _, row in run_params.iterrows():
+                iter_result = self.paths['iter_spectra'] % (row['n_components'], row['iter'])
+                if not os.path.exists(iter_result) or os.path.getsize(iter_result) == 0:
+                    failed.append(iter_result)
+            if failed:
+                raise ValueError(
+                    f"{(len(failed))} files from the factorization step are missing or empty:\n  - " + 
+                    "\n  - ".join(failed)
+                )
+            if failed and not skip_missing_iterations:
+                raise ValueError(
+                    f"Postprocessing could not proceed. To skip missing iterations, use --skip_missing_iterations."
+                )
+            elif failed and skip_missing_iterations:
+                logging.warning("Missing files will be skipped")
+            else:
+                logging.info(f"Factorization outputs (individual iterations) were found for all values of k. No missing files were detected.")
+
+            # combine individual iterations
+            for k in sorted(set(run_params.n_components)):
+                logging.info(f"Merging iterations for k={k}")
+                self.combine_nmf(k, skip_missing_files=skip_missing_iterations)
+        else:
+            logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
+        # calculate consensus GEPs and usages
+        logging.info(f"Creating consensus GEPs and usages using {cpus} CPUs")
+        call_consensus = partial(
+            self.get_and_check_consensus,
+            local_density_threshold=local_density_threshold,
+            local_neighborhood_size=local_neighborhood_size)
+        
+        if cpus > 1:
+            Pool(processes=cpus).map(call_consensus, sorted(set(run_params.n_components)))
+        elif cpus == 1:
+            for k in sorted(set(run_params.n_components)):
+                call_consensus(k)
+        else:
+            logging.error(f"{cpus} is an invalid number of cpus. Please specify a positive integer.")
+
+        # create k-selection plot
+        self.k_selection_plot(close_fig=True)
+    
