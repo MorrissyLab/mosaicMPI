@@ -1,104 +1,84 @@
 
 
 import os
-import tomli
-import tomli_w
 import sys
 import logging
 import collections
+import typing
 import numpy as np
 import pandas as pd
 import networkx as nx
+import matplotlib as mpl
 from anndata import read_h5ad
 import igraph
 from networkx.algorithms.community.modularity_max import greedy_modularity_communities
-from cnmfsns.dataset import load_df_from_npz
+import cnmfsns as cn
 
 class SNS():
-    
-    def __init__(self, datasets: collections.abc.Iterable):
-        self.datasets = datasets
-        pass
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    def get_corr_matrix(output_dir, config):
-        corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")
-        if not os.path.exists(corr_path):
-            logging.error(f"No correlation matrix found at {corr_path}. Make sure you have run `cnmfsns integrate` before running `cnmfsns create-sns`.")
-        corr = load_df_from_npz(corr_path)
-        logging.info(f"Loaded correlation matrix from {corr_path}")
-        # Check that rows and columns of correlation matrix are identical
-        assert (corr.index == corr.columns).all()
-        return corr
-
-def create_graph(output_dir, config):
-    corr = get_corr_matrix(output_dir, config)
-    # Lower triangular matrix contains each edge only once and removes diagonal (self-correlation)
-    tril = corr.where(np.tril(np.ones(corr.shape), k=-1).astype(bool))
-
-    # create quantile version of tril where correlations are replaced by quantile of intra-and inter-dataset correlations
-    tril_quantile = tril.copy(deep=True)
-    for ds1 in config.datasets:
-        for ds2 in config.datasets:
-            chunk = tril_quantile.loc[tril_quantile.index.get_level_values(0) == ds1, tril_quantile.index.get_level_values(0) == ds2]
-            flattened_ranks = pd.Series(chunk.values.flatten()).rank() - 1
-            flattened_quantiles = (flattened_ranks / flattened_ranks.max()).values
-            quantile_chunk = pd.DataFrame(data=np.reshape(flattened_quantiles, newshape=chunk.values.shape), index=chunk.index, columns=chunk.columns)
-            tril_quantile.loc[tril_quantile.index.get_level_values(0) == ds1, tril_quantile.index.get_level_values(0) == ds2] = quantile_chunk      
-
-    # filter to selected k in each dataset
-    selected_k_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if gep[1] in config.datasets[gep[0]]["selected_k"]])
-    subset = tril.loc[selected_k_index, selected_k_index]
-    subset_quantile = tril_quantile.loc[selected_k_index, selected_k_index]
-
-    # filter edges by inter and intra-dataset thresholds
-    min_corr_thresholds = pd.read_table(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.txt"))
-    for _, row in min_corr_thresholds.iterrows():
-        dataset_row, dataset_col, threshold = row
-        filtered_chunk = subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col] <= threshold
-        subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col] = subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col].mask(filtered_chunk)
-        subset_quantile.loc[subset_quantile.index.get_level_values(0) == dataset_row, subset_quantile.columns.get_level_values(0) == dataset_col] = subset_quantile.loc[subset_quantile.index.get_level_values(0) == dataset_row, subset_quantile.columns.get_level_values(0) == dataset_col].mask(filtered_chunk)
-
-    subset.index = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset.index])
-    subset.columns = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset.columns])
-    subset_quantile.index = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset_quantile.index])
-    subset_quantile.columns = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset_quantile.columns])
-
-    # Build graph
-    links = subset.stack().reset_index()
-    links.columns = ['node1', 'node2', 'corr']
-    links_quantile = subset_quantile.stack().reset_index()
-    links_quantile.columns = ['node1', 'node2', 'prefilter_quantile']
-    links = links.merge(links_quantile)
-
-    # add post-filter quantile column
-    for ds1 in config.datasets:
-        for ds2 in config.datasets:
-            ds_pair_indices = (links['node1'].str.split("|").str[0] == ds1) & (links['node2'].str.split("|").str[0] == ds2)
-            links_ds_pair = links.loc[ds_pair_indices]
-            links.loc[ds_pair_indices, "postfilter_quantile"] = links_ds_pair["corr"].rank() / links_ds_pair["corr"].count()
-
-    G = nx.from_pandas_edgelist(links, 'node1', 'node2', ["corr", "prefilter_quantile", "postfilter_quantile"])
-    G.add_nodes_from(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in selected_k_index])
-    
-    # filter nodes using the sns.subset_nodes parameter
-    if config.sns["subset_nodes"] != "none":
-        G = nx.subgraph(G, config.sns["subset_nodes"])
+    def __init__(self,
+                 integration: cn.Integration):
+        self.integration = integration
+        self.config = integration.config
         
-    return G
+
+    def get_sns_parameters(self):
+        return self.config.sns
+
+    def create_graph(self, ):
+        corr = get_corr_matrix(output_dir, config)
+        # Lower triangular matrix contains each edge only once and removes diagonal (self-correlation)
+        tril = corr.where(np.tril(np.ones(corr.shape), k=-1).astype(bool))
+
+        # create quantile version of tril where correlations are replaced by quantile of intra-and inter-dataset correlations
+        tril_quantile = tril.copy(deep=True)
+        for ds1 in config.datasets:
+            for ds2 in config.datasets:
+                chunk = tril_quantile.loc[tril_quantile.index.get_level_values(0) == ds1, tril_quantile.index.get_level_values(0) == ds2]
+                flattened_ranks = pd.Series(chunk.values.flatten()).rank() - 1
+                flattened_quantiles = (flattened_ranks / flattened_ranks.max()).values
+                quantile_chunk = pd.DataFrame(data=np.reshape(flattened_quantiles, newshape=chunk.values.shape), index=chunk.index, columns=chunk.columns)
+                tril_quantile.loc[tril_quantile.index.get_level_values(0) == ds1, tril_quantile.index.get_level_values(0) == ds2] = quantile_chunk      
+
+        # filter to selected k in each dataset
+        selected_k_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if gep[1] in config.datasets[gep[0]]["selected_k"]])
+        subset = tril.loc[selected_k_index, selected_k_index]
+        subset_quantile = tril_quantile.loc[selected_k_index, selected_k_index]
+
+        # filter edges by inter and intra-dataset thresholds
+        min_corr_thresholds = pd.read_table(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.txt"))
+        for _, row in min_corr_thresholds.iterrows():
+            dataset_row, dataset_col, threshold = row
+            filtered_chunk = subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col] <= threshold
+            subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col] = subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col].mask(filtered_chunk)
+            subset_quantile.loc[subset_quantile.index.get_level_values(0) == dataset_row, subset_quantile.columns.get_level_values(0) == dataset_col] = subset_quantile.loc[subset_quantile.index.get_level_values(0) == dataset_row, subset_quantile.columns.get_level_values(0) == dataset_col].mask(filtered_chunk)
+
+        subset.index = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset.index])
+        subset.columns = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset.columns])
+        subset_quantile.index = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset_quantile.index])
+        subset_quantile.columns = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset_quantile.columns])
+
+        # Build graph
+        links = subset.stack().reset_index()
+        links.columns = ['node1', 'node2', 'corr']
+        links_quantile = subset_quantile.stack().reset_index()
+        links_quantile.columns = ['node1', 'node2', 'prefilter_quantile']
+        links = links.merge(links_quantile)
+
+        # add post-filter quantile column
+        for ds1 in config.datasets:
+            for ds2 in config.datasets:
+                ds_pair_indices = (links['node1'].str.split("|").str[0] == ds1) & (links['node2'].str.split("|").str[0] == ds2)
+                links_ds_pair = links.loc[ds_pair_indices]
+                links.loc[ds_pair_indices, "postfilter_quantile"] = links_ds_pair["corr"].rank() / links_ds_pair["corr"].count()
+
+        G = nx.from_pandas_edgelist(links, 'node1', 'node2', ["corr", "prefilter_quantile", "postfilter_quantile"])
+        G.add_nodes_from(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in selected_k_index])
+        
+        # filter nodes using the sns.subset_nodes parameter
+        if config.sns["subset_nodes"] != "none":
+            G = nx.subgraph(G, config.sns["subset_nodes"])
+            
+        return G
 
 def add_community_weights_to_graph(G, gep_communities, config):
     edge_attr = {}

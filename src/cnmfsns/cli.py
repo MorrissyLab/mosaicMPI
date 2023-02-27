@@ -19,10 +19,6 @@ import distinctipy
 from matplotlib.lines import Line2D
 from scipy.stats import entropy
 
-if hasattr(os, "sched_getaffinity"):
-    cpus_available = len(os.sched_getaffinity(0))
-else:
-    cpus_available = os.cpu_count()
 
 
 #To make sure we have always the same matplotlib settings
@@ -433,13 +429,14 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), required=False, help="TOML config file")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results. Can be used to specify multiple datasets for integration instead of a TOML config file.")
-@click.option('--cpus', type=int, default=cpus_available, show_default=True, help="Number of CPUs to use for calculating correlation matrix")
+@click.option('--cpus', type=int, default=cn.cpus_available, show_default=True, help="Number of CPUs to use for calculating correlation matrix")
 def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.
     Although -i can be used multiple times to add .h5ad files directly, it is recommended to use a single TOML file instead for full customization.
     Using the .toml configuration file, datasets can be giving aliases and colors for use in downstream plots.
     """
+    
     # create directory structure, warn if not empty
     output_dir = os.path.normpath(output_dir)
     start_logging()
@@ -460,178 +457,53 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
 
     # create config
     if config_toml is not None:
-        config = Config.from_toml(config_toml)
+        config = cn.Config.from_toml(config_toml)
     elif input_h5ad:
-        config = Config.from_h5ad_files(input_h5ad)
-
-    # add missing colors to config
-    logging.info("Checking metadata colors for completeness...")
+        config = cn.Config.from_h5ad_files(input_h5ad)
     config.add_missing_dataset_colors()
     config.add_missing_metadata_colors()
 
-    k_table = {}
-    geps = {}
-    for dataset_name, dataset in config.datasets.items():
-        adata = read_h5ad(dataset["filename"], backed="r")
-        df = adata.varm["cnmf_gep_score"]
-        df.columns = pd.MultiIndex.from_tuples([(int(gep[0]), int(gep[1])) for gep in df.columns.str.split(".")])
-        geps[dataset_name] = df
-        kvals = adata.uns["kvals"].copy()
-        kvals["cNMF result"] = True
-        k_table[dataset_name] = kvals
-        
-    geps = pd.concat(geps, axis=1).sort_index(axis=1)
-    k_table = pd.concat(k_table, axis=1)
-
+    # integrate datasets
+    integration = cn.Integration.from_config(config)
+    
+    # save correlation matrix
     corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")
-    try:
-        corr = load_df_from_npz(corr_path)
-        logging.info(f"Loaded previously calculated correlation matrix from {corr_path}")
-    except FileNotFoundError:
-        logging.info(f"Calculating correlation matrix")
-        if config.integrate["corr_method"] == "pearson":
-            try:
-                from nancorrmp.nancorrmp import NaNCorrMp
-            except ImportError:
-                logging.info(f"nancorrmp not installed. Calculating Pearson correlation matrix using 1 CPU.")
-                corr = geps.corr(config.integrate["corr_method"])
-            else:
-                cpu_string = "all" if cpus == -1 else str(cpus)
-                logging.info(f"nancorrmp found. Calculating Pearson correlation matrix using {cpu_string} CPUs.")
-                corr = NaNCorrMp.calculate(geps, n_jobs=cpus)
-        else:
-            logging.info(f"Calculating Spearman correlation matrix using 1 CPU.")
-            corr = geps.corr(config.integrate["corr_method"])
-        save_df_to_npz(corr, corr_path)
-    # Check that rows and columns of correlation matrix are identical
-    assert (corr.index == corr.columns).all()
-
-    # Lower triangular matrix contains each edge only once and removes diagonal
-    tril = corr.where(np.tril(np.ones(corr.shape), k=-1).astype(bool))
-
-    # Reduces rank (k) value when correlation distribution is skewed towards 1.
-    for dataset_name in tril.index.levels[0]:
-        dscorr = tril.loc[dataset_name, dataset_name]
-        kvals = dscorr.index.levels[0].sort_values(ascending=False)
-        max_kval_medians = []
-        for max_kval in kvals:
-            rankreduced = dscorr.loc[dscorr.index.get_level_values(0) <= max_kval, dscorr.columns.get_level_values(0) <= max_kval]
-            median_corr = np.nanmedian(rankreduced.values)
-            max_kval_medians.append(median_corr)
-        max_kval_medians = pd.Series(max_kval_medians, index=kvals)
-        max_k_threshold = None
-        for max_k, median_corr in max_kval_medians.items():
-            max_k_threshold = max_k
-            if median_corr <= config.integrate["max_median_corr"]:
-                break
-        new_columns = pd.DataFrame([max_kval_medians, (max_kval_medians.index.to_series() <= max_k_threshold)]).T #, columns=pd.MultiIndex.from_product([[dataset_name],["max_k_median_corr", "max_k_filter_pass"]]))
-        new_columns = pd.DataFrame({"max_k_median_corr": max_kval_medians, "max_k_filter_pass": (max_kval_medians.index.to_series() <= max_k_threshold)})
-        new_columns = pd.concat({dataset_name: new_columns}, axis=1)
-        k_table = k_table.merge(new_columns, how="outer", left_index=True, right_index=True)
-
-    # output updated TOML with default k value selections based on filters etc
-    for dataset_name, dataset_params in config.datasets.items():
-        k_param = set()
-        for k_entry in dataset_params["selected_k"]:
-            if isinstance(k_entry, int):
-                k_param.add(k_entry)
-            elif isinstance(k_entry, collections.abc.Collection):
-                assert len(k_entry) == 3
-                for k in range(k_entry[0], k_entry[1]+1, k_entry[2]):
-                    k_param.add(k)
-        k_table[(dataset_name, "selected_k")] = k_table[(dataset_name, "cNMF result")] & k_table[(dataset_name, "max_k_filter_pass")] & k_table.index.isin(k_param)
-        config.datasets[dataset_name]["selected_k"] = sorted(list(k_table[(dataset_name, "selected_k")][k_table[(dataset_name, "selected_k")]].index))
-    k_table = k_table.sort_index(axis=1)
-    k_table.to_csv(os.path.join(output_dir, "integrate", "k_filters.txt"), sep="\t")
+    cn.dataset.save_df_to_npz(integration.corr_matrix, corr_path)
+    
+    integration.k_table.to_csv(os.path.join(output_dir, "integrate", "k_filters.txt"), sep="\t")
     output_toml = os.path.join(output_dir, "integrate", "config.toml")
     config.to_toml(output_toml)
     logging.info(f"Output updated TOML file to: {output_toml}")
 
     # Rank Reduction Plots
-    for dataset_name in config.datasets:
-        fig = plot_rank_reduction(k_table.loc[:, dataset_name], config.integrate["max_median_corr"])
-        fig.savefig(os.path.join(output_dir, "integrate", f"{dataset_name}.rank_reduction.pdf"))
-        fig.savefig(os.path.join(output_dir, "integrate", f"{dataset_name}.rank_reduction.png"))
+    fig = cn.plots.plot_rank_reduction(integration)
+    fig.savefig(os.path.join(output_dir, "integrate", f"rank_reduction.pdf"))
+    fig.savefig(os.path.join(output_dir, "integrate", f"rank_reduction.png"))
 
-    # Filter correlations using dataset-specific max_k thresholds
-    maxk_filtered_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if k_table.loc[gep[1], (gep[0], "max_k_filter_pass")]])
-    selected_k_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if k_table.loc[gep[1], (gep[0], "selected_k")]])
-    maxk_filtered_tril = tril.loc[maxk_filtered_index, maxk_filtered_index]
-    selected_k_tril = tril.loc[selected_k_index, selected_k_index]
-
-    # Pairwise correlation thresholds from unfiltered correlation matrix 
-    pairwise_thresholds = []
-    for row, dataset_row in enumerate(maxk_filtered_tril.index.levels[0]):
-        for col, dataset_col in enumerate(maxk_filtered_tril.columns.levels[0]):
-            distr = maxk_filtered_tril.loc[dataset_row, dataset_col].values.flatten()
-
-            if not all(np.isnan(distr)):
-                pairwise_thresholds.append({
-                    "dataset_row": dataset_row,
-                    "dataset_col": dataset_col,
-                    "threshold": -np.quantile(distr[distr < 0], q=1-config.integrate["negative_corr_quantile"])
-                })
-
-    pairwise_thresholds = pd.DataFrame.from_records(pairwise_thresholds).set_index(["dataset_row", "dataset_col"])
-    pairwise_thresholds.to_csv(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.txt"), sep="\t")
+    integration.pairwise_thresholds.to_csv(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.txt"), sep="\t")
 
 
     # plot pairwise corr of all k
-    fig = plot_pairwise_corr(tril=tril, thresholds=pairwise_thresholds)
-    fig.savefig(os.path.join(output_dir, "integrate", "all.pairwise_corr.pdf"))
-    fig.savefig(os.path.join(output_dir, "integrate", "all.pairwise_corr.png"), dpi=600)
-
-    # plot pairwise corr with max_k_thresholds
-    fig = plot_pairwise_corr(tril=maxk_filtered_tril, thresholds=pairwise_thresholds)
-    fig.savefig(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr.pdf"))
-    fig.savefig(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr.png"), dpi=600)
-
-    # plot pairwise corr with max_k_thresholds
-    fig = plot_pairwise_corr(tril=selected_k_tril, thresholds=pairwise_thresholds)
-    fig.savefig(os.path.join(output_dir, "integrate", "selected_k.pairwise_corr.pdf"))
-    fig.savefig(os.path.join(output_dir, "integrate", "selected_k.pairwise_corr.png"), dpi=600)
+    fig = cn.plots.plot_pairwise_corr(integration)
+    fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr.pdf"))
+    fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr.png"), dpi=600)
 
     # plot mirrored distributions with thresholds (which are computed on max-k filtered data only)
-    fig = plot_pairwise_corr_overlaid(tril=maxk_filtered_tril, thresholds=pairwise_thresholds)
-    fig.savefig(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.pdf"))
-    fig.savefig(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.png"), dpi=600)
+    fig = cn.plots.plot_pairwise_corr_overlaid(integration)
+    fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr_overlaid.pdf"))
+    fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr_overlaid.png"), dpi=600)
 
     # UpSet plot of odgenes and all genes in each dataset
     if len(config.datasets) > 1:
-        for fig_name, fig in plot_genelist_upsets(config).items():
-            fig.savefig(os.path.join(output_dir, "integrate", fig_name + ".pdf"))
-            fig.savefig(os.path.join(output_dir, "integrate", fig_name + ".png"), dpi=600)
+        fig = cn.plots.plot_overdispersed_genes_upset(integration)
+        fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_overdispersed_genes.pdf"))
+        fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_overdispersed_genes.pdf" + ".png"), dpi=600)
+        
+        fig = cn.plots.plot_all_genes_upset(integration)
+        fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_all_genes.pdf"))
+        fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_all_genes.pdf" + ".png"), dpi=600)
 
-    # Table with node stats
-    nodetable = {}
-    node_filters = {
-        "none": tril,
-        "maxk": maxk_filtered_tril,
-        "selectedk": selected_k_tril
-    }
-    for node_filter, df in node_filters.items():
-        for edge_filter, thresholds in (("none", None), ("mincorr", pairwise_thresholds)):
-            
-            if thresholds is not None:
-                df_filt = df.copy(deep=True)
-                # apply pairwise thresholds
-                for dataset_row in df.index.levels[0]:
-                    for dataset_col in df.columns.levels[0]:
-                        if (dataset_row, dataset_col) in thresholds.index:
-                            min_corr = thresholds.loc[(dataset_row, dataset_col)].values[0]
-                            mask = df_filt.loc[dataset_row, dataset_col] < min_corr
-                            df_filt.loc[dataset_row, dataset_col][~mask] = np.NaN
-                            df_filt.dropna(axis=0).dropna(axis=1)
-            else:
-                df_filt = df
-
-            results = {}
-            for dataset_name, subdf in df_filt.groupby(axis=0, level=0):
-                results[dataset_name] = subdf.shape[0]
-            nodetable[(node_filter, edge_filter)] = results
-
-    nodetable = pd.DataFrame(nodetable)
-    nodetable.columns.rename(["Node filter", "Edge Filter"], inplace=True)
+    nodetable = integration.get_node_table()
     nodetable.to_csv(os.path.join(output_dir, "integrate", "node_stats.txt"), sep="\t")
 
         
@@ -667,6 +539,8 @@ def cmd_create_network(output_dir, name, config_toml):
     # write current configuration to config.toml file in the SNS output directory
     config.to_toml(os.path.join(sns_output_dir, "config.toml"))
 
+    integration = cn.Integration(config=config)
+    
     logging.info("Creating GEP network")
     G = create_graph(output_dir, config)
     nx.write_graphml(G, os.path.join(sns_output_dir, "gep_network.graphml"))

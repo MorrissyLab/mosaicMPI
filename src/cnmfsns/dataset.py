@@ -177,6 +177,9 @@ class Dataset():
         ]
         return all(matrix_checks)
         
+    @property
+    def overdispersed_genes(self):
+        return self.adata.uns["gene_list"]
         
     def update_obs(self, obs_df):
         # convert 'object' dtype to categorical, converting bool values to strings as these are not supported by AnnData on-disk format
@@ -430,4 +433,13 @@ class Dataset():
         df.columns = df.columns.set_levels([l.astype("int") for l in df.columns.levels])
         if k is not None:
             df = df.loc[:, k]
+        return df
+    
+    def get_geps(self, k: int = None, type="cnmf_gep_score"):
+        df = self.adata.varm[type].copy()
+        df.columns = pd.MultiIndex.from_tuples(df.columns.str.split(".").to_list())
+        df.columns = df.columns.set_levels([l.astype("int") for l in df.columns.levels])
+        if k is not None:
+            df = df.loc[:, k]
+        df = df.sort_index(axis=1)
         return df

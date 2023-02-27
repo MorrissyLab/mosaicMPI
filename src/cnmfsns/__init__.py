@@ -1,13 +1,22 @@
+# detect version from package metadata
 import importlib.metadata
 __version__ = importlib.metadata.version('cnmfsns')
 
+# get CPU affinity for MP-enabled tasks
+import os
+if hasattr(os, "sched_getaffinity"):
+    cpus_available = len(os.sched_getaffinity(0))
+else:
+    cpus_available = os.cpu_count()
+
+
 from cnmfsns.dataset import Dataset
 from cnmfsns.config import Config
+from cnmfsns.integration import Integration
 from cnmfsns.sns import SNS
+from cnmfsns.plots import *
+
 from cnmfsns import cnmf, colors, dataset, plots, sns, utils, cli
-
-
-
 
 
 

@@ -1,5 +1,6 @@
 import tomli
 import tomli_w
+import typing
 import pandas as pd
 import numpy as np
 import cnmfsns as cn
@@ -104,27 +105,41 @@ class Config(SimpleNamespace):
         with open(toml_file, "wb") as f:
             tomli_w.dump(self.__dict__, f)
 
-    def add_missing_dataset_colors(self):
+    def add_missing_dataset_colors(self, pastel_factor=0.3, colorblind_type=None):
         # check provided dataset colors
         invalid_colors = []
         for name, d in self.datasets.items():
             if "color" in d and not colors.is_color_like(d["color"]):
                 invalid_colors.append(d["color"])
         if invalid_colors:
-            logging.error(f"Datasets were given these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
-            sys.exit(1)
+            raise ValueError(f"Datasets were given these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
 
         # fill in missing values with random colors distinct from existing colors
         uncolored_datasets = set(name for name, d in self.datasets.items() if "color" not in d)
         existing_colors = set(d["color"] for name, d in self.datasets.items() if "color" in d) | {"#FFFFFF", "#000000"}
         if uncolored_datasets:
             logging.info(f"Choosing distinct dataset colors")
-            new_colors = distinctipy.get_colors(len(uncolored_datasets), exclude_colors=[colors.to_rgb(c) for c in existing_colors])
+            new_colors = distinctipy.get_colors(len(uncolored_datasets), exclude_colors=[colors.to_rgb(c) for c in existing_colors], pastel_factor=pastel_factor, colorblind_type=colorblind_type)
             new_colors = [colors.to_hex(c) for c in new_colors]
             for name, color in zip(uncolored_datasets, new_colors):
                 self.datasets[name]["color"] = color
-                    
-    def add_missing_metadata_colors(self, dataset=None, pastel_factor=0.3, colorblind_type=None):
+
+    def plot_dataset_colors_legend(self, figsize: collections.abc.Iterable = None):
+        if figsize is None:
+            figsize = [3, 1 + 0.25 * len(self.datasets)]
+        fig, ax = plt.subplots(figsize=figsize)
+        color_def = {dataset_name: dataset_params["color"] for dataset_name, dataset_params in self.datasets.items()}
+        legend_elements = [Patch(label=cat, facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+        ax.legend(handles=legend_elements, loc='upper center')
+        ax.set_title('Dataset')
+        ax.set_axis_off()
+        plt.tight_layout()
+        return fig
+            
+    def add_missing_metadata_colors(self,
+                                    dataset: typing.Optional[cn.Dataset] = None,
+                                    pastel_factor=0.3,
+                                    colorblind_type=None):
         """
         Identify missing colors based on metadata. If metadata_df is provided, categorical columns are used; otherwise, metadata_df is derived from the config datasets.
         """
@@ -163,7 +178,6 @@ class Config(SimpleNamespace):
                 new_colors = [colors.to_hex(c) for c in new_colors]
                 for value, color in zip(colorless_values, new_colors):
                     self.metadata_colors[layer][value] = color
-
     
     def get_metadata_colors(self, layer):
         group_names = [group for group, group_attr in self.metadata_colors_group.items() if layer in group_attr["group"]]
