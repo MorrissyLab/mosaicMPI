@@ -1,24 +1,26 @@
 
+from . import Dataset, cpus_available
+
 import logging
-import collections
-import typing
+from collections.abc import Iterable, Collection
+from typing import Union
 import numpy as np
 import pandas as pd
-from networkx.algorithms.community.modularity_max import greedy_modularity_communities
-import cnmfsns as cn
 
 class Integration():
     
     def __init__(self,
-                 config: cn.Config(),
-                 cpus: int = cn.cpus_available):
-        self.config = config
-        self.datasets = {
-            dataset_name: cn.Dataset.from_h5ad(dataset_params["filename"]) for dataset_name, dataset_params in config.datasets.items()
-        }
-        self.dataset_colors = {
-            dataset_name: dataset_params["color"] for dataset_name, dataset_params in config.datasets.items()
-        }
+                 datasets: dict[str, Dataset],
+                 corr_method: str = "pearson",
+                 max_median_corr: float =  0,
+                 negative_corr_quantile: float = 0.95,
+                 k_subset: Union[Collection, dict] = (2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60)
+                 ):
+        self.datasets = datasets
+        self.corr_method = corr_method
+        self.max_median_corr = max_median_corr
+        self.negative_corr_quantile = negative_corr_quantile
+        self.k_subset = k_subset
 
         # create the k-table
         combined = {}
@@ -27,34 +29,64 @@ class Integration():
             kvals["cNMF result"] = True
             combined[dataset_name] = kvals
         self.k_table = pd.concat(combined, axis=1).rename_axis("k", axis=0)
-        
         # compute correlations
-        self.compute_corr(method=self.config.integrate["corr_method"])
-        
+        self.compute_corr(method=self.corr_method)
         # rank-reduction for highly autocorrelated GEPs 
-        self.filter_geps_rank_reduction(config.integrate["max_median_corr"])
-        
+        self.filter_geps_rank_reduction(max_median_corr=self.max_median_corr)
         # subset k-values for more sparsely separated k-values to reduce network size
-        self.select_k_values()
-        
+        self.select_k_values(k_subset=self.k_subset)
         # use negative correlation quantile to threshold correlations
-        self.compute_pairwise_thresholds(negative_corr_quantile=config.integrate["negative_corr_quantile"])
-        
+        self.compute_pairwise_thresholds(negative_corr_quantile=self.negative_corr_quantile)
+
+    
     @property
     def n_datasets(self):
-        return len(self.datasets)
+        return len(self.datasets)        
     
-    def get_corr_matrix_lowertriangle(self, max_k_filter=False, selected_k_filter=False):
+    @property
+    def selected_k(self) -> dict:
+        by_dataset = {}
+        for dataset_name in self.datasets:
+            k = self.k_table[dataset_name, "selected_k"]
+            k = k[k].index.to_list()
+            by_dataset[dataset_name] = k
+        return by_dataset
+    
+    @property
+    def sample_to_patient(self) -> dict:
+        mapping = {}
+        for dataset_name, dataset in self.datasets.items():
+            for sample_id, patient_id in dataset.adata.obs[dataset.patient_id_col].items():
+                mapping[(dataset_name, sample_id)] = (dataset_name, patient_id)
+        return pd.Series(mapping)
+    
+    
+    def get_corr_matrix_lowertriangle(self, max_k_filter=False, selected_k_filter=False, quantile_transformation=False):
         mask = np.tril(np.ones(self.corr_matrix.shape), k=-1).astype(bool)
         tril = self.corr_matrix.where(mask)
         
-        # Filter correlations using dataset-specific max_k thresholds
+        # get rank filters
         if max_k_filter:
             maxk_filtered_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if self.k_table.loc[gep[1], (gep[0], "max_k_filter_pass")]])
+        if selected_k_filter:
+            selected_k_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if self.k_table.loc[gep[1], (gep[0], "selected_k")]])
+
+        if quantile_transformation:
+            # create quantile version of tril where correlations are replaced by quantile of intra-and inter-dataset correlations
+            for ds1 in self.datasets:
+                for ds2 in self.datasets:
+                    chunk = tril.loc[tril.index.get_level_values(0) == ds1, tril.index.get_level_values(0) == ds2]
+                    flattened_ranks = pd.Series(chunk.values.flatten()).rank() - 1
+                    flattened_quantiles = (flattened_ranks / flattened_ranks.max()).values
+                    quantile_chunk = pd.DataFrame(data=np.reshape(flattened_quantiles, newshape=chunk.values.shape), index=chunk.index, columns=chunk.columns)
+                    tril.loc[tril.index.get_level_values(0) == ds1, tril.index.get_level_values(0) == ds2] = quantile_chunk      
+        
+        # Filter correlations using dataset-specific max_k thresholds
+        if max_k_filter:
             tril = tril.loc[maxk_filtered_index, maxk_filtered_index]
         if selected_k_filter:    
-            selected_k_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if self.k_table.loc[gep[1], (gep[0], "selected_k")]])
             tril = tril.loc[selected_k_index, selected_k_index]
+            
         return tril
     
     def get_geps(self, type="cnmf_gep_score"):
@@ -62,7 +94,15 @@ class Integration():
         gep_matrix = pd.concat(gep_matrix, axis=1).sort_index(axis=0).sort_index(axis=1)
         return gep_matrix
     
-    def compute_corr(self, method="pearson", cpus=cn.cpus_available):
+    def get_usages(self, discretize=False, normalize=False):
+        usages = {dataset_name: dataset.get_usages(discretize=discretize, normalize=normalize)
+                         for dataset_name, dataset in self.datasets.items()}
+        for dsname, usage in usages.items():
+            usage.index = pd.MultiIndex.from_product([[dsname], usage.index])  # add dataset to sample_name index
+        usages = pd.concat(usages, axis=1).sort_index(axis=0).sort_index(axis=1)
+        return usages
+    
+    def compute_corr(self, method="pearson", cpus=cpus_available):
         if method == "pearson":
             try:
                 from nancorrmp.nancorrmp import NaNCorrMp
@@ -81,7 +121,7 @@ class Integration():
         
         self.corr_matrix = corr
 
-    def filter_geps_rank_reduction(self, max_median_corr=0):
+    def filter_geps_rank_reduction(self, max_median_corr=0) -> None:
         # Reduces rank (k) value when correlation distribution is skewed towards 1.
         tril = self.get_corr_matrix_lowertriangle()
         for dataset_name in tril.index.levels[0]:
@@ -102,28 +142,23 @@ class Integration():
             new_columns = pd.concat({dataset_name: new_columns}, axis=1)
             self.k_table = self.k_table.merge(new_columns, how="outer", left_index=True, right_index=True)
 
-    def select_k_values(self):
-        for dataset_name, dataset_params in self.config.datasets.items():
-            k_param = set()
-            for k_entry in dataset_params["selected_k"]:
-                if isinstance(k_entry, int):
-                    k_param.add(k_entry)
-                elif isinstance(k_entry, collections.abc.Collection):
-                    assert len(k_entry) == 3
-                    for k in range(k_entry[0], k_entry[1]+1, k_entry[2]):
-                        k_param.add(k)
-            
+    def select_k_values(self, k_subset) -> None:
+        for dataset_name in self.datasets:
+            if isinstance(k_subset, dict):
+                ds_k_subset = k_subset[dataset_name]
+            elif isinstance(k_subset, Collection):
+                ds_k_subset = k_subset
+                
+            # add column with selected k
             self.k_table[(dataset_name, "selected_k")] = (
                 self.k_table[(dataset_name, "cNMF result")] &
                 self.k_table[(dataset_name, "max_k_filter_pass")] &
-                self.k_table.index.isin(k_param)
+                self.k_table.index.isin(ds_k_subset)
                 )
-            final_selected_k = self.k_table[(dataset_name, "selected_k")]
-            final_selected_k = sorted(final_selected_k[final_selected_k].index.to_list())
-            self.config.datasets[dataset_name]["selected_k"] = final_selected_k
         self.k_table = self.k_table.sort_index(axis=1)
+
     
-    def compute_pairwise_thresholds(self, negative_corr_quantile = 0.95):
+    def compute_pairwise_thresholds(self, negative_corr_quantile = 0.95) -> None:
         # Filter correlations using dataset-specific max_k thresholds
         tril = self.get_corr_matrix_lowertriangle(max_k_filter=True, selected_k_filter=False)
         pairwise_thresholds = []
@@ -138,9 +173,9 @@ class Integration():
                         "threshold": -np.quantile(distr[distr < 0], q=1-negative_corr_quantile)
                     })
 
-        self.pairwise_thresholds = pd.DataFrame.from_records(pairwise_thresholds).set_index(["dataset_row", "dataset_col"])
+        self.pairwise_thresholds = pd.DataFrame.from_records(pairwise_thresholds).set_index(["dataset_row", "dataset_col"])["threshold"]
         
-    def get_node_table(self):
+    def get_node_table(self) -> pd.DataFrame:
         # Table with node stats
         nodetable = {}
         node_filters = {
@@ -157,7 +192,7 @@ class Integration():
                     for dataset_row in df.index.levels[0]:
                         for dataset_col in df.columns.levels[0]:
                             if (dataset_row, dataset_col) in thresholds.index:
-                                min_corr = thresholds.loc[(dataset_row, dataset_col)].values[0]
+                                min_corr = thresholds.loc[(dataset_row, dataset_col)]
                                 mask = df_filt.loc[dataset_row, dataset_col] < min_corr
                                 df_filt.loc[dataset_row, dataset_col][~mask] = np.NaN
                                 df_filt.dropna(axis=0).dropna(axis=1)
@@ -172,3 +207,27 @@ class Integration():
         nodetable = pd.DataFrame(nodetable)
         nodetable.columns.rename(["Node filter", "Edge Filter"], inplace=True)
         return nodetable
+    
+    def get_metadata_df(self, include_categorical=True, include_numerical=True, prepend_dataset_column=False) -> pd.DataFrame:
+        df = {}
+        for dataset_name, dataset in self.datasets.items():
+            df[dataset_name] = dataset.get_metadata_df(include_categorical=include_categorical,
+                                                       include_numerical=include_numerical)
+        df = pd.concat(df, axis=0)
+        if prepend_dataset_column:
+            df.insert(0, "Dataset", df.index.get_level_values(0))
+        return df
+    
+    def get_category_overrepresentation(self, layer: str, subset_datasets = None) -> pd.DataFrame:
+        if subset_datasets is None:
+            subset_datasets = self.datasets.keys()
+        elif isinstance(subset_datasets, str):
+            subset_datasets = [subset_datasets]
+        else:
+            raise ValueError
+        
+        combined = {}
+        for dataset_name in subset_datasets:
+            combined[dataset_name] = self.datasets[dataset_name].get_category_overrepresentation(layer=layer)
+        combined = pd.concat(combined, axis=1)
+        return combined

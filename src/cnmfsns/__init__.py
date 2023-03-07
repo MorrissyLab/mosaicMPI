@@ -9,17 +9,13 @@ if hasattr(os, "sched_getaffinity"):
 else:
     cpus_available = os.cpu_count()
 
-
-from cnmfsns.dataset import Dataset
-from cnmfsns.config import Config
-from cnmfsns.integration import Integration
-from cnmfsns.sns import SNS
-from cnmfsns.plots import *
-
-from cnmfsns import cnmf, colors, dataset, plots, sns, utils, cli
-
-
-
+from .dataset import Dataset
+from .config import Config
+from .integration import Integration
+from .colors import Colors
+from .sns import SNS
+from .plots import *
+from .utils import start_logging
 
 
 # # module level doc-string

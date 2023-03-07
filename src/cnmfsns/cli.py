@@ -1,3 +1,9 @@
+from . import Colors, Dataset, Config, Integration, start_logging, __version__, cpus_available
+from .plots import *
+from .utils import load_df_from_npz, save_df_to_npz, save_df_to_text
+from .cnmf import cNMF
+
+
 import os
 import logging
 import subprocess
@@ -9,7 +15,6 @@ from typing import Optional, Mapping
 import click
 import numpy as np
 import pandas as pd
-import cnmfsns as cn
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -30,25 +35,6 @@ mpl.rcParams['savefig.dpi']=72             #72
 mpl.rcParams['figure.subplot.bottom']=.125    #.125
 
 
-def start_logging(output_path=None):
-    if output_path is None:
-        logging.basicConfig(
-            format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO,
-            handlers=[
-                logging.StreamHandler()
-            ]
-        )
-    else:
-        logging.basicConfig(
-            format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO,
-            handlers=[
-                logging.FileHandler(output_path, mode="a"),
-                logging.StreamHandler()
-            ]
-        )
-    return
-
-
 class OrderedGroup(click.Group):
     """
     Overwrites Groups in click to allow ordered commands.
@@ -63,7 +49,7 @@ class OrderedGroup(click.Group):
 
 
 @click.group(cls=OrderedGroup)
-@click.version_option(version=cn.__version__)
+@click.version_option(version=__version__)
 def cli():
     """
     cNMF-SNS is a tool for deconvolution and integration of multiple datasets based on consensus Non-Negative Matrix Factorization (cNMF).
@@ -91,7 +77,7 @@ def cmd_txt_to_h5ad(data_file, is_normalized, metadata, output, sparsify):
     start_logging()
     df = pd.read_table(data_file, index_col=0)
     metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
-    dataset = cn.Dataset.from_df(data=df, obs=metadata_df, sparsify=sparsify, is_normalized=is_normalized)
+    dataset = Dataset.from_df(data=df, obs=metadata_df, sparsify=sparsify, is_normalized=is_normalized)
     logging.info("Data types for non-missing values in each layer of metadata:\n"
                  + dataset.get_metadata_type_summary())
     dataset.write_h5ad(output)
@@ -108,7 +94,7 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
     Update metadata in a .h5ad file at any point in the cNMF-SNS workflow. New metadata will overwrite (`adata.obs`).
     """
     start_logging()
-    dataset = cn.Dataset.from_h5ad(input_h5ad)
+    dataset = Dataset.from_h5ad(input_h5ad)
     metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
     dataset.update_obs(metadata_df)
     logging.info("Data types for non-missing values in each layer of metadata:\n"
@@ -124,7 +110,7 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
     help="Output .h5ad file. If not specified, no output file will be written.")
 def cmd_check_h5ad(input, output):
     start_logging()
-    dataset = cn.Dataset.from_h5ad(input)
+    dataset = Dataset.from_h5ad(input)
     dataset.remove_unfactorizable_genes()
     
     # Save output to new h5ad file
@@ -163,9 +149,9 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof):
         # Explicitly use a linear model instead of a BSpline Generalized Additive Model
         cnmfsns model-odg -n test -i test.h5ad --odg_default_spline_degree 0 --odg_default_dof 1
     """
-    cn.cnmf.cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
+    cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
-    dataset = cn.Dataset.from_h5ad(input)
+    dataset = Dataset.from_h5ad(input)
     
     # Create gene stats table and save h5ad file
     dataset.compute_gene_stats()
@@ -177,7 +163,7 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof):
     gene_stats.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
 
     # create mean vs variance plots
-    fig = cn.plots.plot_feature_dispersion(gene_stats, show_selected=False)["default"]
+    fig = plot_feature_dispersion(gene_stats, show_selected=False)["default"]
     fig.savefig(os.path.join(output_dir, name, "odgenes.pdf"), facecolor='white')
     fig.savefig(os.path.join(output_dir, name, "odgenes.png"), dpi=400, facecolor='white')
 
@@ -249,7 +235,7 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
     """
     os.makedirs(os.path.join(output_dir, name), exist_ok=True)
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
-    dataset = cn.Dataset.from_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
+    dataset = Dataset.from_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
 
     if odg_method == "genes_file":
         odg_param = click.Path(exists=True, dir_okay=False)(odg_param)
@@ -263,7 +249,7 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
                                            **method)
 
     # create mean vs variance plots, updated with selected genes
-    fig = cn.plots.plot_feature_dispersion(df=dataset.adata.var, show_selected=True)["default"]
+    fig = plot_feature_dispersion(df=dataset.adata.var, show_selected=True)["default"]
     fig.savefig(os.path.join(output_dir, name, "odgenes.pdf"), facecolor='white')
     fig.savefig(os.path.join(output_dir, name, "odgenes.png"), dpi=400, facecolor='white')
 
@@ -303,10 +289,10 @@ def cmd_factorize(name, output_dir, worker_index, total_workers, slurm_script):
     """
     Performs factorization according to parameters specified using `cnmfsns set-parameters`.
     """
-    cnmf_obj = cn.cnmf.cNMF(output_dir=output_dir, name=name)
+    cnmf_obj = cNMF(output_dir=output_dir, name=name)
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
     
-    run_params = cn.io.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
+    run_params = load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
     if run_params.shape[0] == 0:
         logging.error("No factorization to do: either no values of k were selected using `cnmfsns set-parameters` or iterations were set to 0.")
 
@@ -340,14 +326,14 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
     Perform post-processing routines on cNMF after factorization. This includes checking factorization outputs for completeness, combining individual
     iterations, calculating consensus GEPs and usage matrices, and creating the k-selection and annotated usage plots.
     """
-    cnmf_obj = cn.cnmf.cNMF(output_dir=output_dir, name=name)
+    cnmf_obj = cNMF(output_dir=output_dir, name=name)
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
     cnmf_obj.postprocess(cpus=cpus,
                          local_density_threshold=local_density_threshold,
                          local_neighborhood_size=local_neighborhood_size,
                          skip_missing_iterations=skip_missing_iterations)
     h5ad_path = os.path.join(output_dir, name, name + ".h5ad")
-    dataset = cn.Dataset.from_h5ad(h5ad_path)
+    dataset = Dataset.from_h5ad(h5ad_path)
     
     cnmf_data_loaded =  "cnmf_usage" in dataset.adata.obsm or\
                         "cnmf_gep_score" in dataset.adata.varm or\
@@ -389,39 +375,36 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
     """
     start_logging()
     os.makedirs(output_dir, exist_ok=True)
-    dataset = cn.Dataset.from_h5ad(input_h5ad)
+    dataset = Dataset.from_h5ad(input_h5ad)
     
     # get metadata colors
     if metadata_colors_toml:
-        cfg = cn.Config.from_toml(metadata_colors_toml)
+        colors = Colors.from_toml(metadata_colors_toml)
     else:
-        cfg = cn.Config()
-    cfg.add_missing_metadata_colors(dataset)
-    cfg.to_toml(os.path.join(output_dir, "metadata_colors.toml"), section_subset=["metadata_colors"])
+        colors = Colors()
+    colors.add_missing_metadata_colors(dataset)
+    colors.to_toml(os.path.join(output_dir, "metadata_colors.toml"))
+    
     # plot legend
-    fig = cfg.plot_metadata_colors_legend()
+    fig = colors.plot_metadata_colors_legend()
     fig.savefig(os.path.join(output_dir, f"metadata_legend.pdf"))
     
     # filter metadata layers with too many categories
     exclude_maxcat = dataset.adata.obs.select_dtypes(include="category").apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
-    if dataset.adata.obs.shape[1] > 0:
-        metadata = dataset.adata.obs.drop(columns=exclude_maxcat[exclude_maxcat].index).dropna(axis=1, how="all")
-    else:
-        metadata = dataset.adata.obs.dropna(axis=1, how="all")
+    drop_columns = exclude_maxcat[exclude_maxcat].index
     
     if not dataset.has_cnmf_results:
         logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `cnmfsns postprocess` before creating annotated usage heatmaps.")
         sys.exit(1)
 
     # create annotated plots for each k
-    metadata_colors = {col: cfg.get_metadata_colors(col) for col in dataset.adata.obs.columns}
     for k in dataset.adata.uns["kvals"].index:
         logging.info(f"Creating annotated usage heatmap for k={k}")
         cnmf_name = dataset.adata.uns["cnmf_name"]
         title = f"{cnmf_name} k={k}"
         filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{k:03}.pdf")
-        fig = cn.plots.plot_annotated_usages(
-            dataset=dataset, k=k, metadata=metadata, metadata_colors=metadata_colors, missing_data_color=cfg.metadata_colors["missing_data"], title=title, filename=filename,
+        fig = plot_usage_heatmap(
+            dataset=dataset, k=k, subset_metadata=drop_columns, colors=colors, title=title,
             cluster_samples=True, cluster_geps=False, show_sample_labels=(not hide_sample_labels), ylabel="GEP")
         fig.savefig(filename, transparent=False, bbox_inches = "tight")
 
@@ -429,7 +412,7 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
 @click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), required=False, help="TOML config file")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results. Can be used to specify multiple datasets for integration instead of a TOML config file.")
-@click.option('--cpus', type=int, default=cn.cpus_available, show_default=True, help="Number of CPUs to use for calculating correlation matrix")
+@click.option('--cpus', type=int, default=cpus_available, show_default=True, help="Number of CPUs to use for calculating correlation matrix")
 def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.
@@ -440,6 +423,7 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
     # create directory structure, warn if not empty
     output_dir = os.path.normpath(output_dir)
     start_logging()
+    cpus_available = cpus
     os.makedirs(output_dir, exist_ok=True)
     if os.listdir(output_dir):
         logging.warning(f"Integration directory {output_dir} is not empty. Files may be overwritten.")
@@ -457,18 +441,16 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
 
     # create config
     if config_toml is not None:
-        config = cn.Config.from_toml(config_toml)
+        config = Config.from_toml(config_toml)
     elif input_h5ad:
-        config = cn.Config.from_h5ad_files(input_h5ad)
-    config.add_missing_dataset_colors()
-    config.add_missing_metadata_colors()
+        config = Config.from_h5ad_files(input_h5ad)
 
     # integrate datasets
-    integration = cn.Integration.from_config(config)
+    integration = Integration.from_config(config)
     
     # save correlation matrix
     corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")
-    cn.dataset.save_df_to_npz(integration.corr_matrix, corr_path)
+    save_df_to_npz(integration.corr_matrix, corr_path)
     
     integration.k_table.to_csv(os.path.join(output_dir, "integrate", "k_filters.txt"), sep="\t")
     output_toml = os.path.join(output_dir, "integrate", "config.toml")
@@ -476,37 +458,34 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
     logging.info(f"Output updated TOML file to: {output_toml}")
 
     # Rank Reduction Plots
-    fig = cn.plots.plot_rank_reduction(integration)
+    fig = plot_rank_reduction(integration)
     fig.savefig(os.path.join(output_dir, "integrate", f"rank_reduction.pdf"))
     fig.savefig(os.path.join(output_dir, "integrate", f"rank_reduction.png"))
 
-    integration.pairwise_thresholds.to_csv(os.path.join(output_dir, "integrate", "max_k_filtered.pairwise_corr_thresholds.txt"), sep="\t")
-
+    integration.pairwise_thresholds.to_csv(os.path.join(output_dir, "integrate", "pairwise_corr_thresholds.txt"), sep="\t")
 
     # plot pairwise corr of all k
-    fig = cn.plots.plot_pairwise_corr(integration)
+    fig = plot_pairwise_corr(integration)
     fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr.pdf"))
     fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr.png"), dpi=600)
 
     # plot mirrored distributions with thresholds (which are computed on max-k filtered data only)
-    fig = cn.plots.plot_pairwise_corr_overlaid(integration)
+    fig = plot_pairwise_corr_overlaid(integration)
     fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr_overlaid.pdf"))
     fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr_overlaid.png"), dpi=600)
 
     # UpSet plot of odgenes and all genes in each dataset
-    if len(config.datasets) > 1:
-        fig = cn.plots.plot_overdispersed_genes_upset(integration)
+    if integration.n_datasets > 1:
+        fig = plot_overdispersed_features_upset(integration)
         fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_overdispersed_genes.pdf"))
         fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_overdispersed_genes.pdf" + ".png"), dpi=600)
         
-        fig = cn.plots.plot_all_genes_upset(integration)
+        fig = plot_features_upset(integration)
         fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_all_genes.pdf"))
         fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_all_genes.pdf" + ".png"), dpi=600)
 
     nodetable = integration.get_node_table()
     nodetable.to_csv(os.path.join(output_dir, "integrate", "node_stats.txt"), sep="\t")
-
-        
 
 @click.command(name="create-network")
 @click.option(
@@ -532,16 +511,21 @@ def cmd_create_network(output_dir, name, config_toml):
     sns_output_dir = os.path.join(output_dir, "sns_networks", name)
     os.makedirs(sns_output_dir, exist_ok=True)
 
-    fig = config.plot_metadata_colors_legend()
-    fig.savefig(os.path.join(sns_output_dir, "annotation_legend.pdf"))
+    # make figure legends for metadata
+    colors = Colors.from_config(config)
+    fig = colors.plot_metadata_colors_legend()
+    fig.savefig(os.path.join(sns_output_dir, "metadata_colors_legend.pdf"))
+    plt.close(fig)
+    
+    fig = colors.plot_dataset_colors_legend()
+    fig.savefig(os.path.join(sns_output_dir, "dataset_colors_legend.pdf"))
     plt.close(fig)
 
-    # write current configuration to config.toml file in the SNS output directory
-    config.to_toml(os.path.join(sns_output_dir, "config.toml"))
-
-    integration = cn.Integration(config=config)
+    integration = Integration(config=config)
     
     logging.info("Creating GEP network")
+    snsmap = SNS(integration)
+    snsmap.
     G = create_graph(output_dir, config)
     nx.write_graphml(G, os.path.join(sns_output_dir, "gep_network.graphml"))
     communities_resolution_sweep, selected_resolution = sweep_community_resolution(G, config)
@@ -698,31 +682,13 @@ def cmd_create_network(output_dir, name, config_toml):
             pdf.savefig(fig)
             plt.close(fig)
 
-    ### Maximum Correlation between Datasets and Communities
-    max_corr_communities = get_max_corr_communities(communities, output_dir, config)
-    max_corr_communities = max_corr_communities.astype("float").dropna(how="all", axis=0).dropna(how="all", axis=1).reorder_levels([1,0], axis=0).reorder_levels([1,0], axis=1)
-    fig, ax = plt.subplots(figsize=[16,16])
-    sns.heatmap(max_corr_communities, xticklabels=True, yticklabels=True, cmap=config.colormaps["diverging"], center=0, vmin=-1, vmax=1, ax=ax)
-    fig.suptitle("Maximum correlation between GEPs grouped by dataset and community")
-    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_communities.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_communities.png"), dpi=600)
-    plt.close(fig)
-
-    max_corr_communities = max_corr_communities.sort_index(axis=0).sort_index(axis=1)
-    fig, ax = plt.subplots(figsize=[16,16])
-    sns.heatmap(max_corr_communities, xticklabels=True, yticklabels=True, cmap=config.colormaps["diverging"], center=0, vmin=-1, vmax=1, ax=ax)
-    fig.suptitle("Maximum correlation between GEPs grouped by dataset and community")
-    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_datasets.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "community_maxcorr_datasets.png"), dpi=600)
-    plt.close(fig)
-
     # get usage matrix
     usage = config.get_usage_matrix()
     sample_to_patient = config.get_sample_patient_mapping()
 
     # Number of samples, patients per GEP
     if any(["patient_id_column" in d for d in config.datasets.values()]):
-        figs = plot_number_of_patients(usage, sample_to_patient, G, layout, config)
+        figs = plot_gep_network_samples(usage, sample_to_patient, G, layout, config)
         for method, fig in figs.items():
             fig.savefig(os.path.join(sns_output_dir, f"{method}.pdf"))
             plt.close(fig)
@@ -763,7 +729,7 @@ def cmd_create_network(output_dir, name, config_toml):
     merged_metadata.index.rename(["dataset", "sample"], inplace=True)
     metadata_colors = {col: config.get_metadata_colors(col) for col in merged_metadata.columns}
     metadata_colors["Dataset"] = {dsname: dsparam["color"] for dsname, dsparam in config.datasets.items()}
-    plot_annotated_usages(
+    plot_usage_heatmap(
         df=ic_usage,
         metadata=merged_metadata,
         metadata_colors=metadata_colors,

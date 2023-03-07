@@ -1,18 +1,21 @@
+
+from . import Dataset, Integration, Colors, SNS, utils
+
 import pandas as pd
 import numpy as np
 import seaborn as sns
-import cnmfsns as cn
 import matplotlib as mpl
+from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
 from matplotlib.patches import Polygon, Rectangle, Patch
 import matplotlib.pyplot as plt
 import upsetplot
-import typing
+from typing import Optional, Union, Collection
 from scipy.cluster.hierarchy import linkage, dendrogram
 from anndata import read_h5ad
 import networkx as nx
 
-def plot_feature_dispersion(dataset: cn.Dataset, show_selected:bool = False, all_plots: bool = False):
+def plot_feature_dispersion(dataset: Dataset, show_selected:bool = False, all_plots: bool = False):
     """
     Create diagnostic plots for data from model_overdispersion()
     """
@@ -109,7 +112,7 @@ def plot_feature_dispersion(dataset: cn.Dataset, show_selected:bool = False, all
     return figs
 
 
-def plot_stability_error(dataset: cn.Dataset, figsize=(6, 4)):
+def plot_stability_error(dataset: Dataset, figsize=(6, 4)):
     '''
     Borrowed from Alexandrov Et Al. 2013 Deciphering Mutational Signatures
     publication in Cell Reports
@@ -229,7 +232,7 @@ def annotated_heatmap(
     plt.colorbar(im_heatmap, ax=ax, location="top")
     return fig
 
-def plot_annotated_usages(dataset: cn.Dataset, k: typing.Optional[int], metadata_colors, missing_data_color = "#dddddd", subset_metadata = None, subset_samples = None, title = None, cluster_geps = False, cluster_samples = True, show_sample_labels = True):
+def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors, subset_metadata = None, subset_samples = None, title = None, cluster_geps = False, cluster_samples = True, show_sample_labels = True):
     assert dataset.has_cnmf_results
     df = dataset.get_usages(k=k)
     if subset_samples is not None:
@@ -238,11 +241,11 @@ def plot_annotated_usages(dataset: cn.Dataset, k: typing.Optional[int], metadata
     metadata = dataset.adata.obs.loc[samples]
     if subset_metadata is not None:
         metadata = metadata.loc[:, subset_metadata]
-    
+    metadata_colors = {col: colors.get_metadata_colors(col) for col in metadata.columns}
     df = df.div(df.sum(axis=1), axis=0)
-    fig = annotated_heatmap(data=df, metadata=dataset.adata.obs.loc[samples],
+    fig = annotated_heatmap(data=df, metadata=metadata,
                             metadata_colors=metadata_colors, 
-                            missing_data_color=missing_data_color, 
+                            missing_data_color=colors.missing_data_color, 
                             title=title,
                             row_cluster=cluster_geps,
                             col_cluster=cluster_samples,
@@ -251,8 +254,43 @@ def plot_annotated_usages(dataset: cn.Dataset, k: typing.Optional[int], metadata
                             ylabel="GEP")
     return fig
 
-def plot_correlation_matrix(integration: cn.Integration, figsize=(20,20), cmap="RdBu_r", hide_gep_labels=False):
-    ds_color_track = integration.corr_matrix.index.get_level_values(0).map(integration.dataset_colors)
+def plot_community_usage_heatmap(snsmap: SNS,
+                                 colors: Colors,
+                                 subset_metadata = None,
+                                 subset_datasets = None,
+                                 subset_samples = None,
+                                 title = None,
+                                 cluster_geps = False,
+                                 cluster_samples = True,
+                                 show_sample_labels = True):
+    df = snsmap.get_community_usage()
+    if subset_samples is not None:
+        df = df.loc[subset_samples]
+    if subset_datasets is not None:
+        df = df.loc[subset_datasets]
+        
+    
+    metadata = snsmap.integration.get_metadata_df()
+    if subset_metadata is not None:
+        metadata = metadata.loc[:, subset_metadata]
+    
+    
+    metadata_colors = {col: colors.get_metadata_colors(col) for col in metadata.columns}
+    df = df.div(df.sum(axis=1), axis=0)
+    fig = annotated_heatmap(data=df, metadata=metadata,
+                            metadata_colors=metadata_colors, 
+                            missing_data_color=colors.missing_data_color, 
+                            title=title,
+                            row_cluster=cluster_geps,
+                            col_cluster=cluster_samples,
+                            show_sample_labels=show_sample_labels,
+                            plot_col_dendrogram=True,
+                            ylabel="Community")
+    return fig
+
+
+def plot_gep_correlation_matrix(integration: Integration, colors, figsize=(20,20), cmap="RdBu_r", hide_gep_labels=False):
+    ds_color_track = integration.corr_matrix.index.get_level_values(0).map(colors.dataset_colors)
     ds_color_track = [mpl.colors.to_rgb(c) for c in ds_color_track]
     cg = sns.clustermap(integration.corr_matrix, figsize=figsize,
                         cmap=cmap, center=0, vmin=-1, vmax=1,
@@ -266,7 +304,7 @@ def plot_correlation_matrix(integration: cn.Integration, figsize=(20,20), cmap="
     return cg.figure
 
 
-def plot_rank_reduction(integration: cn.Integration, figsize=None):
+def plot_rank_reduction(integration: Integration, figsize=None):
     n_ranks = integration.k_table.shape[0]
     n_datasets = len(integration.datasets)
     if figsize is None:
@@ -278,7 +316,7 @@ def plot_rank_reduction(integration: cn.Integration, figsize=None):
         df["max_k"] = df.index
         ax.set_ylim([-1, 1])
         ax.set_xlim([df["max_k"].min() - 1, df["max_k"].max() + 1])
-        ax.axhline(integration.config.integrate["max_median_corr"], color="red")
+        ax.axhline(integration.max_median_corr, color="red")
         ax.set_title(dataset_name)
         ax.set_xticks(df["max_k"])
         sns.lineplot(data=df, x="max_k", y="max_k_median_corr", hue="max_k_filter_pass", ax=ax, marker="o")
@@ -286,7 +324,7 @@ def plot_rank_reduction(integration: cn.Integration, figsize=None):
         plt.tight_layout()
     return fig
 
-def plot_pairwise_corr(integration: cn.Integration, subplot_size = [3, 3.5]):
+def plot_pairwise_corr(integration: Integration, subplot_size = [3, 3.5], overlaid=False):
     tril = integration.get_corr_matrix_lowertriangle()
     n_datasets = len(tril.index.levels[0])
     sps_width, sps_height = subplot_size
@@ -300,14 +338,14 @@ def plot_pairwise_corr(integration: cn.Integration, subplot_size = [3, 3.5]):
             else:
                 corr = pd.Series(tril.loc[dataset_row, dataset_col].values.flatten()).dropna()
                 if integration.pairwise_thresholds is not None:
-                    min_corr = integration.pairwise_thresholds.loc[(dataset_row, dataset_col)].values[0]
+                    min_corr = integration.pairwise_thresholds.loc[(dataset_row, dataset_col)]
                     hist_kwargs = {
                         "hue":[("Included" if c else "Excluded") for c in (corr > min_corr)],
                         "palette": {"Included": "red", "Excluded": "gray"},
                         "hue_order": ["Excluded", "Included"]
                     }
                     included_fraction = (corr > min_corr).sum() / corr.shape[0]
-                    ax.text(x=0.01, y=1.01, s=f"quantile={included_fraction:.3f}\nmin_corr={min_corr:.3f}", ha='left', va='bottom', transform=ax.transAxes, color="black")
+                    ax.text(x=0.01, y=1.01, s=f"quantile={included_fraction:.3f}\nmin_corr={min_corr:.3f}", size=8, ha='left', va='bottom', transform=ax.transAxes, color="black")
                 else:
                     hist_kwargs = {"color": "gray"}
                 sns.histplot(x=corr, ax=ax,legend=(row == 0)&(col == 0), bins=50, linewidth=0, **hist_kwargs)
@@ -319,7 +357,7 @@ def plot_pairwise_corr(integration: cn.Integration, subplot_size = [3, 3.5]):
     plt.tight_layout()
     return fig
 
-def plot_pairwise_corr_overlaid(integration: cn.Integration, subplot_size = [3, 3.5]):
+def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5]):
     tril = tril = integration.get_corr_matrix_lowertriangle(max_k_filter=True)
     sps_width, sps_height = subplot_size
     fig, axes = plt.subplots(integration.n_datasets, integration.n_datasets,
@@ -332,16 +370,16 @@ def plot_pairwise_corr_overlaid(integration: cn.Integration, subplot_size = [3, 
             if row < col:
                 ax.set_axis_off()
             else:
-                corr = pd.DataFrame({"abscorr": tril.loc[dataset_row, dataset_col].values.flatten()}).dropna()
-                corr["sign"] = (corr["abscorr"] >= 0).map({True: "Positive", False: "Negative"})
-                corr["abscorr"] = corr["abscorr"].abs()
+                corr = pd.DataFrame({"corr": tril.loc[dataset_row, dataset_col].values.flatten()}).dropna()
+                corr["sign"] = (corr["corr"] >= 0).map({True: "Positive", False: "Negative"})
+                corr["abscorr"] = corr["corr"].abs()
                 sns.histplot(data=corr, x="abscorr", hue="sign", palette= {"Positive": "red", "Negative": "blue"}, bins=50, alpha=0.5, linewidth=0,
                              hue_order= ["Negative", "Positive"], ax=ax,legend=(row == 0)&(col == 0))
 
                 # show min_corr as text in top left of plot and vertical line
-                min_corr = integration.pairwise_thresholds.loc[(dataset_row, dataset_col)].values[0]
-                included_fraction = (corr["abscorr"] > min_corr).sum() / corr.shape[0]  # could also show the quantile of the min_corr threshold
-                ax.text(x=0.01, y=1.01, s=f"quantile={included_fraction:.3f}\nmin_corr={min_corr:.3f}", ha='left', va='bottom', transform=ax.transAxes, color="black")
+                min_corr = integration.pairwise_thresholds.loc[(dataset_row, dataset_col)]
+                included_fraction = (corr["corr"] > min_corr).sum() / corr.shape[0]  # could also show the quantile of the min_corr threshold
+                ax.text(x=0.01, y=1.01, s=f"quantile={included_fraction:.3f}\nmin_corr={min_corr:.3f}", size=8, ha='left', va='bottom', transform=ax.transAxes, color="black")
                 ax.axvline(min_corr, color="black")
                 ax.set_ylabel(dataset_row)
                 ax.set_xlabel(dataset_col)
@@ -350,20 +388,440 @@ def plot_pairwise_corr_overlaid(integration: cn.Integration, subplot_size = [3, 
     plt.tight_layout()
     return fig
 
-def plot_overdispersed_genes_upset(integration: cn.Integration, figsize=[6, 4]):
-    overdispersed_genelists = {dataset_name: dataset.overdispersed_genes for dataset_name, dataset in integration.datasets.items()}
+def plot_overdispersed_features_upset(integration: Integration, figsize=[6, 4]):
+    overdispersed_feature_lists = {dataset_name: dataset.overdispersed_genes for dataset_name, dataset in integration.datasets.items()}
     fig = plt.Figure(figsize=figsize)
-    upsetplot.UpSet(upsetplot.from_contents(overdispersed_genelists)).plot(fig=fig)
+    upsetplot.UpSet(upsetplot.from_contents(overdispersed_feature_lists)).plot(fig=fig)
     fig.suptitle("Overdispersed features")
     return fig
 
-def plot_all_genes_upset(integration: cn.Integration, figsize=[6, 4]):
-    overdispersed_genelists = {dataset_name: list(dataset.adata.var.index) for dataset_name, dataset in integration.datasets.items()}
+def plot_features_upset(integration: Integration, figsize=[6, 4]):
+    feature_lists = {dataset_name: list(dataset.adata.var.index) for dataset_name, dataset in integration.datasets.items()}
     fig = plt.Figure(figsize=figsize)
-    upsetplot.UpSet(upsetplot.from_contents(overdispersed_genelists)).plot(fig=fig)
+    upsetplot.UpSet(upsetplot.from_contents(feature_lists)).plot(fig=fig)
     fig.suptitle("Features")
     return fig
 
+def plot_community_by_dataset_rank(snsmap: SNS, colors: Colors, figsize: Collection = None):
+    """
+    Plot communities by dataset and rank representation
+    """
+
+    marker_style = {
+        1: ("s", 30),  # 1 factor: square markers, size 30
+        2: (2, 30)     # 2 factors: marker #2 (up tick), size 30
+        }
+    n_datasets = snsmap.integration.n_datasets
+    if figsize is None:
+        figsize = [1 + n_datasets * 5, 1 + len(snsmap.communities)/4]
+    fig, axes = plt.subplots(1, n_datasets+1, figsize=figsize, sharex=True, sharey=True)
+    for dataset, ax in zip(snsmap.integration.datasets, axes):
+        for y, community in enumerate(snsmap.ordered_community_names):
+            members = snsmap.communities[community]
+            counts = pd.Series([m.rpartition("|")[0] for m in members]).value_counts()
+            
+            # plot line if any factors are present
+            line_x = []
+            line_y = []
+            for x, rank in enumerate(snsmap.integration.selected_k[dataset]):
+                line_x.append(x)
+                if f"{dataset}|{rank}" in counts.index:
+                    line_y.append(y)
+                else:
+                    line_y.append(np.NaN)
+            ax.plot(line_x, line_y, color=colors.dataset_colors[dataset], linewidth=2)
+            
+            for count, style in marker_style.items():
+                # plot different markers depending on how many factors are present:
+                scatter_x = []
+                scatter_y = []
+                for x, rank in enumerate(snsmap.integration.selected_k[dataset]):
+                    factor_prefix = f"{dataset}|{rank}"
+                    if factor_prefix in counts.index and counts[factor_prefix] == count:
+                        scatter_x.append(x)
+                        scatter_y.append(y)
+                ax.scatter(scatter_x, scatter_y, color=colors.dataset_colors[dataset], marker=style[0], s=style[1])
+        ax.set_yticks(list(range(len(snsmap.ordered_community_names))))
+        ax.set_yticklabels(snsmap.ordered_community_names)
+        ax.set_xticks(list(range(len(snsmap.integration.selected_k[dataset]))))
+        ax.set_xticklabels(snsmap.integration.selected_k[dataset])
+        ax.set_title(dataset)
+
+    fig.supxlabel("Rank (k)")
+    fig.supylabel("Community")
+
+
+    # Add legend
+    cbdrlegend = []
+    cbdrlegend.append(Line2D([0],[0], marker='s', color='black', label="1 GEP", markerfacecolor="black", markersize=8))
+    cbdrlegend.append(Line2D([0],[0], marker=2, color='black', label="2 GEPs", markerfacecolor="black", markersize=8))
+    cbdrlegend.append(Line2D([0],[0], marker=None, color='black', label="3+ GEPs", markerfacecolor="black", markersize=8))
+    axes[-1].legend(handles=cbdrlegend, loc='center', frameon=False)
+    axes[-1].set_axis_off()
+    plt.tight_layout()
+    return fig
+
+def draw_circle_bar_plot(position, enrichments, colors, size, ax, scale_factor: float=1, draw_labels: bool=False, label_font_size: float=1):
+
+    x, y = position
+    previous = np.pi
+    for color, (label, enrichment) in zip(colors, enrichments.items()):
+        this = previous - 2 * np.pi / len(enrichments)
+        if enrichment > 0:
+            # calculate the points of the pie pieces
+            radius = size * np.sqrt(enrichment * scale_factor)
+            n_edges_on_arc = max(2, 200 // len(enrichments))
+            x_shape  = np.array([0] + np.cos(np.linspace(previous, this, n_edges_on_arc)).tolist()) * radius + x
+            y_shape  = np.array([0] + np.sin(np.linspace(previous, this, n_edges_on_arc)).tolist()) * radius + y
+            xy_shape = np.column_stack([x_shape, y_shape])
+            ax.add_patch(Polygon(xy_shape, fill=True, closed=True, color=color, linewidth=0))
+
+            # text
+            if draw_labels:
+                a = (previous - np.pi / len(enrichments))
+                x_offset = (size * 1.1) * np.cos(a)
+                y_offset = (size * 1.1) * np.sin(a)
+                ax.text(x+x_offset, y+y_offset, label, rotation=np.rad2deg(a), ha="left", va="center", rotation_mode='anchor', fontsize=label_font_size)
+        previous = this
+
+def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size, linewidth=0.5):
+
+    x, y = position
+    for ring in [0.25,0.5,0.75,1]:
+        ax.add_patch(plt.Circle(position, np.sqrt(ring) * size, color="black", fill=False, linewidth=linewidth))
+    ax.add_patch(Rectangle(position, size * 1.01, size * 1.01, color="#FFFFFF"))
+    for ring in [0.25,0.5,0.75,1]:
+        value = ring/scale_factor
+        ax.text(
+            x + size * 0.05,
+            y + np.sqrt(ring) * size,
+            f"{value:.3f}",
+            fontsize=label_font_size,
+            verticalalignment="center")
+
+
+def plot_gep_overrepresentation_network(snsmap,
+                                        colors,
+                                        layer,
+                                        subset_datasets = None,
+                                        ax: Optional[Axes] = None,
+                                        pie_size=0.1,
+                                        figsize=(9, 6),
+                                        edge_weights=None,
+                                        metric="pearson_residual",
+                                        show_legends=True) -> Optional[mpl.figure.Figure]:
+    
+    if show_legends:
+        assert ax is None
+    
+    if ax is None:
+        fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [2, 1]}, layout="tight")
+    else:
+        ax_plot = ax
+        ax_legend = ax
+    ax_plot.set_aspect("equal")
+    ax_plot.set_axis_off()
+    ax_plot.set_title("GEP Network")
+    ax_legend.set_xlim([-0.5, 0.5])
+    ax_legend.set_aspect("equal")
+    ax_legend.set_axis_off()
+    
+    if edge_weights is None or not snsmap.gep_graph.edges:
+        width = 0.2
+    else:
+        width = np.array(list(nx.get_edge_attributes(snsmap.gep_graph, edge_weights).values()))
+        width = width / np.max(width)
+
+    nx.draw_networkx_edges(snsmap.gep_graph, pos=snsmap.layout, edge_color="#888888", ax=ax_plot, width=width)
+    overrepresentation = snsmap.integration.get_category_overrepresentation(subset_datasets=subset_datasets, layer=layer)
+    overrepresentation = overrepresentation.fillna(0)
+
+    max_or = np.max(overrepresentation.values.flatten())
+    scale_factor = 1 / max_or
+    for gep, gep_or in overrepresentation.items():
+        node = "|".join((str(p) for p in gep))
+
+        if node in snsmap.gep_graph and gep_or.any():
+            color_list = gep_or.index.map(colors.get_metadata_colors(layer))
+            draw_circle_bar_plot(position=snsmap.layout[node],
+                                 enrichments=gep_or,
+                                 scale_factor=scale_factor,
+                                 colors=color_list,
+                                 size=pie_size, ax=ax_plot)
+
+    if show_legends:
+        # Add legends
+        draw_circle_bar_plot(
+            position=(0, 0.5),
+            enrichments=pd.Series(max_or, index=gep_or.index.sort_values().unique()),
+            colors=overrepresentation.index.map(colors.get_metadata_colors(layer)),
+            scale_factor=scale_factor,
+            size=pie_size,
+            draw_labels=True,
+            label_font_size=6, ax=ax_legend)
+        draw_circle_bar_scale(
+            position=(0, -0.5),
+            scale_factor=scale_factor,
+            size=pie_size,
+            label_font_size=4, ax=ax_legend)
+        ax_legend.set_title(f"{layer}")
+        ax_legend.text(0, -0.25, "pearson_residual", ha="center", va="center", )
+    
+    # assert ax_plot.get_xlim() == ax_plot.get_ylim()
+    # assert ax_plot.get_ylim() == ax_legend.get_ylim()
+    
+    if ax is None:
+        return fig
+
+
+def plot_gep_network_datasets(snsmap: SNS, colors: Colors, figsize = (9,6), edge_color = "#888888", node_size = 30, node_size_kval = False, labels = False, ax = None):
+     
+    if ax is None:
+        fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [2, 1]}, layout="tight")
+    else:
+        ax_plot = ax
+        ax_legend = ax
+    ax_plot.set_aspect("equal")
+    ax_plot.set_axis_off()
+    ax_legend.set_xlim([-0.5, 0.5])
+    ax_legend.set_axis_off()
+    colors.plot_dataset_colors_legend(ax=ax_legend)
+    
+    node_colors = []
+    for node in snsmap.gep_graph:
+        node_colors.append(colors.dataset_colors[node.split("|")[0]])
+
+    # Labels without dataset names
+    node_labels = {}
+    for node in snsmap.gep_graph:
+        node_labels[node] = node.partition("|")[2]
+
+    # Node sizes inversely proportional to k
+    if node_size_kval:
+        sizes = {}
+        selected_k_anyds = snsmap.integration.k_table.loc[:, (slice(None), "selected_k")].any(axis=1)
+        median_rank = min(selected_k_anyds[selected_k_anyds].index)
+
+        for node in snsmap.gep_graph:
+            sizes[node] = node_size / (int(node.split("|")[1]) + 0.5 - median_rank)
+        node_sizes = [(sizes[n] if n in sizes else 0) for n in snsmap.gep_graph]
+    else:
+        node_sizes = node_size
+    # Plot nodes colored by dataset
+    nx.draw(snsmap.gep_graph,
+            pos=snsmap.layout,
+            with_labels=labels,
+            node_color=node_colors,
+            labels=node_labels,
+            node_size=node_sizes,
+            linewidths=0,
+            width=0.2,
+            edge_color=edge_color,
+            font_size=4, ax=ax_plot)
+    ax_plot.set_title("GEP Network")
+    return fig
+
+
+def plot_gep_network_communities(snsmap: SNS,
+                                 colors: Colors,
+                                 figsize = (9,6),
+                                 edge_color = "#888888",
+                                 node_size = 30,
+                                 node_size_kval = False,
+                                 ax = None):
+     
+    if ax is None:
+        fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [2, 1]}, layout="tight")
+    else:
+        ax_plot = ax
+        ax_legend = ax
+    ax_plot.set_aspect("equal")
+    ax_plot.set_axis_off()
+    ax_legend.set_xlim([-0.5, 0.5])
+    ax_legend.set_axis_off()
+    colors.plot_community_colors_legend(ax=ax_legend)
+    
+    node_colors = []
+    for node in snsmap.gep_graph:
+        node_colors.append(colors.community_colors[snsmap.gep_communities[node]])
+
+    # Labels without dataset names
+    labels = {}
+    for node in snsmap.gep_graph:
+        labels[node] = node.partition("|")[2]
+
+    # Node sizes inversely proportional to k
+    if node_size_kval:
+        sizes = {}
+        selected_k_anyds = snsmap.integration.k_table.loc[:, (slice(None), "selected_k")].any(axis=1)
+        median_rank = min(selected_k_anyds[selected_k_anyds].index)
+
+        for node in snsmap.gep_graph:
+            sizes[node] = node_size / (int(node.split("|")[1]) + 0.5 - median_rank)
+        node_sizes = [(sizes[n] if n in sizes else 0) for n in snsmap.gep_graph]
+    else:
+        node_sizes = node_size
+    # Plot nodes colored by dataset
+    nx.draw(snsmap.gep_graph,
+            pos=snsmap.layout,
+            with_labels=False,
+            node_color=node_colors,
+            labels=labels,
+            node_size=node_sizes,
+            linewidths=0,
+            width=0.2,
+            edge_color=edge_color,
+            font_size=4, ax=ax_plot)
+    ax_plot.set_title("GEP Network")
+    return fig
+
+def plot_gep_network_samples(snsmap: SNS,
+                             colors: Colors,
+                             figsize: Collection = (9, 6),
+                             discretize = False,
+                             edge_color = "#888888",
+                             node_size = 30,
+                             font_size=6,
+                             ax = None):
+     
+    if ax is None:
+        fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [2, 1]}, layout="tight")
+    else:
+        ax_plot = ax
+        ax_legend = ax
+    ax_plot.set_aspect("equal")
+    ax_plot.set_axis_off()
+    ax_legend.set_xlim([-0.5, 0.5])
+    ax_legend.set_axis_off()
+    colors.plot_dataset_colors_legend(ax=ax_legend)
+
+    usages = snsmap.integration.get_usages(discretize = discretize,
+                                           normalize = True)
+
+
+    if discretize:
+        labels = usages[snsmap.geps_in_graph].sum().apply(lambda x: str(int(x))).to_dict()
+    else:
+        labels = usages[snsmap.geps_in_graph].sum().apply(lambda x: f"{x:.1f}").to_dict()
+    labels = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in labels.items()}
+    
+    scale_factor = node_size / usages[snsmap.geps_in_graph].sum().max()
+    sizes = (usages[snsmap.geps_in_graph].sum() * scale_factor).to_dict()
+    sizes = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in sizes.items()}
+    
+    colors = [colors.dataset_colors[node.partition("|")[0]] for node in snsmap.gep_graph]
+
+    node_sizes = [(sizes[n] if n in sizes else 0) for n in snsmap.gep_graph]
+    nx.draw(snsmap.gep_graph, snsmap.layout,
+    with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color=edge_color, font_size=font_size, ax=ax_plot)
+    if ax is None:
+        return fig
+
+def plot_gep_network_patients(snsmap: SNS,
+                             colors: Colors,
+                             figsize: Collection = (9, 6),
+                             edge_color = "#888888",
+                             node_size = 30,
+                             font_size=6,
+                             ax = None):
+    
+    if ax is None:
+        fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [2, 1]}, layout="tight")
+    else:
+        ax_plot = ax
+        ax_legend = ax
+    ax_plot.set_aspect("equal")
+    ax_plot.set_axis_off()
+    ax_legend.set_xlim([-0.5, 0.5])
+    ax_legend.set_axis_off()
+    colors.plot_dataset_colors_legend(ax=ax_legend)
+
+    usages = snsmap.integration.get_usages(discretize = True).fillna(0).astype(bool)
+    usages.index = usages.index.map(snsmap.integration.sample_to_patient)
+    usages = usages.groupby(axis=0, level=[0,1]).any()
+        
+    labels = usages[snsmap.geps_in_graph].sum().apply(lambda x: str(int(x))).to_dict()
+    labels = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in labels.items()}
+    
+    scale_factor = node_size / usages[snsmap.geps_in_graph].sum().max()
+    sizes = (usages[snsmap.geps_in_graph].sum() * scale_factor).to_dict()
+    sizes = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in sizes.items()}
+    
+    colors = [colors.dataset_colors[node.partition("|")[0]] for node in snsmap.gep_graph]
+
+    node_sizes = [(sizes[n] if n in sizes else 0) for n in snsmap.gep_graph]
+    nx.draw(snsmap.gep_graph, snsmap.layout,
+    with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color=edge_color, font_size=font_size, ax=ax_plot)
+    if ax is None:
+        return fig
+
+def plot_community_network_summary(snsmap: SNS,
+                                   colors: Colors,
+                                   figsize = (4, 4),
+                                   edge_color = "#888888",
+                                   node_size = 500,
+                                   ax: Axes = None):
+    if ax is None:
+        fig, ax_plot = plt.subplots(figsize=figsize, layout="tight")
+    else:
+        ax_plot = ax
+    ax_plot.set_aspect("equal")
+    ax_plot.set_axis_off()
+    if snsmap.comm_graph.edges:
+        width = np.array(list(nx.get_edge_attributes(snsmap.comm_graph, "n_edges").values()))
+        width = 20 * width / np.max(width)
+    else:
+        width = None
+    sizes = np.array([len(snsmap.communities[node]) for node in snsmap.comm_graph.nodes])
+    sizes = node_size * sizes / np.max(sizes)
+    node_colors = [colors.community_colors[node] for node in snsmap.comm_graph]
+    nx.draw(snsmap.comm_graph, pos=snsmap.comm_layout, node_color=node_colors, node_size=sizes, linewidths=0, width=width, edge_color=edge_color, with_labels=True, ax=ax_plot, font_size=20)
+    return fig
+
+# overrepresentation bar plots
+def plot_overrepresentation_geps_bar(snsmap: SNS, colors, dataset_name, figsize = None):
+    dataset = snsmap.integration.datasets[dataset_name]
+    metadata = dataset.get_metadata_df(include_numerical=False).dropna(how="all", axis=1)
+    # number of bars in each community for this dataset
+    communities = snsmap.communities
+    community_gep_counts = [len([node for node in communities[c] if node.split("|")[0] == dataset_name]) for c in sorted(list(communities))]
+    
+    if figsize is None:
+        figsize = (len(communities) + 0.05 * sum(community_gep_counts),
+                   metadata.shape[1] * 2)
+    
+    fig, axes = plt.subplots(
+        metadata.shape[1], len(communities),
+        figsize = figsize,
+        sharey='row', squeeze=False,
+        gridspec_kw={"width_ratios": community_gep_counts})
+    for row, layer in enumerate(metadata.columns):
+        overrepresentation = dataset.get_category_overrepresentation(layer=layer)
+        for col, community in enumerate(sorted(list(communities))):
+            ax = axes[row, col]
+            geps = []
+            for node in communities[community]:
+                dataset_str, k_str, gep_str = node.split("|")
+                if dataset_str == dataset_name:
+                    geps.append((int(k_str), int(gep_str)))
+            geps = sorted(geps)
+            if geps:
+                overrepresentation[geps].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=colors.get_metadata_colors(layer))
+            ax.set_xlabel("")
+            ax.set_xticks([])
+            if col == 0:
+                ax.set_ylabel(layer)
+            if row == 0:
+                ax.set_title(community, size=14)
+
+    fig.supxlabel("GEP")
+    fig.supylabel("Overrepresentation")
+    fig.suptitle("Community")
+    fig.tight_layout()
+    return fig
+
+
+#####
 
 def plot_annotated_geps_by_community(usage, config, communities):
     figs = {}
@@ -410,199 +868,7 @@ def plot_annotated_geps_by_community(usage, config, communities):
         figs[dataset_name] = fig
     return figs
 
-def plot_community_by_dataset_rank(communities, config):
-    """
-    Plot communities by dataset and rank representation
-    """
 
-    marker_style = {
-        1: ("s", 30),  # 1 factor: square markers, size 30
-        2: (2, 30)     # 2 factors: marker #2 (up tick), size 30
-        }
-    dataset_colors = {ds: ds_attr["color"] for ds, ds_attr in config.datasets.items()}
-
-    fig, axes = plt.subplots(1, len(config.datasets)+1, figsize=[1 + len(config.datasets)* 5,1 + len(communities)/4], sharex=True, sharey=True)
-    for rownum, dataset in enumerate(config.datasets):
-        for community, members in communities.items():
-            counts = pd.Series([m.rpartition("|")[0] for m in members]).value_counts()
-            
-            # plot line if any factors are present
-            line_x = []
-            line_y = []
-            for pos, rank in enumerate(config.datasets[dataset]["selected_k"]):
-                line_x.append(pos)
-                if f"{dataset}|{rank}" in counts.index:
-                    line_y.append(community)
-                else:
-                    line_y.append(np.NaN)
-            axes[rownum].plot(line_x, line_y, color=dataset_colors[dataset], linewidth=2)
-            
-            for count, style in marker_style.items():
-                # plot different markers depending on how many factors are present:
-                x = []
-                y = []
-                for pos, rank in enumerate(config.datasets[dataset]["selected_k"]):
-                    factor_prefix = f"{dataset}|{rank}"
-                    if factor_prefix in counts.index and counts[factor_prefix] == count:
-                        x.append(pos)
-                        y.append(community)
-                axes[rownum].scatter(x, y, color=dataset_colors[dataset], marker=style[0], s=style[1])
-        axes[rownum].set_yticks(list(communities.keys()))
-        axes[rownum].set_xticks(list(range(len(config.datasets[dataset]["selected_k"]))))
-        axes[rownum].set_xticklabels(config.datasets[dataset]["selected_k"])
-        axes[rownum].set_title(dataset)
-
-    fig.supxlabel("Rank (k)")
-    fig.supylabel("Community")
-
-
-    # Add legend
-    cbdrlegend = []
-    cbdrlegend.append(Line2D([0],[0], marker='s', color='black', label="1 GEP", markerfacecolor="black", markersize=8))
-    cbdrlegend.append(Line2D([0],[0], marker=2, color='black', label="2 GEPs", markerfacecolor="black", markersize=8))
-    cbdrlegend.append(Line2D([0],[0], marker=None, color='black', label="3+ GEPs", markerfacecolor="black", markersize=8))
-    axes[-1].legend(handles=cbdrlegend, loc='center', frameon=False)
-    axes[-1].set_axis_off()
-    plt.tight_layout()
-    return fig
-
-# Overrepresentation network plots
-
-def draw_circle_bar_plot(position, enrichments, colors, size, ax, scale_factor: float=1, draw_labels: bool=False, label_font_size: float=1):
-
-    x, y = position
-    previous = np.pi
-    for color, (label, enrichment) in zip(colors, enrichments.items()):
-        this = previous - 2 * np.pi / len(enrichments)
-        if enrichment > 0:
-            # calculate the points of the pie pieces
-            radius = size * np.sqrt(enrichment * scale_factor)
-            n_edges_on_arc = max(2, 200 // len(enrichments))
-            x_shape  = np.array([0] + np.cos(np.linspace(previous, this, n_edges_on_arc)).tolist()) * radius + x
-            y_shape  = np.array([0] + np.sin(np.linspace(previous, this, n_edges_on_arc)).tolist()) * radius + y
-            xy_shape = np.column_stack([x_shape, y_shape])
-            ax.add_patch(Polygon(xy_shape, fill=True, closed=True, color=color, linewidth=0))
-
-            # text
-            if draw_labels:
-                a = (previous - np.pi / len(enrichments))
-                x_offset = (size * 1.1) * np.cos(a)
-                y_offset = (size * 1.1) * np.sin(a)
-                ax.text(x+x_offset, y+y_offset, label, rotation=np.rad2deg(a), ha="left", va="center", rotation_mode='anchor', fontsize=label_font_size)
-        previous = this
-
-def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size):
-    x, y = position
-    for ring in [0.25,0.5,0.75,1]:
-        ax.add_patch(plt.Circle(position, np.sqrt(ring) * size, color="black", fill=False))
-    ax.add_patch(Rectangle(position, size * 1.01, size * 1.01, color="#FFFFFF"))
-    for ring in [0.25,0.5,0.75,1]:
-        value = ring/scale_factor
-        ax.text(
-            x + size * 0.05,
-            y + np.sqrt(ring) * size,
-            f"{value:.3f}",
-            fontsize=label_font_size,
-            verticalalignment="center")
-
-def plot_overrepresentation_network(graph, layout, title, overrepresentation, colordict, pie_size, ax, edge_weights=None, show_legends=True):
-
-    ax.set_aspect("equal")
-    ax.set_axis_off()
-    ax.set_title(title)
-    
-    if edge_weights is None or not graph.edges:
-        width = 0.2
-    else:
-        width = np.array(list(nx.get_edge_attributes(graph, edge_weights).values()))
-        width = width / np.max(width)
-
-    nx.draw_networkx_edges(graph, pos=layout, edge_color="#888888", ax=ax, width=width)
-    xlim = ax.get_xlim()
-    ax.set_xlim([xlim[0] - xlim[0] * 0.1, xlim[1] + xlim[1] * 0.1])
-    ylim = ax.get_ylim()
-    ax.set_ylim([ylim[0] - ylim[0] * 0.1, ylim[1] + ylim[1] * 0.1])
-
-    max_or = np.max(overrepresentation.values.flatten())
-    scale_factor = 1 / max_or
-    for node, gep_or in overrepresentation.items():
-        if node in graph and gep_or.any():
-            color_list = gep_or.index.map(colordict)
-            draw_circle_bar_plot(position=layout[node], enrichments=gep_or, scale_factor=scale_factor, colors=color_list, size=pie_size, ax=ax)
-
-    if show_legends:
-        # Add legends
-        upper_right_position = (max([x for x, y in layout.values()]) * 1.1, max([y for x, y in layout.values()]) * 1.1)
-        lower_right_position = (max([x for x, y in layout.values()]) * 1.1, min([y for x, y in layout.values()]) * 0.9)
-        draw_circle_bar_plot(
-            position=upper_right_position,
-            enrichments=pd.Series(max_or, index=gep_or.index.sort_values().unique()),
-            colors=overrepresentation.index.map(colordict),
-            scale_factor=scale_factor,
-            size=pie_size,
-            draw_labels=True,
-            label_font_size=6, ax=ax)
-        draw_circle_bar_scale(
-            position=lower_right_position,
-            scale_factor=scale_factor,
-            size=pie_size,
-            label_font_size=6, ax=ax)
-    return ax
-
-def plot_community_network(graph, layout, title, plot_size, node_sizes, community_colors, config, edge_weights=None):
-    fig, ax = plt.subplots(figsize=plot_size)
-    ax.set_aspect(1)
-    ax.set_title(title)
-    if edge_weights is None or not graph.edges:
-        width = 0.2
-    else:
-        width = np.array(list(nx.get_edge_attributes(graph, edge_weights).values()))
-        width = width / np.max(width)
-    width = 5 * width
-        
-    sizes = np.array([node_sizes[node] for node in graph.nodes])
-    sizes = 5 * config.sns["node_size"] * sizes / np.max(sizes)
-    node_colors = [community_colors[node] for node in graph]
-    nx.draw(graph, pos=layout, node_color=node_colors, node_size=sizes, linewidths=0, width=width, edge_color=config.sns["edge_color"], with_labels=True, font_size=8)
-    plt.tight_layout()
-    return fig
-
-# overrepresentation bar plots
-def plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config):
-    metadata = metadata.dropna(axis=1, how="all")
-    # usage subset to dataset
-    ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
-    # number of bars in each community for this dataset
-    community_gep_counts = [len([node for node in communities[c] if node.split("|")[0] == dataset_name]) for c in sorted(list(communities))]
-    fig, axes = plt.subplots(
-        metadata.shape[1], len(communities),
-        figsize=[len(communities) + 0.05 * sum(community_gep_counts), metadata.shape[1] * 2],
-        sharey='row', squeeze=False,
-        gridspec_kw={"width_ratios": community_gep_counts})
-    for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
-        overrepresentation = cn.sns.get_category_overrepresentation(ds_usage, sample_to_class)
-        for col, community in enumerate(sorted(list(communities))):
-            ax = axes[row, col]
-            geps = []
-            for node in communities[community]:
-                dataset_str, k_str, gep_str = node.split("|")
-                if dataset_str == dataset_name:
-                    geps.append((dataset_str, int(k_str), int(gep_str)))
-            geps = sorted(geps)
-            if geps:
-                overrepresentation[geps].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=config.get_metadata_colors(annotation_layer))
-            ax.set_xlabel("")
-            ax.set_xticks([])
-            if col == 0:
-                ax.set_ylabel(annotation_layer)
-            if row == 0:
-                ax.set_title(community, size=14)
-
-    fig.supxlabel("GEP")
-    fig.supylabel("Overrepresentation")
-    fig.suptitle("Community")
-    fig.tight_layout()
-    return fig
 
 def plot_metadata_correlation_geps_bar(usage, metadata, communities, dataset_name, config):
     metadata = metadata.dropna(axis=1, how="all")
@@ -664,60 +930,6 @@ def plot_metadata_correlation_network(graph, layout, title, correlation, plot_si
     plt.tight_layout()
     return fig
 
-def plot_number_of_patients(usage, sample_to_patient, G, layout, config):
-
-    # normalized usage (usages sum to 1 for each value of k)
-    normalized_usage = []
-    for k, subdf in usage.groupby(axis=1, level=[0,1]):
-        normalized_usage.append(subdf.div(subdf.sum(axis=1), axis=0))
-    normalized_usage = pd.concat(normalized_usage, axis=1)
-    normalized_usage
-
-    # discrete usage (Samples are assigned to GEPs with the highest usage)
-    discrete_usage = []
-    for k, subdf in usage.groupby(axis=1, level=[0,1]):
-        discrete_usage.append(subdf.eq(subdf.max(axis=1), axis=0).astype(float))
-    discrete_usage = pd.concat(discrete_usage, axis=1)
-    discrete_usage[usage.isnull()] = np.NaN
-
-    patients_to_geps = discrete_usage.loc[sample_to_patient.keys()].copy(deep=True)
-    patients_to_geps.index = patients_to_geps.index.map(sample_to_patient)
-    patients_to_geps = patients_to_geps.groupby(axis=0, level=[0,1]).any()
-
-    nodes = []
-    for node in G.nodes:
-        dataset_name, k_str, gep_str = node.split("|")
-        nodes.append((dataset_name, int(k_str), int(gep_str)))
-
-    dataset_colors = {ds: ds_attr["color"] for ds, ds_attr in config.datasets.items()}
-    dataset_legend = []
-    for dataset, color in dataset_colors.items():
-        dataset_legend.append(Line2D([0], [0], marker='o', color='w', label=dataset, markerfacecolor=color, markersize=8))
-
-    figs = {}
-    for method in ('nsamples_continuous', 'nsamples_discrete', "npatients_discrete"):
-        if method == 'nsamples_continuous':
-            labels = normalized_usage[nodes].sum().apply(lambda x: "{:.1f}".format(x)).to_dict() # Label is number of samples
-            sizes = (normalized_usage[nodes].sum() * 5).to_dict() # Size is proportional to number of samples
-        elif method == 'nsamples_discrete':
-            labels = discrete_usage[nodes].sum().apply(lambda x: int(x)).to_dict() # Label is number of samples
-            sizes = (discrete_usage[nodes].sum() * 5).to_dict() # Size is proportional to number of samples
-        elif method == "npatients_discrete":
-            labels = patients_to_geps[nodes].sum().to_dict()
-            sizes = (patients_to_geps.sum() * 5).to_dict()
-        labels = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in labels.items()}
-        sizes = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in sizes.items()}
-        colors = [node.partition("|")[2] for node in G]
-        node_sizes = [(sizes[n] if n in sizes else 0) for n in G]
-        colors = [dataset_colors[node.split("|")[0]] for node in G]
-        fig, ax = plt.subplots(figsize=config.sns["plot_size_gep"])
-        nx.draw(G, pos=layout,
-        with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color=config.sns["edge_color"], font_size=3, ax=ax)
-        ax.legend(handles=dataset_legend)
-        ax.set_title(method)
-        fig.tight_layout()
-        figs[method] = fig
-    return figs
 
 def plot_icu_diversity(metadata, diversity, config, title):
     metadata = metadata.cat.add_categories("").fillna("").cat.remove_unused_categories()

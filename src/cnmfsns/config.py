@@ -1,9 +1,11 @@
+
+from . import Dataset, utils
+
 import tomli
 import tomli_w
 import typing
 import pandas as pd
 import numpy as np
-import cnmfsns as cn
 import sys
 import logging
 import collections.abc
@@ -137,7 +139,7 @@ class Config(SimpleNamespace):
         return fig
             
     def add_missing_metadata_colors(self,
-                                    dataset: typing.Optional[cn.Dataset] = None,
+                                    dataset: typing.Optional[Dataset] = None,
                                     pastel_factor=0.3,
                                     colorblind_type=None):
         """
@@ -147,7 +149,7 @@ class Config(SimpleNamespace):
         # get categorical data for which colors should match
         if dataset is None:
             # read from h5ad files
-            metadata_df = pd.concat({name: cn.Dataset.from_h5ad(d["filename"], backed="r").adata.obs.select_dtypes(include="category") for name, d in self.datasets.items()})
+            metadata_df = pd.concat({name: Dataset.from_h5ad(d["filename"], backed="r").adata.obs.select_dtypes(include="category") for name, d in self.datasets.items()})
         else:
             metadata_df = dataset.adata.obs.select_dtypes(include="category")
             
@@ -210,14 +212,14 @@ class Config(SimpleNamespace):
         for ax, track in zip(axes[0], categorical_columns):
             ax = ax
             color_def = self.metadata_colors[track]
-            legend_elements = [Patch(label=cn.utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+            legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
             ax.legend(handles=legend_elements, loc='upper center')
             ax.set_title(track)
             ax.set_axis_off()
         for ax_id, group in enumerate(categorical_groups, len(categorical_columns)):
             ax = axes[0][ax_id]
             color_def = self.metadata_colors_group[group]["colors"]
-            legend_elements = [Patch(label=cn.utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+            legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
             ax.legend(handles=legend_elements, loc='upper center')
             ax.set_title(group)
             ax.set_axis_off()
@@ -231,12 +233,8 @@ class Config(SimpleNamespace):
 
     def get_usage_matrix(self):
         usage = []
-        sample_to_patient = {}
         for dataset_name, dataset in self.datasets.items():
-            adata = cn.Dataset.from_h5ad(dataset["filename"]).adata
-            # if "patient_id_column" in dataset:   # this code can be removed once patient-id mapping is implemented elsewhere
-            #     for sample, patient in adata.obs[dataset["patient_id_column"]].items():
-            #         sample_to_patient[(dataset_name, sample)] = (dataset_name, patient)
+            adata = Dataset.from_h5ad(dataset["filename"]).adata
             df = adata.obsm["cnmf_usage"]
             df.index = pd.MultiIndex.from_product(([dataset_name], (df.index)))
             df.columns = pd.MultiIndex.from_tuples([(dataset_name, int(col[0]), int(col[1])) for col in df.columns.str.split(".")])
@@ -249,7 +247,7 @@ class Config(SimpleNamespace):
     def get_sample_patient_mapping(self):
         sample_to_patient = {}
         for dataset_name, dataset in self.datasets.items():
-            adata = cn.Dataset.from_h5ad(dataset["filename"]).adata
+            adata = Dataset.from_h5ad(dataset["filename"]).adata
             if "patient_id_column" in dataset:   # this code can be removed once patient-id mapping is implemented elsewhere
                 for sample, patient in adata.obs[dataset["patient_id_column"]].items():
                     sample_to_patient[(dataset_name, sample)] = (dataset_name, patient)

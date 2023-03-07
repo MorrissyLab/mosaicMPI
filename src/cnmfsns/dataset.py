@@ -1,11 +1,15 @@
+
+from . import utils, cnmf, __version__
+
 import numpy as np
+from warnings import catch_warnings, simplefilter
 import pandas as pd
 import scipy as sp
 import logging
 from datetime import datetime
 import sys
 import typing
-import collections
+from collections.abc import Iterable, Collection
 import semantic_version
 import anndata as ad
 import seaborn as sns
@@ -15,29 +19,6 @@ import matplotlib.pyplot as plt
 from statsmodels.gam.api import GLMGam, BSplines
 import os
 from glob import glob
-import cnmfsns as cn
-
-
-# lower-level functions
-
-def save_df_to_text(obj, filename):
-    obj.to_csv(filename, sep='\t')
-
-def save_df_to_npz(obj, filename):
-    np.savez_compressed(filename, data=obj.values, index=obj.index.values, columns=obj.columns.values)
-
-def load_df_from_npz(filename, multiindex=False):
-    with np.load(filename, allow_pickle=True) as f:
-        if any([isinstance(c, tuple) for c in (f["index"])]):
-            index = pd.MultiIndex.from_tuples(f["index"])
-        else:
-            index = f["index"]
-        if any([isinstance(c, tuple) for c in (f["columns"])]):
-            columns = pd.MultiIndex.from_tuples(f["columns"])
-        else:
-            columns = f["columns"]
-        obj = pd.DataFrame(f["data"], index=index, columns=columns)
-    return obj
 
 def migrate_anndata(adata:ad.AnnData, force: bool = False):
     # migrates pre-1.0.0 anndata objects to newer format.
@@ -82,13 +63,15 @@ class Dataset():
     def __init__(self,
                  adata: ad.AnnData,
                  name: typing.Optional[str] = None,
-                 color: typing.Optional[str] = None
+                 color: typing.Optional[str] = None,
+                 patient_id_col: typing.Optional[str] = None
                  ):
         
         
         self.name = name
         self.color = color
         self.adata = adata
+        self.patient_id_col = patient_id_col
     
     @classmethod
     def from_df(cls,
@@ -99,18 +82,20 @@ class Dataset():
                   var: typing.Optional[pd.DataFrame] = None,
                   name: typing.Optional[str] = None,
                   color: typing.Optional[str] = None,
+                  patient_id_col: typing.Optional[str] = None
                   ):
         if var is not None:
             var = var.reindex(data.columns)
         if sparsify:
             data = sp.csr_matrix(data.values)
+        data = data.astype("float32")
         uns = {"history": {}, "odg":{}}
-        adata = ad.AnnData(X=data, var=var, uns=uns)  
-        dataset = cls(adata=adata, name=name, color=color)
+        adata = ad.AnnData(X=data, var=var, uns=uns)
+        dataset = cls(adata=adata, name=name, color=color, patient_id_col=patient_id_col)
         if obs is not None:
             dataset.update_obs(obs_df=obs)
         dataset.is_normalized = is_normalized
-        dataset.cnmfsns_version = cn.__version__
+        dataset.cnmfsns_version = __version__
         dataset.append_to_history("Initialized new AnnData object")  
         return dataset
     
@@ -118,13 +103,15 @@ class Dataset():
     def from_anndata(cls,
                      adata: ad.AnnData,
                      name: typing.Optional[str] = None,
-                     color: typing.Optional[str] = None, force_migrate=False
+                     color: typing.Optional[str] = None,
+                     patient_id_col: typing.Optional[str] = None,
+                     force_migrate: bool =False
                      ):
-        dataset = cls(adata=adata, name=name, color=color)
+        dataset = cls(adata=adata, name=name, color=color, patient_id_col=patient_id_col)
         if dataset.cnmfsns_version is None:
             # importing old versions requires updating
             dataset.adata, dataset.is_normalized = migrate_anndata(adata, force=force_migrate)
-            dataset.cnmfsns_version = cn.__version__
+            dataset.cnmfsns_version = __version__
             dataset.append_to_history("Migrated pre-1.0.0 or external AnnData object")
         if dataset.adata.X is None:
             logging.error(f".h5ad file contains no expression data (adata.X)")
@@ -135,10 +122,14 @@ class Dataset():
     def from_h5ad(cls,
                   h5ad_file: str,
                   name: typing.Optional[str] = None,
-                  color: typing.Optional[str] = None, force_migrate=False, backed=False
+                  color: typing.Optional[str] = None,
+                  patient_id_col: typing.Optional[str] = None,
+                  force_migrate=False, backed=False
                   ):
         adata = ad.read_h5ad(h5ad_file, backed=backed)
-        dataset = Dataset.from_anndata(adata=adata, name=name, color=color, force_migrate=force_migrate)
+        dataset = Dataset.from_anndata(adata=adata, name=name, color=color,
+                                       patient_id_col=patient_id_col, 
+                                       force_migrate=force_migrate)
         return dataset
     
     def append_to_history(self, text):
@@ -262,7 +253,7 @@ class Dataset():
 
 
         # model mean-variance relationship using cNMF's method based on v-score and minimum expression threshold
-        vscore_stats = pd.DataFrame(cn.cnmf.get_highvar_genes(input_counts=data_normalized.values, minimal_mean=0)[0])
+        vscore_stats = pd.DataFrame(cnmf.get_highvar_genes(input_counts=data_normalized.values, minimal_mean=0)[0])
         vscore_stats.index = data_normalized.columns
         self.adata.var["vscore"] = vscore_stats["fano_ratio"]
         self.adata.uns["odg"]["odg_default_spline_degree"] = odg_default_spline_degree
@@ -270,7 +261,7 @@ class Dataset():
         self.adata.uns["odg"]["minimum_mean"] = minimum_mean
         self.append_to_history("Gene-level statistics and overdispersion modelling completed.")
         
-    def select_overdispersed_genes_from_genelist(self, genes: collections.abc.Iterable, min_mean=0):
+    def select_overdispersed_genes_from_genelist(self, genes: Collection, min_mean=0):
         self.adata.var["selected"] = self.adata.var.index.isin(genes) & self.adata.var["mean_counts"] >= min_mean
         self.adata.uns["odg"]["overdispersion_metric"] = ""
         self.adata.uns["odg"]["min_mean"] = min_mean
@@ -278,6 +269,7 @@ class Dataset():
         self.adata.uns["odg"]["top_n"] = ""
         self.adata.uns["odg"]["quantile"] = ""
         self.append_to_history("Overdispersed genes selected from custom gene list")
+        
     def select_overdispersed_genes(self,
                                    overdispersion_metric: str = "odscore",
                                    min_mean: float = 0,
@@ -338,11 +330,11 @@ class Dataset():
     
     def initialize_cnmf(self, output_dir: str,
                         name: str,
-                        kvals: collections.abc.Iterable = range(2, 61),
+                        kvals: Collection = range(2, 61),
                         n_iter: int = 200,
                         beta_loss: str = "kullback-leibler",
                         seed: typing.Optional[int] = None):
-        cnmf_obj = cn.cnmf.cNMF(output_dir=output_dir, name=name)
+        cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
         
         # write TPM (normalized) data
         tpm = ad.AnnData(self.to_df(normalized=True))
@@ -351,7 +343,7 @@ class Dataset():
         gene_tpm_mean = np.array(tpm.X.mean(axis=0)).reshape(-1)
         gene_tpm_stddev = np.array(tpm.X.std(axis=0, ddof=0)).reshape(-1)
         input_tpm_stats = pd.DataFrame([gene_tpm_mean, gene_tpm_stddev], index = ['__mean', '__std']).T
-        cn.dataset.save_df_to_npz(input_tpm_stats, cnmf_obj.paths['tpm_stats'])
+        utils.save_df_to_npz(input_tpm_stats, cnmf_obj.paths['tpm_stats'])
         overdispersed_genes = self.adata.var["selected"][self.adata.var["selected"]].index
         norm_counts = cnmf_obj.get_norm_counts(self.adata, tpm, high_variance_genes_filter=overdispersed_genes)
         if norm_counts.X.dtype != np.float64:
@@ -365,7 +357,7 @@ class Dataset():
         self.adata.uns["cnmf"] = cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss)[1]  # dict of cnmf parameters
         
         self.append_to_history("cNMF parameters added. cNMF inputs initialized in {output_dir}/{name}")
-        return cn.cnmf.cNMF(output_dir=output_dir, name=name)
+        return cnmf_obj
     
     def add_cnmf_results(self, cnmf_output_dir, cnmf_name, local_density_threshold: float = None, local_neighborhood_size: float = None):
         self.adata.uns["cnmf_name"] = cnmf_name
@@ -427,19 +419,60 @@ class Dataset():
         self.adata.uns["kvals"] = kvals
         self.append_to_history("cNMF results added from output directory {cnmf_output_dir}/{cnmf_name}")
 
-    def get_usages(self, k: int = None):
+    def get_usages(self,
+                   k: int = None,
+                   discretize: bool = False,
+                   normalize: bool = False):
         df = self.adata.obsm["cnmf_usage"].copy()
         df.columns = pd.MultiIndex.from_tuples(df.columns.str.split(".").to_list())
         df.columns = df.columns.set_levels([l.astype("int") for l in df.columns.levels])
+        if normalize:
+            normalized = []
+            for _, subdf in df.groupby(axis=1, level=0):
+                normalized.append(subdf.div(subdf.sum(axis=1), axis=0))
+            df = pd.concat(normalized, axis=1)
+        if discretize:
+            discretized = []
+            for _, subdf in df.groupby(axis=1, level=0):
+                discretized.append(subdf.eq(subdf.max(axis=1), axis=0).astype(int))
+            df = pd.concat(discretized, axis=1)        
         if k is not None:
             df = df.loc[:, k]
+        df = df.sort_index(axis=0).sort_index(axis=1)   
         return df
     
-    def get_geps(self, k: int = None, type="cnmf_gep_score"):
+    def get_geps(self, k: typing.Union[int, Iterable] = None, type="cnmf_gep_score"):
         df = self.adata.varm[type].copy()
         df.columns = pd.MultiIndex.from_tuples(df.columns.str.split(".").to_list())
         df.columns = df.columns.set_levels([l.astype("int") for l in df.columns.levels])
-        if k is not None:
+        if isinstance(k, (int, Iterable)):
             df = df.loc[:, k]
         df = df.sort_index(axis=1)
         return df
+    
+    def get_metadata_df(self, include_categorical=True, include_numerical=True):
+        dtypes = []
+        if include_categorical:
+            dtypes.append("category")
+        if include_numerical:
+            dtypes += ["float", "int"]
+        unexplained_cols = self.adata.obs.select_dtypes(exclude=("category", "float", "int")).columns
+        if len(unexplained_cols) > 0:
+            unexplained_col_str = ", ".join(unexplained_cols)
+            raise ValueError(f"{unexplained_col_str} metadata columns have unrecognized dtypes.")
+        df = self.adata.obs.select_dtypes(include=dtypes)
+        return df
+    
+    def get_category_overrepresentation(self, layer):
+        usage = self.get_usages().copy()
+        sample_to_class = self.get_metadata_df()[layer]
+        usage.index = usage.index.map(sample_to_class)
+        observed = usage.groupby(axis=0, level=0).sum()
+        expected = []
+        for k, obs_k in observed.groupby(axis=1, level=1):
+            exp_k = pd.DataFrame(obs_k.sum(axis=1)) @ pd.DataFrame(obs_k.sum(axis=0)).T / obs_k.sum().sum()
+            expected.append(exp_k)
+        expected = pd.concat(expected, axis=1)
+        chisq_resid = (observed - expected) / np.sqrt(expected)  # pearson residual of chi-squared test of contingency table
+        overrepresentation = chisq_resid.clip(lower=0)
+        return overrepresentation
