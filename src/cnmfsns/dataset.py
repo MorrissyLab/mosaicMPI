@@ -53,7 +53,7 @@ def migrate_anndata(adata:ad.AnnData, force: bool = False):
         del adata.uns["odg"]["gene_stats"]
     
     # create new AnnData object
-    new_adata = ad.AnnData(X=raw, obs=adata.obs, var=adata.var, uns=adata.uns)
+    new_adata = ad.AnnData(X=raw, obs=adata.obs, var=adata.var, varm=adata.varm, obsm=adata.obsm, uns=adata.uns)
     if "history" not in new_adata.uns:
         new_adata.uns["history"] = {}
     return new_adata, is_normalized
