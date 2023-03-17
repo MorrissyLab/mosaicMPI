@@ -5,7 +5,7 @@
 
 # cNMF-SNS: powerful factorization-based multi-omics integration toolkit
 
-![](https://img.shields.io/badge/version-1.0.0-blue)
+![](https://img.shields.io/badge/version-1.0.1-blue)
 
 <details>
   <summary> future badges </summary>
@@ -59,6 +59,7 @@ If you have installed a [personal access token from GitHub](https://github.com/s
 ```
 pip install git+https://<token>@github.com/MorrissyLab/cNMF-SNS.git
 ```
+
 ### 2. Installing from public repositories
 
 > Note: This will work only when cNMF-SNS has been published to PyPI.
