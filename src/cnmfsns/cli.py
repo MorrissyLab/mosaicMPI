@@ -695,312 +695,312 @@ def cmd_create_network(output_dir, name, config_toml):
 
 
 
-    # GEP level, numerical data, correlation plots
-    logging.info("Creating GEP network plots for numerical metadata")
-    for dataset_name, dataset in config.datasets.items():
-        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(exclude="category").dropna(axis=1, how="all")  # exclude categorical data
-        if metadata.shape[1] == 0:
-            continue
+    # # GEP level, numerical data, correlation plots
+    # logging.info("Creating GEP network plots for numerical metadata")
+    # for dataset_name, dataset in config.datasets.items():
+    #     metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(exclude="category").dropna(axis=1, how="all")  # exclude categorical data
+    #     if metadata.shape[1] == 0:
+    #         continue
         
-        dataset_is_in_nodes = any([node.split("|")[0] == dataset_name for community in communities.values() for node in community])
-        if not dataset_is_in_nodes:
-            continue
+    #     dataset_is_in_nodes = any([node.split("|")[0] == dataset_name for community in communities.values() for node in community])
+    #     if not dataset_is_in_nodes:
+    #         continue
         
-        # bar charts
-        fig = plot_metadata_correlation_geps_bar(usage, metadata, communities, dataset_name, config)
-        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation_bar_by_community"), exist_ok=True)
-        fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_bar_by_community", dataset_name + ".pdf"))
-        plt.close(fig)
+    #     # bar charts
+    #     fig = plot_metadata_correlation_geps_bar(usage, metadata, communities, dataset_name, config)
+    #     os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation_bar_by_community"), exist_ok=True)
+    #     fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_bar_by_community", dataset_name + ".pdf"))
+    #     plt.close(fig)
 
-        for annotation_layer, sample_to_numeric in metadata.items():
-            ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
-            correlation = ds_usage.corrwith(sample_to_numeric, method="spearman")
-            os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation", dataset_name), exist_ok=True)
-            correlation.to_csv(os.path.join(sns_output_dir, "annotated_geps", "correlation", dataset_name, annotation_layer + ".txt"), sep='\t')
-            correlation.index = pd.Index([f"{c[0]}|{c[1]}|{c[2]}" for c in correlation.index])
-            fig = plot_metadata_correlation_network(
-                graph=G,
-                layout=layout,
-                title=f"Dataset: {dataset_name}\nMetadata Layer: {annotation_layer}",
-                correlation=correlation,
-                plot_size=config.sns["plot_size_gep"],
-                node_size=config.sns["node_size"],
-                config=config
-            )
-            os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name), exist_ok=True)
-            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name, annotation_layer + ".pdf"))
-            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name, annotation_layer + ".png"), dpi=600)
-            plt.close(fig)
+    #     for annotation_layer, sample_to_numeric in metadata.items():
+    #         ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
+    #         correlation = ds_usage.corrwith(sample_to_numeric, method="spearman")
+    #         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation", dataset_name), exist_ok=True)
+    #         correlation.to_csv(os.path.join(sns_output_dir, "annotated_geps", "correlation", dataset_name, annotation_layer + ".txt"), sep='\t')
+    #         correlation.index = pd.Index([f"{c[0]}|{c[1]}|{c[2]}" for c in correlation.index])
+    #         fig = plot_metadata_correlation_network(
+    #             graph=G,
+    #             layout=layout,
+    #             title=f"Dataset: {dataset_name}\nMetadata Layer: {annotation_layer}",
+    #             correlation=correlation,
+    #             plot_size=config.sns["plot_size_gep"],
+    #             node_size=config.sns["node_size"],
+    #             config=config
+    #         )
+    #         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name), exist_ok=True)
+    #         fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name, annotation_layer + ".pdf"))
+    #         fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name, annotation_layer + ".png"), dpi=600)
+    #         plt.close(fig)
 
-    # Community-level Network
-    logging.info("Creating community network")
-    edge_list = []
-    for c1, n1 in communities.items():
-        for c2, n2 in communities.items():
-            if c1 != c2:  # no self-loops
-                n_edges = len(list(nx.edge_boundary(G, n1, n2)))
-                edge_list.append((c1, c2, n_edges))
+    # # Community-level Network
+    # logging.info("Creating community network")
+    # edge_list = []
+    # for c1, n1 in communities.items():
+    #     for c2, n2 in communities.items():
+    #         if c1 != c2:  # no self-loops
+    #             n_edges = len(list(nx.edge_boundary(G, n1, n2)))
+    #             edge_list.append((c1, c2, n_edges))
 
-    edge_list = pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges"))
-    Gcomm = nx.from_pandas_edgelist(pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges")), "comm1", "comm2", "n_edges")
-    Gcomm.add_nodes_from(communities.keys())
-    # Centroid method for community layout
-    community_layout = {}
-    for community_name, nodes in communities.items():
-        points = np.array([layout[node] for node in nodes])
-        centroid = (np.median(points[:, 0]), np.median(points[:, 1]))
-        community_layout[community_name] = centroid
+    # edge_list = pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges"))
+    # Gcomm = nx.from_pandas_edgelist(pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges")), "comm1", "comm2", "n_edges")
+    # Gcomm.add_nodes_from(communities.keys())
+    # # Centroid method for community layout
+    # community_layout = {}
+    # for community_name, nodes in communities.items():
+    #     points = np.array([layout[node] for node in nodes])
+    #     centroid = (np.median(points[:, 0]), np.median(points[:, 1]))
+    #     community_layout[community_name] = centroid
 
-    ### Plot network layout ###
-    fig, ax = plt.subplots(figsize=config.sns["plot_size_gep"])
-    ax.set_aspect(1)
-    if Gcomm.edges:
-        width = np.array(list(nx.get_edge_attributes(Gcomm, "n_edges").values()))
-        width = 20 * width / np.max(width)
-    else:
-        width = None
-    sizes = np.array([len(communities[node]) for node in Gcomm.nodes])
-    sizes = 20 * config.sns["node_size"] * sizes / np.max(sizes)
-    node_colors = [community_colors[node] for node in Gcomm]
-    nx.draw(Gcomm, pos=community_layout, node_color=node_colors, node_size=sizes, linewidths=0, width=width, edge_color=config.sns["edge_color"], with_labels=True, font_size=20)
-    plt.tight_layout()
-    fig.savefig(os.path.join(sns_output_dir, "community_network.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "community_network.png"), dpi=600)
-    plt.close(fig)
+    # ### Plot network layout ###
+    # fig, ax = plt.subplots(figsize=config.sns["plot_size_gep"])
+    # ax.set_aspect(1)
+    # if Gcomm.edges:
+    #     width = np.array(list(nx.get_edge_attributes(Gcomm, "n_edges").values()))
+    #     width = 20 * width / np.max(width)
+    # else:
+    #     width = None
+    # sizes = np.array([len(communities[node]) for node in Gcomm.nodes])
+    # sizes = 20 * config.sns["node_size"] * sizes / np.max(sizes)
+    # node_colors = [community_colors[node] for node in Gcomm]
+    # nx.draw(Gcomm, pos=community_layout, node_color=node_colors, node_size=sizes, linewidths=0, width=width, edge_color=config.sns["edge_color"], with_labels=True, font_size=20)
+    # plt.tight_layout()
+    # fig.savefig(os.path.join(sns_output_dir, "community_network.pdf"))
+    # fig.savefig(os.path.join(sns_output_dir, "community_network.png"), dpi=600)
+    # plt.close(fig)
             
-    # Community-level overrepresentation plots
-    logging.info("Creating community network plots for categorical metadata")
-    plot_data = {}
-    for dataset_name, dataset in config.datasets.items():
-        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category").dropna(axis=1, how="all")  # only use categorical data
-        for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
-            # usage subset to dataset
-            ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
-            overrepresentation = get_category_overrepresentation(ds_usage, sample_to_class)
-            result_df = []
-            for col, community in enumerate(sorted(list(communities))):
-                geps = []
-                for node in communities[community]:
-                    dataset_str, k_str, gep_str = node.split("|")
-                    if dataset_str == dataset_name:
-                        geps.append((dataset_str, int(k_str), int(gep_str)))
-                geps = sorted(geps)
-                if geps:
-                    com_es = overrepresentation[geps].mean(axis=1)
-                    com_es[com_es < 0] = 0
-                else:
-                    com_es = pd.Series(0, index=overrepresentation.index)
-                result_df.append(com_es.rename(community))
-            result_df = pd.concat(result_df, axis=1)
-            plot_data[(dataset_name, annotation_layer)] = result_df
+    # # Community-level overrepresentation plots
+    # logging.info("Creating community network plots for categorical metadata")
+    # plot_data = {}
+    # for dataset_name, dataset in config.datasets.items():
+    #     metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category").dropna(axis=1, how="all")  # only use categorical data
+    #     for row, (annotation_layer, sample_to_class) in enumerate(metadata.items()):
+    #         # usage subset to dataset
+    #         ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
+    #         overrepresentation = get_category_overrepresentation(ds_usage, sample_to_class)
+    #         result_df = []
+    #         for col, community in enumerate(sorted(list(communities))):
+    #             geps = []
+    #             for node in communities[community]:
+    #                 dataset_str, k_str, gep_str = node.split("|")
+    #                 if dataset_str == dataset_name:
+    #                     geps.append((dataset_str, int(k_str), int(gep_str)))
+    #             geps = sorted(geps)
+    #             if geps:
+    #                 com_es = overrepresentation[geps].mean(axis=1)
+    #                 com_es[com_es < 0] = 0
+    #             else:
+    #                 com_es = pd.Series(0, index=overrepresentation.index)
+    #             result_df.append(com_es.rename(community))
+    #         result_df = pd.concat(result_df, axis=1)
+    #         plot_data[(dataset_name, annotation_layer)] = result_df
 
-    for (dataset_name, annotation_layer), community_es in plot_data.items():
-        # bar plots
-        fig, ax = plt.subplots()
-        community_es.T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, rot=0, color=config.get_metadata_colors(annotation_layer))
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name), exist_ok=True)
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".pdf"))
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".png"), dpi=600)
-        plt.close(fig)
+    # for (dataset_name, annotation_layer), community_es in plot_data.items():
+    #     # bar plots
+    #     fig, ax = plt.subplots()
+    #     community_es.T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, rot=0, color=config.get_metadata_colors(annotation_layer))
+    #     os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name), exist_ok=True)
+    #     fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".pdf"))
+    #     fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, annotation_layer + ".png"), dpi=600)
+    #     plt.close(fig)
 
-        # network plots
-        fig, ax = plt.subplots(figsize=config.sns["plot_size_community"])
-        plot_overrepresentation_network(
-            graph=Gcomm,
-            layout=community_layout,
-            title=f"Dataset: {dataset_name}\nAnnotations: {annotation_layer}",
-            overrepresentation=community_es,
-            colordict=config.get_metadata_colors(annotation_layer),
-            pie_size=np.array(config.sns["pie_size_community"]),
-            edge_weights="n_edges",
-            ax=ax
-        )
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name), exist_ok=True)
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, annotation_layer + ".pdf"))
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, annotation_layer + ".png"), dpi=600)
-        plt.close(fig)
+    #     # network plots
+    #     fig, ax = plt.subplots(figsize=config.sns["plot_size_community"])
+    #     plot_overrepresentation_network(
+    #         graph=Gcomm,
+    #         layout=community_layout,
+    #         title=f"Dataset: {dataset_name}\nAnnotations: {annotation_layer}",
+    #         overrepresentation=community_es,
+    #         colordict=config.get_metadata_colors(annotation_layer),
+    #         pie_size=np.array(config.sns["pie_size_community"]),
+    #         edge_weights="n_edges",
+    #         ax=ax
+    #     )
+    #     os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name), exist_ok=True)
+    #     fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, annotation_layer + ".pdf"))
+    #     fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, annotation_layer + ".png"), dpi=600)
+    #     plt.close(fig)
 
 
-    # Community-level correlation plots
-    logging.info("Creating community network plots for numerical metadata")
-    plot_data = {}
-    for dataset_name, dataset in config.datasets.items():
-        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(exclude="category").dropna(axis=1, how="all")  # only use categorical data
-        for row, (annotation_layer, sample_to_numeric) in enumerate(metadata.items()):
-            # usage subset to dataset
-            ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
-            correlation = ds_usage.corrwith(sample_to_numeric)
-            result = {}
-            for col, community in enumerate(sorted(list(communities))):
-                geps = []
-                for node in communities[community]:
-                    dataset_str, k_str, gep_str = node.split("|")
-                    if dataset_str == dataset_name:
-                        geps.append((dataset_str, int(k_str), int(gep_str)))
-                geps = sorted(geps)
-                if geps:
-                    com_meancorr = correlation[geps].mean()
-                else:
-                    com_meancorr = 0
-                result[community] = com_meancorr
-            plot_data[(dataset_name, annotation_layer)] = pd.Series(result).sort_index()
+    # # Community-level correlation plots
+    # logging.info("Creating community network plots for numerical metadata")
+    # plot_data = {}
+    # for dataset_name, dataset in config.datasets.items():
+    #     metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(exclude="category").dropna(axis=1, how="all")  # only use categorical data
+    #     for row, (annotation_layer, sample_to_numeric) in enumerate(metadata.items()):
+    #         # usage subset to dataset
+    #         ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
+    #         correlation = ds_usage.corrwith(sample_to_numeric)
+    #         result = {}
+    #         for col, community in enumerate(sorted(list(communities))):
+    #             geps = []
+    #             for node in communities[community]:
+    #                 dataset_str, k_str, gep_str = node.split("|")
+    #                 if dataset_str == dataset_name:
+    #                     geps.append((dataset_str, int(k_str), int(gep_str)))
+    #             geps = sorted(geps)
+    #             if geps:
+    #                 com_meancorr = correlation[geps].mean()
+    #             else:
+    #                 com_meancorr = 0
+    #             result[community] = com_meancorr
+    #         plot_data[(dataset_name, annotation_layer)] = pd.Series(result).sort_index()
 
-    for (dataset_name, annotation_layer), community_corr in plot_data.items():
-        # bar plots
-        fig, ax = plt.subplots()
-        community_corr.plot.bar(width=0.9, ax=ax, legend=None, rot=0, ylim=[-1, 1])
-        ax.set_ylabel("Pearson correlation")
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar", dataset_name), exist_ok=True)
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar", dataset_name, annotation_layer + ".pdf"))
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar", dataset_name, annotation_layer + ".png"), dpi=600)
-        plt.close(fig)
+    # for (dataset_name, annotation_layer), community_corr in plot_data.items():
+    #     # bar plots
+    #     fig, ax = plt.subplots()
+    #     community_corr.plot.bar(width=0.9, ax=ax, legend=None, rot=0, ylim=[-1, 1])
+    #     ax.set_ylabel("Pearson correlation")
+    #     os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar", dataset_name), exist_ok=True)
+    #     fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar", dataset_name, annotation_layer + ".pdf"))
+    #     fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar", dataset_name, annotation_layer + ".png"), dpi=600)
+    #     plt.close(fig)
 
-        # network plots
-        fig = plot_metadata_correlation_network(
-            graph=Gcomm,
-            layout=community_layout,
-            title=f"Dataset: {dataset_name}\nMetadata Layer: {annotation_layer}",
-            correlation=community_corr,
-            plot_size=config.sns["plot_size_community"],
-            node_size=np.array(config.sns["node_size"]),
-            edge_weights="n_edges",
-            config=config
-        )
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name), exist_ok=True)
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name, annotation_layer + ".pdf"))
-        fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name, annotation_layer + ".png"), dpi=600)
-        plt.close(fig)
+    #     # network plots
+    #     fig = plot_metadata_correlation_network(
+    #         graph=Gcomm,
+    #         layout=community_layout,
+    #         title=f"Dataset: {dataset_name}\nMetadata Layer: {annotation_layer}",
+    #         correlation=community_corr,
+    #         plot_size=config.sns["plot_size_community"],
+    #         node_size=np.array(config.sns["node_size"]),
+    #         edge_weights="n_edges",
+    #         config=config
+    #     )
+    #     os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name), exist_ok=True)
+    #     fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name, annotation_layer + ".pdf"))
+    #     fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name, annotation_layer + ".png"), dpi=600)
+    #     plt.close(fig)
         
-    for dataset_name, geps in selected_geps.droplevel(axis=1, level=[2,3]).groupby(axis=1, level=1):
-        geps = geps.droplevel(axis=1, level=1)
-        geps.columns = geps.columns.astype("int")
-        for feature in config.features["features_of_interest"]:
-            if feature in geps.index:
-                positive_scores = geps.loc[feature].groupby(axis=0, level=0).mean().reindex(communities.keys()).fillna(0).clip(lower=0)
-                if positive_scores.sum() == 0:
-                    continue
-                fig = plot_community_network(
-                    graph = Gcomm,
-                    layout = community_layout,
-                    plot_size = config.sns["plot_size_community"],
-                    title = f"Dataset: {dataset_name}\nFeature: {feature}",
-                    node_sizes=positive_scores,
-                    edge_weights="n_edges",
-                    config=config,
-                    community_colors=community_colors
-                )
-                os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "cNMF_score"), exist_ok=True)
-                fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "cNMF_score", f"{feature}_{dataset_name}.pdf"))
-                plt.close(fig)
+    # for dataset_name, geps in selected_geps.droplevel(axis=1, level=[2,3]).groupby(axis=1, level=1):
+    #     geps = geps.droplevel(axis=1, level=1)
+    #     geps.columns = geps.columns.astype("int")
+    #     for feature in config.features["features_of_interest"]:
+    #         if feature in geps.index:
+    #             positive_scores = geps.loc[feature].groupby(axis=0, level=0).mean().reindex(communities.keys()).fillna(0).clip(lower=0)
+    #             if positive_scores.sum() == 0:
+    #                 continue
+    #             fig = plot_community_network(
+    #                 graph = Gcomm,
+    #                 layout = community_layout,
+    #                 plot_size = config.sns["plot_size_community"],
+    #                 title = f"Dataset: {dataset_name}\nFeature: {feature}",
+    #                 node_sizes=positive_scores,
+    #                 edge_weights="n_edges",
+    #                 config=config,
+    #                 community_colors=community_colors
+    #             )
+    #             os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "cNMF_score"), exist_ok=True)
+    #             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "cNMF_score", f"{feature}_{dataset_name}.pdf"))
+    #             plt.close(fig)
         
-    # per patient community level plots
-    if any(["patient_id_column" in d for d in config.datasets.values()]):
-        patient_to_samples = {patient: [] for sample, patient in sample_to_patient.items()}
-        for sample, patient in sample_to_patient.items():
-            patient_to_samples[patient].append(sample)
-        patient_to_samples = pd.Series(patient_to_samples).explode()
+    # # per patient community level plots
+    # if any(["patient_id_column" in d for d in config.datasets.values()]):
+    #     patient_to_samples = {patient: [] for sample, patient in sample_to_patient.items()}
+    #     for sample, patient in sample_to_patient.items():
+    #         patient_to_samples[patient].append(sample)
+    #     patient_to_samples = pd.Series(patient_to_samples).explode()
 
-        n_cols = 4
-        for annotation_layer in merged_metadata.select_dtypes("category").columns:
-            if annotation_layer == "Dataset":
-                colordict = {dsname: dsparam["color"] for dsname, dsparam in config.datasets.items()}
-            else:
-                colordict = config.get_metadata_colors(annotation_layer)
-                colordict[""] = config.metadata_colors["missing_data"]
-            for min_samples_per_patient in [1,2]:
-                n_plots = (patient_to_samples.groupby(axis=0, level=[0,1]).count() >= min_samples_per_patient).sum() + 1  # one plot per patient as well as an extra for the legend.
-                n_rows = 1 + n_plots // n_cols
-                fig, axes = plt.subplots(n_rows, n_cols, figsize = [config.sns["plot_size_community"][0]*n_cols, config.sns["plot_size_community"][1]*n_rows], squeeze=False, layout="constrained")
-                for row in range(n_rows):
-                    for col in range(n_cols):
-                        axes[row,col].set_axis_off()
+    #     n_cols = 4
+    #     for annotation_layer in merged_metadata.select_dtypes("category").columns:
+    #         if annotation_layer == "Dataset":
+    #             colordict = {dsname: dsparam["color"] for dsname, dsparam in config.datasets.items()}
+    #         else:
+    #             colordict = config.get_metadata_colors(annotation_layer)
+    #             colordict[""] = config.metadata_colors["missing_data"]
+    #         for min_samples_per_patient in [1,2]:
+    #             n_plots = (patient_to_samples.groupby(axis=0, level=[0,1]).count() >= min_samples_per_patient).sum() + 1  # one plot per patient as well as an extra for the legend.
+    #             n_rows = 1 + n_plots // n_cols
+    #             fig, axes = plt.subplots(n_rows, n_cols, figsize = [config.sns["plot_size_community"][0]*n_cols, config.sns["plot_size_community"][1]*n_rows], squeeze=False, layout="constrained")
+    #             for row in range(n_rows):
+    #                 for col in range(n_cols):
+    #                     axes[row,col].set_axis_off()
 
-                # Add legend
-                ax = axes[0, 0]  # get lower right axes
-                legend_elements = []
-                for name, color in colordict.items():
-                    legend_elements.append(Line2D([0], [0], marker='o', color='w', label=name, markerfacecolor=color, markersize=10))
-                ax.legend(handles=legend_elements, loc='center')
-                ax.set_title("Legend", fontdict={'fontsize': 26})
+    #             # Add legend
+    #             ax = axes[0, 0]  # get lower right axes
+    #             legend_elements = []
+    #             for name, color in colordict.items():
+    #                 legend_elements.append(Line2D([0], [0], marker='o', color='w', label=name, markerfacecolor=color, markersize=10))
+    #             ax.legend(handles=legend_elements, loc='center')
+    #             ax.set_title("Legend", fontdict={'fontsize': 26})
 
-                plot_count = 1
-                for (dataset, patient), patient_samples in patient_to_samples.groupby(axis=0, level=[0,1]):
-                    if patient_samples.shape[0] >= min_samples_per_patient:
-                        ax = axes[plot_count // n_cols, plot_count % n_cols]
-                        bar_data = ic_usage.loc[patient_samples].fillna(0)
-                        bar_data.index = merged_metadata.loc[bar_data.index][annotation_layer].cat.add_categories("").fillna("")
-                        bar_data = bar_data.groupby(axis=0, level=0).mean().dropna(how="any")
-                        plot_overrepresentation_network(Gcomm, community_layout, f"{dataset}\n{patient}", overrepresentation=bar_data, colordict=colordict, pie_size=config.sns["pie_size_community"], ax=ax, edge_weights=None, show_legends=False)
-                        plot_count += 1
-                os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer), exist_ok=True)
-                fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.pdf"))
-                fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.png"), dpi=100)
-                plt.close("all")
+    #             plot_count = 1
+    #             for (dataset, patient), patient_samples in patient_to_samples.groupby(axis=0, level=[0,1]):
+    #                 if patient_samples.shape[0] >= min_samples_per_patient:
+    #                     ax = axes[plot_count // n_cols, plot_count % n_cols]
+    #                     bar_data = ic_usage.loc[patient_samples].fillna(0)
+    #                     bar_data.index = merged_metadata.loc[bar_data.index][annotation_layer].cat.add_categories("").fillna("")
+    #                     bar_data = bar_data.groupby(axis=0, level=0).mean().dropna(how="any")
+    #                     plot_overrepresentation_network(Gcomm, community_layout, f"{dataset}\n{patient}", overrepresentation=bar_data, colordict=colordict, pie_size=config.sns["pie_size_community"], ax=ax, edge_weights=None, show_legends=False)
+    #                     plot_count += 1
+    #             os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer), exist_ok=True)
+    #             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.pdf"))
+    #             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.png"), dpi=100)
+    #             plt.close("all")
         
-    # Plot pairwise correlation heatmaps of community usage across samples
-    def plot_icusage_correlation(ic_usage_corr, title=None):
-        mask = np.triu(np.ones_like(ic_usage_corr), 1)
-        fig, ax = plt.subplots(figsize=[8,6])
-        sns.heatmap(ic_usage_corr, center=0, vmin=-1, vmax=1, cmap=config.colormaps["diverging"], mask=mask, ax=ax)
-        ax.set_title(title)
-        return fig
+    # # Plot pairwise correlation heatmaps of community usage across samples
+    # def plot_icusage_correlation(ic_usage_corr, title=None):
+    #     mask = np.triu(np.ones_like(ic_usage_corr), 1)
+    #     fig, ax = plt.subplots(figsize=[8,6])
+    #     sns.heatmap(ic_usage_corr, center=0, vmin=-1, vmax=1, cmap=config.colormaps["diverging"], mask=mask, ax=ax)
+    #     ax.set_title(title)
+    #     return fig
 
-    plots = {"All Datasets": plot_icusage_correlation(ic_usage.dropna(axis=1).corr("spearman"), title="All Datasets")}
-    plots.update({
-        dataset_name: plot_icusage_correlation(df.corr("spearman"), title=dataset_name)
-        for dataset_name, df in ic_usage.dropna(axis=1).groupby(axis=0, level=0)
-        })
+    # plots = {"All Datasets": plot_icusage_correlation(ic_usage.dropna(axis=1).corr("spearman"), title="All Datasets")}
+    # plots.update({
+    #     dataset_name: plot_icusage_correlation(df.corr("spearman"), title=dataset_name)
+    #     for dataset_name, df in ic_usage.dropna(axis=1).groupby(axis=0, level=0)
+    #     })
 
-    os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_shared"), exist_ok=True)
-    for plot_name, fig in plots.items():
-        fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_shared", plot_name + ".pdf"))
-        fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_shared", plot_name + ".png"), dpi=600)
+    # os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_shared"), exist_ok=True)
+    # for plot_name, fig in plots.items():
+    #     fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_shared", plot_name + ".pdf"))
+    #     fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_shared", plot_name + ".png"), dpi=600)
         
-    plots = {"All Datasets": plot_icusage_correlation(ic_usage.corr("spearman"), title="All Datasets")}
-    plots.update({
-        dataset_name: plot_icusage_correlation(df.corr("spearman"), title=dataset_name)
-        for dataset_name, df in ic_usage.groupby(axis=0, level=0)
-        })
+    # plots = {"All Datasets": plot_icusage_correlation(ic_usage.corr("spearman"), title="All Datasets")}
+    # plots.update({
+    #     dataset_name: plot_icusage_correlation(df.corr("spearman"), title=dataset_name)
+    #     for dataset_name, df in ic_usage.groupby(axis=0, level=0)
+    #     })
 
-    os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all"), exist_ok=True)
-    for plot_name, fig in plots.items():
-        fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all", plot_name + ".pdf"))
-        fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all", plot_name + ".png"), dpi=600)
+    # os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all"), exist_ok=True)
+    # for plot_name, fig in plots.items():
+    #     fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all", plot_name + ".pdf"))
+    #     fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all", plot_name + ".png"), dpi=600)
     
     
-    # Diversity analysis (shannon entropy of community-level usage)
+    # # Diversity analysis (shannon entropy of community-level usage)
 
-    diversity = ic_usage.apply(lambda x: entropy(x.dropna()), axis=1)
-    diversity.to_csv(os.path.join(sns_output_dir, "integrated_community_usage", "diversity.txt"), sep="\t")
-    os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "diversity"), exist_ok=True)
+    # diversity = ic_usage.apply(lambda x: entropy(x.dropna()), axis=1)
+    # diversity.to_csv(os.path.join(sns_output_dir, "integrated_community_usage", "diversity.txt"), sep="\t")
+    # os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "diversity"), exist_ok=True)
 
-    for col in merged_metadata.select_dtypes("float").columns:  # association of diversity with numerical metadata
-        df = pd.DataFrame({"diversity": diversity, col: merged_metadata[col]})
-        df["Dataset"] = df.index.get_level_values(0)
-        fig, ax = plt.subplots(figsize=[4,4])
-        sns.scatterplot(data=df, x=col, y="diversity", hue="Dataset", ax=ax)
-        correlation = merged_metadata[col].corr(diversity, method="spearman")
-        ax.text(s=f"Spearman ρ = {correlation:.3f}", x=0.01, y=0.01, va="bottom", transform=ax.transAxes)
-        ax.set_title(col)
-        sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
-        fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"{col}.pdf"))
-        plt.close('all')
+    # for col in merged_metadata.select_dtypes("float").columns:  # association of diversity with numerical metadata
+    #     df = pd.DataFrame({"diversity": diversity, col: merged_metadata[col]})
+    #     df["Dataset"] = df.index.get_level_values(0)
+    #     fig, ax = plt.subplots(figsize=[4,4])
+    #     sns.scatterplot(data=df, x=col, y="diversity", hue="Dataset", ax=ax)
+    #     correlation = merged_metadata[col].corr(diversity, method="spearman")
+    #     ax.text(s=f"Spearman ρ = {correlation:.3f}", x=0.01, y=0.01, va="bottom", transform=ax.transAxes)
+    #     ax.set_title(col)
+    #     sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
+    #     fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"{col}.pdf"))
+    #     plt.close('all')
 
-    sample_groups = merged_metadata["Dataset"]  # association of diversity with dataset
-    fig = plot_icu_diversity(sample_groups, diversity, config, title=f"Datasets")
-    fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"datasets.pdf"), bbox_inches="tight")
-    fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"datasets.png"), bbox_inches="tight", dpi=400)
-    plt.close('all')
+    # sample_groups = merged_metadata["Dataset"]  # association of diversity with dataset
+    # fig = plot_icu_diversity(sample_groups, diversity, config, title=f"Datasets")
+    # fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"datasets.pdf"), bbox_inches="tight")
+    # fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"datasets.png"), bbox_inches="tight", dpi=400)
+    # plt.close('all')
 
-    for dataset in config.datasets: # association of diversity with categorical data by dataset
-        os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset), exist_ok=True)   
-        for annotation_layer in merged_metadata.select_dtypes("category").columns:
-            sample_groups = merged_metadata.loc[dataset, annotation_layer]
-            if 0 < sample_groups.nunique() < 20:
-                fig = plot_icu_diversity(sample_groups, diversity.loc[dataset], config, title=f"{dataset}\n{annotation_layer}")
-                fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset, f"{annotation_layer}.pdf"), bbox_inches="tight")
-                fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset, f"{annotation_layer}.png"), bbox_inches="tight", dpi=400)
-                plt.close('all')
+    # for dataset in config.datasets: # association of diversity with categorical data by dataset
+    #     os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset), exist_ok=True)   
+    #     for annotation_layer in merged_metadata.select_dtypes("category").columns:
+    #         sample_groups = merged_metadata.loc[dataset, annotation_layer]
+    #         if 0 < sample_groups.nunique() < 20:
+    #             fig = plot_icu_diversity(sample_groups, diversity.loc[dataset], config, title=f"{dataset}\n{annotation_layer}")
+    #             fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset, f"{annotation_layer}.pdf"), bbox_inches="tight")
+    #             fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset, f"{annotation_layer}.png"), bbox_inches="tight", dpi=400)
+    #             plt.close('all')
     
     
 cli.add_command(cmd_txt_to_h5ad)
