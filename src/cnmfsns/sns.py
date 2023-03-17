@@ -1,8 +1,5 @@
 
 from .integration import Integration
-from .colors import Colors
-from .sns import SNS
-from . import utils
 
 
 from collections.abc import Collection, Iterable

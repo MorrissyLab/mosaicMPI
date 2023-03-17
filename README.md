@@ -5,7 +5,7 @@
 
 # cNMF-SNS: powerful factorization-based multi-omics integration toolkit
 
-![](https://img.shields.io/badge/version-1.0.2-blue)
+![](https://img.shields.io/badge/version-1.0.3-blue)
 
 <details>
   <summary> future badges </summary>
