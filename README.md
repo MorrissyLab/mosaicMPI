@@ -1,21 +1,52 @@
 
 ![cNMF-SNS logo](logo.png)
 
+-----------------
 
+# cNMF-SNS: powerful factorization-based multi-omics integration toolkit
 
-# cNMF-SNS
+![](https://img.shields.io/badge/version-1.0.1-blue)
 
-cNMF Solution Network Space
+<details>
+  <summary> future badges </summary>
 
-![](https://img.shields.io/badge/version-0.5.3-blue)
-
-## Installation
-
-### 1. Using `pip` to install the latest version from GitHub:
-
-Before installing cNMF-SNS from pip, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
 ```
-conda create --name py39  -c conda-forge python=3.9 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph
+[![PyPI Latest Release](https://img.shields.io/pypi/v/cnmfsns.svg)](https://pypi.org/project/cnmfsns/)
+[![Conda Latest Release](https://anaconda.org/conda-forge/cnmfsns/badges/version.svg)](https://anaconda.org/anaconda/cnmfsns/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3509134.svg)](https://doi.org/10.5281/zenodo.3509134)
+[![Package Status](https://img.shields.io/pypi/status/cnmfsns.svg)](https://pypi.org/project/cnmfsns/)
+[![License](https://img.shields.io/pypi/l/cnmfsns.svg)](https://github.com/morrissylab/cnmfsns/blob/main/LICENSE)
+[![Downloads](https://static.pepy.tech/personalized-badge/cnmfsns?period=month&units=international_system&left_color=black&right_color=orange&left_text=PyPI%20downloads%20per%20month)](https://pepy.tech/project/cnmfsns)
+```
+
+</details>
+
+
+**cNMF-SNS** (consensus Non-negative Matrix Factorization Solution Network Space) is a Python package enabling integration of bulk, single-cell, and
+spatial expression data between and within datasets. cNMF provides a **robust, 
+unsupervised** deconvolution of each dataset into gene expression programs (GEPs).
+**Network-based integration** of GEPs enables flexible integration of many datasets
+across assays (eg. Protein, RNA-Seq) and patient cohorts.
+
+Communities with GEPs from multiple datasets can be annotated with dataset-specific
+annotations to facilitate interpretation.
+
+## :zap: Main Features
+
+Here are just a few of the things that cNMF-SNS does well:
+- Integration of expression data does not require subsetting features/genes to
+  a shared subset
+- Ideal for incremental integration (adding datasets one at a time) since
+  deconvolution is performed independently on each dataset
+
+
+## :wrench: Install
+
+### :lock: From Private GitHub Repository
+
+Before installing cNMF-SNS using pip, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
+```
+conda create --name py39  -c conda-forge python=3.9 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph semantic_version yaml scikit-learn fastcluster scanpy
 conda activate py39
 ```
 
@@ -29,7 +60,7 @@ If you have installed a [personal access token from GitHub](https://github.com/s
 pip install git+https://<token>@github.com/MorrissyLab/cNMF-SNS.git
 ```
 
-### 2. Using `pip` (PyPI version)
+### 2. Installing from public repositories
 
 > Note: This will work only when cNMF-SNS has been published to PyPI.
 
@@ -37,13 +68,22 @@ pip install git+https://<token>@github.com/MorrissyLab/cNMF-SNS.git
 pip install cnmfsns
 ```
 
-### 3. Using `conda`
-
 > Note: This will work only when cNMF-SNS has been published to conda-forge.
 
 ```
 conda install -c conda-forge cnmfsns
 ```
+
+## 1.0.0 release notes
+
+- python interface
+- single matrix input instead of confusing count and normalized inputs
+- Jupyter notebook for common workflows from sample data
+
+
+## :open_book: Documentation
+
+
 
 ## Workflow 1A: Factorization for individual datasets
 
