@@ -1,12 +1,13 @@
 
-from . import Dataset, Integration, Config, utils
+from . import Dataset, Integration, SNS, Config, utils
 
 import logging
-import typing
-import collections
+from typing import Optional, Union
+from collections.abc import Collection, Iterable
 import matplotlib.pyplot as plt
 from matplotlib import colors as mpl_colors
 from matplotlib.figure import Figure
+from matplotlib.axes import Axes
 from matplotlib.patches import Patch
 import distinctipy
 import tomli
@@ -15,10 +16,10 @@ import tomli_w
 class Colors():
     
     def __init__(self,
-                 metadata_colors: typing.Optional[dict] = {},
-                 metadata_colors_group: typing.Optional[dict] = {},
-                 dataset_colors: typing.Optional[dict] = {},
-                 community_colors: typing.Optional[dict] = {},
+                 metadata_colors: Optional[dict] = {},
+                 metadata_colors_group: Optional[dict] = {},
+                 dataset_colors: Optional[dict] = {},
+                 community_colors: Optional[dict] = {},
                  missing_data_color: str = "#dddddd"):
         self.metadata_colors = metadata_colors
         self.metadata_colors_group = metadata_colors_group
@@ -31,11 +32,12 @@ class Colors():
         dataset_colors = {}
         for ds_name, ds_param in config.datasets.items():
             if "color" in ds_param:
-                dataset_colors[ds_name] = ds_param["color"]      
+                dataset_colors[ds_name] = ds_param["color"]
+        missing_data_color = config.metadata_colors.pop("missing_data")
         return cls(metadata_colors = config.metadata_colors,
             metadata_colors_group = config.metadata_colors_group,
             dataset_colors = dataset_colors,
-            missing_data_color = config.metadata_colors["missing_data"]
+            missing_data_color = missing_data_color
             )
     @classmethod
     def from_toml(cls, toml_file: str):
@@ -64,7 +66,17 @@ class Colors():
         colors.add_missing_dataset_colors(datasets=integration, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
         colors.add_missing_metadata_colors(datasets=integration, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
         return colors
-
+    
+    @classmethod
+    def from_sns(cls, 
+                 snsmap: SNS,
+                 pastel_factor=0.3,
+                 colorblind_type=None):
+        colors = cls()
+        colors.add_missing_dataset_colors(datasets=snsmap.integration, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
+        colors.add_missing_metadata_colors(datasets=snsmap.integration, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
+        colors.add_missing_community_colors(snsmap=snsmap, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
+        return colors
 
     @property
     def ordered_community_names(self):
@@ -72,10 +84,10 @@ class Colors():
         return community_names
 
     def add_missing_dataset_colors(self,
-                                   datasets: typing.Union[collections.abc.Iterable, Integration],
+                                   datasets: Union[Iterable, Integration],
                                    pastel_factor=0.3,
                                    colorblind_type=None) -> None:
-        assert isinstance(datasets, (Integration, collections.abc.Iterable))
+        assert isinstance(datasets, (Integration, Iterable))
         
         if isinstance(datasets, Integration):
             datasets = datasets.datasets.keys()
@@ -131,7 +143,7 @@ class Colors():
             for name, color in zip(uncolored_communities, new_colors):
                 self.community_colors[name] = color
 
-    def plot_dataset_colors_legend(self, figsize: collections.abc.Iterable = None, ax = None) -> Figure:
+    def plot_dataset_colors_legend(self, figsize: Iterable = None, ax = None) -> Figure:
         if ax is None:
             if figsize is None:
                 figsize = [3, 1 + 0.25 * len(self.dataset_colors)]
@@ -148,7 +160,7 @@ class Colors():
         if ax is None:
             return fig
         
-    def plot_community_colors_legend(self, figsize: collections.abc.Iterable = None, ax = None) -> Figure:
+    def plot_community_colors_legend(self, figsize: Iterable = None, ax = None) -> Figure:
         if ax is None:
             if figsize is None:
                 figsize = [3, 1 + 0.25 * len(self.dataset_colors)]
@@ -170,7 +182,7 @@ class Colors():
             return fig
         
     def add_missing_metadata_colors(self,
-                                    datasets: typing.Union[Dataset, Integration],
+                                    datasets: Union[Dataset, Integration],
                                     pastel_factor=0.3,
                                     colorblind_type=None):
         """
@@ -227,35 +239,50 @@ class Colors():
             ))
         return layer_colors
 
-    def plot_metadata_colors_legend(self, char_per_line: int = 20, figsize: collections.abc.Iterable = None):
-        categorical_columns = [track for track, color_def in self.metadata_colors.items() if isinstance(color_def, dict)]
-        categorical_groups = [group for group, group_attr in self.metadata_colors_group.items() if isinstance(group_attr["colors"], dict)]
-        n_columns = len(categorical_columns) + len(categorical_groups) + 1
-        legend_lengths = [
-            len(color_def) for color_def in (self.metadata_colors | self.metadata_colors_group).values()
-            if isinstance(color_def, dict)
-        ]
-        if figsize is None:
-            figsize = [2*n_columns, 0.3 * max(legend_lengths)]
-        fig, axes = plt.subplots(1, n_columns, figsize=figsize, squeeze=False)
-        for ax, track in zip(axes[0], categorical_columns):
-            ax = ax
-            color_def = self.metadata_colors[track]
+    def plot_metadata_colors_legend(self,
+                                    layer: str = None,
+                                    ax: Axes = None,
+                                    char_per_line: int = 20,
+                                    figsize: Iterable = None) -> Optional[Figure]:
+        
+        if layer is not None and isinstance(ax, Axes):
+            color_def = self.metadata_colors[layer]
             legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
             ax.legend(handles=legend_elements, loc='upper center')
-            ax.set_title(track)
+            ax.set_title(layer)
             ax.set_axis_off()
-        for ax_id, group in enumerate(categorical_groups, len(categorical_columns)):
-            ax = axes[0][ax_id]
-            color_def = self.metadata_colors_group[group]["colors"]
-            legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
-            ax.legend(handles=legend_elements, loc='upper center')
-            ax.set_title(group)
-            ax.set_axis_off()
+                
+        elif layer is None and ax is None:
+        
+            categorical_columns = [track for track, color_def in self.metadata_colors.items() if isinstance(color_def, dict)]
+            categorical_groups = [group for group, group_attr in self.metadata_colors_group.items() if isinstance(group_attr["colors"], dict)]
+            n_columns = len(categorical_columns) + len(categorical_groups) + 1
+            legend_lengths = [
+                len(color_def) for color_def in (self.metadata_colors | self.metadata_colors_group).values()
+                if isinstance(color_def, dict)
+            ]
+            if figsize is None:
+                figsize = [2*n_columns, 0.3 * max(legend_lengths)]
+            fig, axes = plt.subplots(1, n_columns, figsize=figsize, squeeze=False, layout="tight")
+            for ax_layer, layer in zip(axes[0], categorical_columns):
+                color_def = self.metadata_colors[layer]
+                legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+                ax_layer.legend(handles=legend_elements, loc='upper center')
+                ax_layer.set_title(layer)
+                ax_layer.set_axis_off()
+            for ax_id, group in enumerate(categorical_groups, len(categorical_columns)):
+                ax_layer = axes[0][ax_id]
+                color_def = self.metadata_colors_group[group]["colors"]
+                legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+                ax_layer.legend(handles=legend_elements, loc='upper center')
+                ax_layer.set_title(group)
+                ax_layer.set_axis_off()
 
-        # last column is missing data color
-        axes[0][-1].legend(handles=[Patch(label="Missing Data", facecolor=self.missing_data_color, edgecolor=None)], loc='upper left')
-        axes[0][-1].set_axis_off()
-
-        plt.tight_layout()
-        return fig
+            # last column is missing data color
+            axes[0][-1].legend(handles=[Patch(label="Missing Data", facecolor=self.missing_data_color, edgecolor=None)], loc='upper left')
+            axes[0][-1].set_axis_off()
+        else:
+            raise ValueError("Parameters `layer` and `ax` must both be specified")
+        
+        if ax is None:
+            return fig

@@ -8,7 +8,7 @@ import scipy as sp
 import logging
 from datetime import datetime
 import sys
-import typing
+from typing import Union, Optional
 from collections.abc import Iterable, Collection
 import semantic_version
 import anndata as ad
@@ -21,7 +21,7 @@ import os
 from glob import glob
 
 def migrate_anndata(adata:ad.AnnData, force: bool = False):
-    # migrates pre-1.0.0 anndata objects to newer format.
+    # migrates external and pre-1.0.0 anndata objects to newer format.
     X = adata.to_df()
     
     if adata.raw is None:  # eg., PBMC dataset from scanpy
@@ -62,9 +62,9 @@ class Dataset():
     
     def __init__(self,
                  adata: ad.AnnData,
-                 name: typing.Optional[str] = None,
-                 color: typing.Optional[str] = None,
-                 patient_id_col: typing.Optional[str] = None
+                 name: Optional[str] = None,
+                 color: Optional[str] = None,
+                 patient_id_col: Optional[str] = None
                  ):
         
         
@@ -78,11 +78,11 @@ class Dataset():
                   data: pd.DataFrame,
                   is_normalized: bool,
                   sparsify: bool = False,
-                  obs: typing.Optional[pd.DataFrame] = None,
-                  var: typing.Optional[pd.DataFrame] = None,
-                  name: typing.Optional[str] = None,
-                  color: typing.Optional[str] = None,
-                  patient_id_col: typing.Optional[str] = None
+                  obs: Optional[pd.DataFrame] = None,
+                  var: Optional[pd.DataFrame] = None,
+                  name: Optional[str] = None,
+                  color: Optional[str] = None,
+                  patient_id_col: Optional[str] = None
                   ):
         if var is not None:
             var = var.reindex(data.columns)
@@ -102,10 +102,10 @@ class Dataset():
     @classmethod
     def from_anndata(cls,
                      adata: ad.AnnData,
-                     name: typing.Optional[str] = None,
-                     color: typing.Optional[str] = None,
-                     patient_id_col: typing.Optional[str] = None,
-                     force_migrate: bool =False
+                     name: Optional[str] = None,
+                     color: Optional[str] = None,
+                     patient_id_col: Optional[str] = None,
+                     force_migrate: bool = False
                      ):
         dataset = cls(adata=adata, name=name, color=color, patient_id_col=patient_id_col)
         if dataset.cnmfsns_version is None:
@@ -121,9 +121,9 @@ class Dataset():
     @classmethod
     def from_h5ad(cls,
                   h5ad_file: str,
-                  name: typing.Optional[str] = None,
-                  color: typing.Optional[str] = None,
-                  patient_id_col: typing.Optional[str] = None,
+                  name: Optional[str] = None,
+                  color: Optional[str] = None,
+                  patient_id_col: Optional[str] = None,
                   force_migrate=False, backed=False
                   ):
         adata = ad.read_h5ad(h5ad_file, backed=backed)
@@ -225,7 +225,7 @@ class Dataset():
         
         self.adata = self.adata[:,genes_to_keep]
 
-    def compute_gene_stats(self, odg_default_spline_degree: int = 3, odg_default_dof: int = 8, minimum_mean: float = 0):
+    def compute_gene_stats(self, odg_default_spline_degree: int = 3, odg_default_dof: int = 8):
 
         data_raw = self.to_df()
         data_normalized = self.to_df(normalized=True)
@@ -258,7 +258,6 @@ class Dataset():
         self.adata.var["vscore"] = vscore_stats["fano_ratio"]
         self.adata.uns["odg"]["odg_default_spline_degree"] = odg_default_spline_degree
         self.adata.uns["odg"]["odg_default_dof"] = odg_default_dof
-        self.adata.uns["odg"]["minimum_mean"] = minimum_mean
         self.append_to_history("Gene-level statistics and overdispersion modelling completed.")
         
     def select_overdispersed_genes_from_genelist(self, genes: Collection, min_mean=0):
@@ -333,7 +332,7 @@ class Dataset():
                         kvals: Collection = range(2, 61),
                         n_iter: int = 200,
                         beta_loss: str = "kullback-leibler",
-                        seed: typing.Optional[int] = None):
+                        seed: Optional[int] = None):
         cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
         
         # write TPM (normalized) data
@@ -441,7 +440,7 @@ class Dataset():
         df = df.sort_index(axis=0).sort_index(axis=1)   
         return df
     
-    def get_geps(self, k: typing.Union[int, Iterable] = None, type="cnmf_gep_score"):
+    def get_geps(self, k: Union[int, Iterable] = None, type="cnmf_gep_score"):
         df = self.adata.varm[type].copy()
         df.columns = pd.MultiIndex.from_tuples(df.columns.str.split(".").to_list())
         df.columns = df.columns.set_levels([l.astype("int") for l in df.columns.levels])
@@ -450,7 +449,10 @@ class Dataset():
         df = df.sort_index(axis=1)
         return df
     
-    def get_metadata_df(self, include_categorical=True, include_numerical=True):
+    def get_metadata_df(self,
+                        include_categorical: bool = True,
+                        include_numerical: bool = True
+                        ) -> pd.DataFrame:
         dtypes = []
         if include_categorical:
             dtypes.append("category")
@@ -463,7 +465,10 @@ class Dataset():
         df = self.adata.obs.select_dtypes(include=dtypes)
         return df
     
-    def get_category_overrepresentation(self, layer):
+    def get_category_overrepresentation(self,
+                                        layer: str,
+                                        truncate_negative: bool = True
+                                        ) -> pd.DataFrame:
         usage = self.get_usages().copy()
         sample_to_class = self.get_metadata_df()[layer]
         usage.index = usage.index.map(sample_to_class)
@@ -474,5 +479,16 @@ class Dataset():
             expected.append(exp_k)
         expected = pd.concat(expected, axis=1)
         chisq_resid = (observed - expected) / np.sqrt(expected)  # pearson residual of chi-squared test of contingency table
-        overrepresentation = chisq_resid.clip(lower=0)
-        return overrepresentation
+        if truncate_negative:
+            chisq_resid = chisq_resid.clip(lower=0)
+        return chisq_resid
+    
+        
+    def get_metadata_correlation(self, 
+                                 layer: str,
+                                 method: str = "pearson"
+                                 ) -> pd.Series:
+        usage = self.get_usages().copy()
+        metadata = self.get_metadata_df()[layer]
+        md_corr = usage.corrwith(metadata, method=method)
+        return md_corr

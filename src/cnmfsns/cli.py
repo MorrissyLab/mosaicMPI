@@ -22,18 +22,6 @@ import seaborn as sns
 import tomli_w
 import distinctipy
 from matplotlib.lines import Line2D
-from scipy.stats import entropy
-
-
-
-#To make sure we have always the same matplotlib settings
-#(the ones in comments are the ipython notebook settings)
-
-mpl.rcParams['figure.figsize']=(6.0,4.0)    #(6.0,4.0)
-mpl.rcParams['font.size']=10                #10 
-mpl.rcParams['savefig.dpi']=72             #72 
-mpl.rcParams['figure.subplot.bottom']=.125    #.125
-
 
 class OrderedGroup(click.Group):
     """
@@ -147,14 +135,15 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof):
         cnmfsns model-odg -n test -i test.h5ad
 
         # Explicitly use a linear model instead of a BSpline Generalized Additive Model
-        cnmfsns model-odg -n test -i test.h5ad --odg_default_spline_degree 0 --odg_default_dof 1
+        cnmfsns model-odg -n test -i test.h5ad --default_spline_degree 0 --default_dof 1
     """
     cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
     start_logging(os.path.join(output_dir, name, "logfile.txt"))
     dataset = Dataset.from_h5ad(input)
     
     # Create gene stats table and save h5ad file
-    dataset.compute_gene_stats()
+    dataset.compute_gene_stats(odg_default_spline_degree=default_spline_degree,
+                               odg_default_dof=default_dof)
     dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     
     # output text file
@@ -163,7 +152,7 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof):
     gene_stats.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
 
     # create mean vs variance plots
-    fig = plot_feature_dispersion(gene_stats, show_selected=False)["default"]
+    fig = plot_feature_dispersion(dataset, show_selected=False)["default"]
     fig.savefig(os.path.join(output_dir, name, "odgenes.pdf"), facecolor='white')
     fig.savefig(os.path.join(output_dir, name, "odgenes.png"), dpi=400, facecolor='white')
 
@@ -243,13 +232,29 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
         dataset.select_overdispersed_genes_from_genelist(genes)
     else:
         overdispersion_metric = odg_method.split("_")[0]
+        if overdispersion_metric == "default":
+            metric_str = "odscore"
+        elif overdispersion_metric == "cnmf":
+            metric_str = "vscore"
+        else:
+            raise RuntimeError
         
-        method = {odg_method.split("_")[1]: odg_param}
-        dataset.select_overdispersed_genes(overdispersion_metric=overdispersion_metric, min_mean=min_mean,
+        cli_method_str = odg_method.split("_")[1]
+        if cli_method_str == "top_n":
+            method_str = "top_n"
+            threshold = int(odg_param)
+        elif cli_method_str == "minscore":
+            method_str = "min_score"
+            threshold = float(odg_param)
+        else:
+            method_str = cli_method_str
+            threshold = float(odg_param)
+        method = {method_str: threshold}
+        dataset.select_overdispersed_genes(overdispersion_metric=metric_str, min_mean=min_mean,
                                            **method)
 
     # create mean vs variance plots, updated with selected genes
-    fig = plot_feature_dispersion(df=dataset.adata.var, show_selected=True)["default"]
+    fig = plot_feature_dispersion(dataset, show_selected=True)["default"]
     fig.savefig(os.path.join(output_dir, name, "odgenes.pdf"), facecolor='white')
     fig.savefig(os.path.join(output_dir, name, "odgenes.png"), dpi=400, facecolor='white')
 
@@ -345,13 +350,10 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
 
     dataset.add_cnmf_results(cnmf_output_dir=output_dir,
                              cnmf_name=name,
-                             h5ad_path=h5ad_path,
                              local_density_threshold=local_density_threshold,
-                             local_neighborhood_size=local_neighborhood_size,
-                             skip_missing_iterations=skip_missing_iterations
+                             local_neighborhood_size=local_neighborhood_size
                              )
-    logging.info(f"Writing h5ad file to {h5ad_path}")
-    dataset.to_h5ad(h5ad_path)
+    dataset.write_h5ad(h5ad_path)
     
 @click.command("annotated-heatmap")
 @click.option(
@@ -390,9 +392,13 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
     fig.savefig(os.path.join(output_dir, f"metadata_legend.pdf"))
     
     # filter metadata layers with too many categories
-    exclude_maxcat = dataset.adata.obs.select_dtypes(include="category").apply(lambda x: len(x.cat.categories)) > max_categories_per_layer
-    drop_columns = exclude_maxcat[exclude_maxcat].index
-    
+    if max_categories_per_layer is not None:
+        subset_columns = dataset.get_metadata_df(include_numerical=False).apply(lambda x: len(x.cat.categories)) <= max_categories_per_layer
+        subset_columns = subset_columns[subset_columns].index.to_list()
+        subset_columns.extend(dataset.get_metadata_df(include_categorical=False).columns.to_list())
+    else:
+        subset_columns = None
+    print(subset_columns)
     if not dataset.has_cnmf_results:
         logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `cnmfsns postprocess` before creating annotated usage heatmaps.")
         sys.exit(1)
@@ -404,8 +410,8 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
         title = f"{cnmf_name} k={k}"
         filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{k:03}.pdf")
         fig = plot_usage_heatmap(
-            dataset=dataset, k=k, subset_metadata=drop_columns, colors=colors, title=title,
-            cluster_samples=True, cluster_geps=False, show_sample_labels=(not hide_sample_labels), ylabel="GEP")
+            dataset=dataset, k=k, subset_metadata=subset_columns, colors=colors, title=title,
+            cluster_samples=True, cluster_geps=False, show_sample_labels=(not hide_sample_labels))
         fig.savefig(filename, transparent=False, bbox_inches = "tight")
 
 @click.command(name="integrate")
@@ -423,6 +429,7 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
     # create directory structure, warn if not empty
     output_dir = os.path.normpath(output_dir)
     start_logging()
+    global cpus_available
     cpus_available = cpus
     os.makedirs(output_dir, exist_ok=True)
     if os.listdir(output_dir):
@@ -445,14 +452,41 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
     elif input_h5ad:
         config = Config.from_h5ad_files(input_h5ad)
 
-    # integrate datasets
-    integration = Integration.from_config(config)
+    # Create dataset objects from config parameters
+    datasets = []
+    for dsname, dsparams in config.datasets.items():
+        
+        dataset = Dataset.from_h5ad(
+            dsparams["filename"],
+            name=dsname,
+            color=(dsparams["color"] if "color" in dsparams else None),
+            backed="r",
+            patient_id_col = (dsparams["patient_id_col"] if "patient_id_col" in dsparams else None),
+            force_migrate = False
+        )
+        datasets.append(dataset)
+        
+    # creates integration object from config parameters
+    integration = Integration(
+        datasets=datasets,
+        corr_method = config.integrate["corr_method"],
+        max_median_corr = config.integrate["max_median_corr"],
+        negative_corr_quantile = config.integrate["negative_corr_quantile"]
+        )     
+        
+        
     
     # save correlation matrix
     corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")
     save_df_to_npz(integration.corr_matrix, corr_path)
     
     integration.k_table.to_csv(os.path.join(output_dir, "integrate", "k_filters.txt"), sep="\t")
+    
+    # output updated TOML with default k value selections based on filters etc
+    for dataset_name, dataset_params in config.datasets.items():
+        selected_k = integration.k_table[(dataset_name, "selected_k")]
+        selected_k = sorted(selected_k[selected_k].index.to_list())
+        config.datasets[dataset_name]["selected_k"] = selected_k
     output_toml = os.path.join(output_dir, "integrate", "config.toml")
     config.to_toml(output_toml)
     logging.info(f"Output updated TOML file to: {output_toml}")
@@ -508,11 +542,66 @@ def cmd_create_network(output_dir, name, config_toml):
     else:
         config = Config.from_toml(config_toml)
 
+    # Create directory structures
     sns_output_dir = os.path.join(output_dir, "sns_networks", name)
     os.makedirs(sns_output_dir, exist_ok=True)
 
+    # Create dataset objects from config parameters
+    datasets = []
+    for dsname, dsparams in config.datasets.items():
+        
+        ds_obj = Dataset.from_h5ad(
+            dsparams["filename"],
+            name=dsname,
+            color=(dsparams["color"] if "color" in dsparams else None),
+            backed="r",
+            patient_id_col = (dsparams["patient_id_col"] if "patient_id_col" in dsparams else None),
+            force_migrate = False
+        )
+        datasets.append(ds_obj)
+        
+        
+    # selected_k from config.toml file overrides defaults
+    selected_k = {dsname: ("selected_k" in dsparams) for dsname, dsparams in config.datasets.items()}
+    if all(list(selected_k.values())):
+        selected_k = {dsname: dsparams["selected_k"] for dsname, dsparams in config.datasets.items()}
+    elif any(list(selected_k.values())):
+        no_selected_k = ", ".join([dsname for dsname, hasselected in selected_k.items() if not hasselected])
+        raise ValueError('"selected_k" parameter must be set for all datasets or none of them. '
+                         f'These datasets are missing selected_k parameter: {no_selected_k}')
+    else:
+        selected_k = None
+        
+    # creates integration object from config parameters
+    integration = Integration(
+        datasets=datasets,
+        corr_method = config.integrate["corr_method"],
+        max_median_corr = config.integrate["max_median_corr"],
+        negative_corr_quantile = config.integrate["negative_corr_quantile"],
+        k_subset = selected_k
+        )
+
+    # creates SNS object from config
+    if config.sns["subset_nodes"] == "none":
+        subset_nodes = None
+    else:
+        subset_nodes = config.sns["subset_nodes"]
+        
+    snsmap = SNS(integration=integration, subset_nodes=subset_nodes)
+    
+    community_algorithm = config.sns["community_algorithm"]
+    snsmap.community_search(algorithm=community_algorithm,
+                            resolution=config.sns["communities"][community_algorithm]["resolution"])
+
+    nx.write_graphml(snsmap.gep_graph, os.path.join(sns_output_dir, "gep_graph.graphml"))
+
     # make figure legends for metadata
     colors = Colors.from_config(config)
+    colors.add_missing_dataset_colors(datasets=integration)
+    colors.add_missing_metadata_colors(datasets=integration)
+    colors.add_missing_community_colors(snsmap=snsmap)
+    colors.to_toml(os.path.join(sns_output_dir, "colors.toml"))
+    
     fig = colors.plot_metadata_colors_legend()
     fig.savefig(os.path.join(sns_output_dir, "metadata_colors_legend.pdf"))
     plt.close(fig)
@@ -520,268 +609,91 @@ def cmd_create_network(output_dir, name, config_toml):
     fig = colors.plot_dataset_colors_legend()
     fig.savefig(os.path.join(sns_output_dir, "dataset_colors_legend.pdf"))
     plt.close(fig)
-
-    integration = Integration(config=config)
     
-    logging.info("Creating GEP network")
-    snsmap = SNS(integration)
-    snsmap.
-    G = create_graph(output_dir, config)
-    nx.write_graphml(G, os.path.join(sns_output_dir, "gep_network.graphml"))
-    communities_resolution_sweep, selected_resolution = sweep_community_resolution(G, config)
-    communities = communities_resolution_sweep[selected_resolution]
-    write_communities_toml(communities, os.path.join(sns_output_dir, "communities.toml"))
-    gep_communities = {gep: community for community, geps in communities.items() for gep in geps}
-    pd.DataFrame.from_dict(data=gep_communities, orient='index').to_csv(os.path.join(sns_output_dir, 'gep_communities.txt'), sep="\t", header=False)
+    snsmap.write_communities_toml( os.path.join(sns_output_dir, "communities.toml"))
+    pd.DataFrame.from_dict(data=snsmap.gep_communities, orient='index').to_csv(os.path.join(sns_output_dir, 'gep_communities.txt'), sep="\t", header=False)
         
-    add_community_weights_to_graph(G, gep_communities, config)
-
-    geps = {}
-    for dataset_name, dataset in config.datasets.items():
-        adata = read_h5ad(dataset["filename"], backed="r")
-        df = adata.varm["cnmf_gep_score"]
-        df.columns = pd.MultiIndex.from_tuples([(int(gep[0]), int(gep[1])) for gep in df.columns.str.split(".")])
-        geps[dataset_name] = df
-    geps = pd.concat(geps, axis=1).sort_index(axis=1)
-    
-    # get minimum k GEPs for each community/dataset combination.
-    selected_geps_labels = []
-    for community, nodes in communities.items():
-        nodes = pd.DataFrame([n.split("|") for n in nodes], columns=["dataset", "k", "GEP"])
-        for dataset_name in config.datasets:
-            dataset_nodes = nodes[nodes["dataset"] == dataset_name].copy()
-            if dataset_nodes.shape[0]:
-                block = dataset_nodes[dataset_nodes["k"].astype(int) == dataset_nodes["k"].astype(int).min()].copy()
-                block["Community"] = community
-                selected_geps_labels.append(block)
-    selected_geps_labels = pd.concat(selected_geps_labels).set_index("Community")
-    selected_geps_labels.to_csv(os.path.join(sns_output_dir, "selected_geps_labels.txt"), sep="\t") # outputs the GEP identities
-
-    selected_geps = []
-    for community, gep in selected_geps_labels.iterrows():
-        selected_geps.append(geps[gep['dataset'], int(gep['k']), int(gep['GEP'])].rename(f"{community}|{gep['dataset']}|{gep['k']}|{gep['GEP']}"))
-    selected_geps = pd.concat(selected_geps, axis=1)
-    selected_geps.to_csv(os.path.join(sns_output_dir, "selected_geps_scores.txt"), sep="\t") # outputs the GEPs themselves (ie., gene profiles in z-score units)
-    selected_geps.columns = pd.MultiIndex.from_tuples((tuple(x) for x in selected_geps.columns.str.split("|")))
+    representative_geps = snsmap.get_representative_geps()
+    representative_geps.to_csv(os.path.join(sns_output_dir, "representative_geps.txt"), sep="\t") # outputs the GEP identities
 
     # plot membership of datasets and ranks for each community
-    fig = plot_community_by_dataset_rank(communities, config)
+    fig = plot_community_by_dataset_rank(snsmap, colors)
     fig.savefig(os.path.join(sns_output_dir, "communities_by_dataset_rank.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "communities_by_dataset_rank.png"), dpi=600)
-
-
-    # Define community colors
-    logging.info("Identifying distinct colors for each community")
-    community_colors = {community: color for community, color in zip(communities, distinctipy.get_colors(n_colors=len(communities), pastel_factor=0.2))}
-    with open(os.path.join(sns_output_dir, "community_colors.toml"), "wb") as f:
-        tomli_w.dump({str(comm): col for comm, col in community_colors.items()}, f)
-
-    # Graph layout
-    layout = get_graph_layout(G, config)
-    with open(os.path.join(sns_output_dir, "layout.toml"), "wb") as f:
-        tomli_w.dump({"layout": layout}, f)
-
-    ### Plot network layout ###
-    fig, ax = plt.subplots(figsize=config.sns["plot_size_gep"])
-    ax.set_aspect(1)
-    nx.draw(G, pos=layout, node_color="#444444", node_size=config.sns["node_size"], linewidths=0, width=0.2, edge_color=config.sns["edge_color"], with_labels=True, font_size=2)
-    plt.tight_layout()
-    fig.savefig(os.path.join(sns_output_dir, "gep_network.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "gep_network.png"), dpi=600)
     plt.close(fig)
     
-    ### Plot network colored by dataset ###
-
-    # create legend
-    dataset_colors = {ds: ds_attr["color"] for ds, ds_attr in config.datasets.items()}
-    dataset_legend = []
-    for dataset, color in dataset_colors.items():
-        dataset_legend.append(Line2D([0], [0], marker='o', color='w', label=dataset, markerfacecolor=color, markersize=8))
-
-    colors = []
-    for node in G:
-        colors.append(dataset_colors[node.split("|")[0]])
-
-    # Labels without dataset names
-    labels = {}
-    for node in G:
-        labels[node] = node.partition("|")[2]
-
-    # Node sizes inversely proportional to k
-    sizes = {}
-    min_rank = min([k for ds_attr in config.datasets.values() for k in ds_attr["selected_k"]])
-
-    for node in G:
-        sizes[node] = 200 / (int(node.split("|")[1]) + 0.5 - min_rank)
-    node_sizes = [(sizes[n] if n in sizes else 0) for n in G]
-
-    # Plot nodes colored by dataset
-    fig, ax = plt.subplots(figsize=config.sns["plot_size_gep"])
-    nx.draw(G, pos=layout,
-            with_labels=False, node_color=colors, labels=labels, node_size=30, linewidths=0, width=0.2, edge_color=config.sns["edge_color"], font_size=4)
-    ax.legend(handles=dataset_legend)
-    ax.set_title("Datasets")
-    plt.tight_layout()
-    # Save Figure
+    # Plot network colored by dataset
+    fig = plot_gep_network_datasets(snsmap, colors)
     fig.savefig(os.path.join(sns_output_dir, "gep_network_datasets.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "gep_network_datasets.png"), dpi=600)
     plt.close(fig)
     
-    # Plot the network with labelled nodes and radius inversely proportional to k
-    fig, ax = plt.subplots(figsize=config.sns["plot_size_gep"])
-    nx.draw(G, pos=layout,
-            with_labels=True, node_color=colors, labels=labels, node_size=node_sizes, linewidths=0, width=0.2, edge_color=config.sns["edge_color"], font_size=4)
-    ax.legend(handles=dataset_legend)
-    ax.set_title("Datasets")
-    plt.tight_layout()
-    # Save Figure
+    # Plot network colored by dataset and size by rank
+    fig = plot_gep_network_datasets(snsmap, colors, node_size_kval=True)
     fig.savefig(os.path.join(sns_output_dir, "gep_network_rank.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "gep_network_rank.png"), dpi=600)
     plt.close(fig)
     
-    ### Plot network colored by community ###
-    colors = [community_colors[gep_communities[node]] for node in G]
-
-    # Plot the network
-    fig, ax = plt.subplots(figsize=config.sns["plot_size_gep"])
-    nx.draw(G, pos=layout,
-            with_labels=False, node_color=colors, node_size=config.sns["node_size"], linewidths=0, width=0.2, edge_color=config.sns["edge_color"])
-
-    # Add legend
-    legend_elements = []
-    for name, color in community_colors.items():
-        legend_elements.append(Line2D([0], [0], marker='o', color='w', label=name, markerfacecolor=color, markersize=10))
-    ax.set_title("GEP Communities")
-    ax.legend(handles=legend_elements)
-    # Save Figure
+    # Plot network colored by community
+    fig = plot_gep_network_communities(snsmap, colors)
     fig.savefig(os.path.join(sns_output_dir, "gep_network_communities.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "gep_network_communities.png"), dpi=600)
     plt.close(fig)
     
-    # plot community resolution sweep results
-    with mpl.backends.backend_pdf.PdfPages(os.path.join(sns_output_dir, "community_resolution_sweep.pdf")) as pdf:
-        for resolution, res_communities in communities_resolution_sweep.items():
-            ### Plot network colored by community ###
-            community_colors = {community: color for community, color in zip(res_communities, distinctipy.get_colors(n_colors=len(res_communities), pastel_factor=0.2))}
-            res_gep_communities = {gep: community for community, geps in res_communities.items() for gep in geps}
-            colors = [community_colors[res_gep_communities[node]] for node in G]
-
-            # Plot the network
-            fig, ax = plt.subplots(figsize=config.sns["plot_size_gep"])
-            nx.draw(G, pos=layout,
-                    with_labels=False, node_color=colors, node_size=config.sns["node_size"], linewidths=0, width=0.2, edge_color=config.sns["edge_color"])
-
-            # Add legend
-            legend_elements = []
-            for name, color in community_colors.items():
-                legend_elements.append(Line2D([0], [0], marker='o', color='w', label=name, markerfacecolor=color, markersize=10))
-            community_algorithm = config.sns["community_algorithm"]
-            ax.set_title(f"GEP Communities\n{community_algorithm}, res={resolution}")
-            ax.legend(handles=legend_elements)
-            # Save Figure
-            pdf.savefig(fig)
-            plt.close(fig)
-
-    # get usage matrix
-    usage = config.get_usage_matrix()
-    sample_to_patient = config.get_sample_patient_mapping()
-
-    # Number of samples, patients per GEP
-    if any(["patient_id_column" in d for d in config.datasets.values()]):
-        figs = plot_gep_network_samples(usage, sample_to_patient, G, layout, config)
-        for method, fig in figs.items():
-            fig.savefig(os.path.join(sns_output_dir, f"{method}.pdf"))
-            plt.close(fig)
-
-    # integrated community usage matrix (samples X communities)
+    # Cumulative proportion of samples contributing to each GEP
+    fig = plot_gep_network_nsamples(snsmap, colors)
+    fig.savefig(os.path.join(sns_output_dir, "gep_network_n_samples.pdf"))
+    fig.savefig(os.path.join(sns_output_dir, "gep_network_n_samples.png"), dpi=600)
     
-    logging.info("Plotting integrated community usage")
-    ic_usage = []
-    for dataset_name in config.datasets:
-        data = []
-        for community, nodes in communities.items():
-            geps = []
-            for node in nodes:
-                gep = node.split("|")
-                if gep[0] == dataset_name:
-                    geps.append((gep[0], int(gep[1]), int(gep[2])))
-
-            gep_comm = usage[geps]
-            gep_comm = gep_comm / gep_comm.median()
-            data.append(gep_comm.median(axis=1).rename((community, dataset_name)))
-        data = pd.concat(data, axis=1).droplevel(axis=1, level=1).dropna(how="all")
-        data.columns.rename("Community", inplace=True)
-        ic_usage.append(data.sort_index(axis=0))
-    ic_usage = pd.concat(ic_usage)
+    # Cumulative proportion of patients contributing to each GEP
+    fig = plot_gep_network_npatients(snsmap, colors)
+    fig.savefig(os.path.join(sns_output_dir, "gep_network_n_patients.pdf"))
+    fig.savefig(os.path.join(sns_output_dir, "gep_network_n_patients.png"), dpi=600)
+    
+    # integrated community usage
+    ic_usage = snsmap.get_community_usage()
     ic_usage.to_csv(os.path.join(sns_output_dir, "integrated_community_usage.txt"), sep="\t")
-    
-    # plot integrated community usage as an annotated heatmap
-    merged_metadata = []
-    for dataset_name, dataset_params in config.datasets.items():
-        metadata = read_h5ad(dataset_params["filename"], backed="r").obs.dropna(axis=1, how="all").copy()
-        metadata["Dataset"] = dataset_name  # adds a column for displaying dataset as a metadata layer
-        metadata = metadata[ ['Dataset'] + [col for col in metadata.columns if col != 'Dataset'] ]  # Move to front
-        metadata.index = pd.MultiIndex.from_product([[dataset_name], metadata.index])  # adds dataset name to index to disambiguate samples with the same name but different datasets
-        merged_metadata.append(metadata)
-    merged_metadata = pd.concat(merged_metadata)
-    for col in merged_metadata.select_dtypes(include="object").columns:  # required to fix 'object' dtypes created during concatenation
-        merged_metadata[col] = merged_metadata[col].astype("category")
-    merged_metadata.index.rename(["dataset", "sample"], inplace=True)
-    metadata_colors = {col: config.get_metadata_colors(col) for col in merged_metadata.columns}
-    metadata_colors["Dataset"] = {dsname: dsparam["color"] for dsname, dsparam in config.datasets.items()}
-    plot_usage_heatmap(
-        df=ic_usage,
-        metadata=merged_metadata,
-        metadata_colors=metadata_colors,
-        missing_data_color=config.metadata_colors["missing_data"],
-        title="Community Usage",
-        filename=os.path.join(sns_output_dir, "integrated_community_usage.pdf"),
-        cluster_samples=True, cluster_geps=False, show_sample_labels=False,
-        ylabel="Community")
-
-    # GEP level, categorical data, overrepresentation plots
-    
-    logging.info("Creating GEP network plots for categorical metadata")
-    for dataset_name, dataset in config.datasets.items():
-        metadata = read_h5ad(dataset["filename"], backed="r").obs.select_dtypes(include="category").dropna(axis=1, how="all")  # only use categorical data
-        if metadata.shape[1] == 0:
-            continue
+    fig = plot_community_usage_heatmap(snsmap, colors)
+    fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage.pdf"))
+   
+    # GEP-level, categorical data, overrepresentation data
+    for dataset_name, dataset in integration.datasets.items():
+        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation", dataset_name), exist_ok=True)
+        for layer in dataset.get_metadata_df(include_numerical=False):
+            df = dataset.get_category_overrepresentation(layer)
+            df.to_csv(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation", dataset_name, annotation_layer + ".txt"), sep='\t')
+            
+    # GEP-level, categorical data, overrepresentation bar plots
+    for dataset_name in integration.datasets:
+        fig = plot_overrepresentation_gep_bar(snsmap, colors, dataset_name=dataset_name)
+        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar"), exist_ok=True)
+        fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar", dataset_name + ".pdf"))
         
-        # bar charts
-        dataset_is_in_nodes = any([node.split("|")[0] == dataset_name for community in communities.values() for node in community])
-        if not dataset_is_in_nodes:
-            continue
-        
-        fig = plot_overrepresentation_geps_bar(usage, metadata, communities, dataset_name, config)
-        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar_by_community"), exist_ok=True)
-        fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar_by_community", dataset_name + ".pdf"))
-        plt.close(fig)
 
-        for annotation_layer, sample_to_class in metadata.items():
-            colordict = config.get_metadata_colors(annotation_layer)
-            if sample_to_class.isnull().any(): # add 
-                sample_to_class = sample_to_class.cat.add_categories("").fillna("")
-                colordict[""] = config.metadata_colors["missing_data"]
-            ds_usage = usage.loc[:, (dataset_name, slice(None), slice(None))].dropna(how="all").droplevel(axis=0, level=0)
-            overrepresentation = get_category_overrepresentation(ds_usage, sample_to_class)
-            os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation", dataset_name), exist_ok=True)
-            overrepresentation.to_csv(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation", dataset_name, annotation_layer + ".txt"), sep='\t')
-            overrepresentation.columns = pd.Index([f"{c[0]}|{c[1]}|{c[2]}" for c in overrepresentation.columns])
-            fig, ax = plt.subplots(figsize=config.sns["plot_size_gep"])
-            plot_overrepresentation_network(
-                graph=G,
-                layout=layout,
-                title=f"Dataset: {dataset_name}\nMetadata Layer: {annotation_layer}",
-                overrepresentation=overrepresentation,
-                colordict=colordict,
-                pie_size=config.sns["pie_size_gep"],
-                ax=ax
-                )
-                
-            os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name), exist_ok=True)
+    # GEP-level, categorical data, overrepresentation network
+    for dataset_name in integration.datasets:
+        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name), exist_ok=True)
+        for layer in dataset.get_metadata_df(include_numerical=False):
+            fig = plot_overrepresentation_gep_network(snsmap, colors, layer=layer, dataset_name=dataset_name)   
             fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, annotation_layer + ".pdf"))
             fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, annotation_layer + ".png"), dpi=600)
             plt.close(fig)
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # GEP level, numerical data, correlation plots
     logging.info("Creating GEP network plots for numerical metadata")

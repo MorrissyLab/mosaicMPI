@@ -5,8 +5,6 @@
 
 # cNMF-SNS: powerful factorization-based multi-omics integration toolkit
 
-cNMF Solution Network Space
-
 ![](https://img.shields.io/badge/version-1.0.0-blue)
 
 <details>
@@ -23,16 +21,32 @@ cNMF Solution Network Space
 
 </details>
 
-## Introduction
+
+**cNMF-SNS** (consensus Non-negative Matrix Factorization Solution Network Space) is a Python package enabling integration of bulk, single-cell, and
+spatial expression data between and within datasets. cNMF provides a **robust, 
+unsupervised** deconvolution of each dataset into gene expression programs (GEPs).
+**Network-based integration** of GEPs enables flexible integration of many datasets
+across assays (eg. Protein, RNA-Seq) and patient cohorts.
+
+Communities with GEPs from multiple datasets can be annotated with dataset-specific
+annotations to facilitate interpretation.
+
+## :zap: Main Features
+
+Here are just a few of the things that cNMF-SNS does well:
+- Integration of expression data does not require subsetting features/genes to
+  a shared subset
+- Ideal for incremental integration (adding datasets one at a time) since
+  deconvolution is performed independently on each dataset
 
 
-## How to get it
+## :wrench: Install
 
-### 1. Installing from GitHub private repository
+### :lock: From Private GitHub Repository
 
 Before installing cNMF-SNS using pip, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
 ```
-conda create --name py39  -c conda-forge python=3.9 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph semantic_version
+conda create --name py39  -c conda-forge python=3.9 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph semantic_version yaml scikit-learn fastcluster scanpy
 conda activate py39
 ```
 
@@ -61,9 +75,13 @@ conda install -c conda-forge cnmfsns
 
 ## 1.0.0 release notes
 
-- completed python interface
-- single matrix input instead of count/normalized inputs
-- Jupyter notebook for common workflow from sample data
+- python interface
+- single matrix input instead of confusing count and normalized inputs
+- Jupyter notebook for common workflows from sample data
+
+
+## :open_book: Documentation
+
 
 
 ## Workflow 1A: Factorization for individual datasets

@@ -3,20 +3,27 @@ from . import Dataset, cpus_available
 
 import logging
 from collections.abc import Iterable, Collection
-from typing import Union
+from typing import Union, Optional
 import numpy as np
 import pandas as pd
 
 class Integration():
     
     def __init__(self,
-                 datasets: dict[str, Dataset],
+                 datasets: Union[dict[str, Dataset], Collection[Dataset]],
                  corr_method: str = "pearson",
                  max_median_corr: float =  0,
                  negative_corr_quantile: float = 0.95,
                  k_subset: Union[Collection, dict] = (2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60)
                  ):
-        self.datasets = datasets
+        
+        if isinstance(datasets, dict):
+            self.datasets = datasets
+        elif isinstance(datasets, Collection):
+            self.datasets = {dataset.name: dataset for dataset in datasets}
+        else:
+            raise ValueError
+        
         self.corr_method = corr_method
         self.max_median_corr = max_median_corr
         self.negative_corr_quantile = negative_corr_quantile
@@ -208,7 +215,11 @@ class Integration():
         nodetable.columns.rename(["Node filter", "Edge Filter"], inplace=True)
         return nodetable
     
-    def get_metadata_df(self, include_categorical=True, include_numerical=True, prepend_dataset_column=False) -> pd.DataFrame:
+    def get_metadata_df(self,
+                        include_categorical: bool = True,
+                        include_numerical: bool = True,
+                        prepend_dataset_column: bool = False
+                        ) -> pd.DataFrame:
         df = {}
         for dataset_name, dataset in self.datasets.items():
             df[dataset_name] = dataset.get_metadata_df(include_categorical=include_categorical,
@@ -228,6 +239,25 @@ class Integration():
         
         combined = {}
         for dataset_name in subset_datasets:
-            combined[dataset_name] = self.datasets[dataset_name].get_category_overrepresentation(layer=layer)
+            if layer in self.datasets[dataset_name].adata.obs:
+                combined[dataset_name] = self.datasets[dataset_name].get_category_overrepresentation(layer=layer)
         combined = pd.concat(combined, axis=1)
+        return combined
+    
+    def get_metadata_correlation(self,
+                                 layer: str,
+                                 subset_datasets = None,
+                                 method: str = "pearson") -> pd.Series:
+        if subset_datasets is None:
+            subset_datasets = self.datasets.keys()
+        elif isinstance(subset_datasets, str):
+            subset_datasets = [subset_datasets]
+        else:
+            raise ValueError
+        
+        combined = {}
+        for dataset_name in subset_datasets:
+            if layer in self.datasets[dataset_name].adata.obs:
+                combined[dataset_name] = self.datasets[dataset_name].get_metadata_correlation(layer=layer, method=method)
+        combined = pd.concat(combined)
         return combined

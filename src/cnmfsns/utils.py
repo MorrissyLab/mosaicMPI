@@ -79,3 +79,13 @@ def load_df_from_npz(filename, multiindex=False):
             columns = f["columns"]
         obj = pd.DataFrame(f["data"], index=index, columns=columns)
     return obj
+
+def node_to_gep(node_str):
+    node_str = node_str.split("|")
+    gep = (node_str[0], int(node_str[1]), int(node_str[2]))
+    return gep
+
+def gep_to_node(gep):
+    node = "|".join((str(p) for p in gep))
+    return node
+    

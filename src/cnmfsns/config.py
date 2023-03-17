@@ -1,5 +1,5 @@
 
-from . import Dataset, utils
+# from . import Dataset, utils
 
 import tomli
 import tomli_w
@@ -107,148 +107,147 @@ class Config(SimpleNamespace):
         with open(toml_file, "wb") as f:
             tomli_w.dump(self.__dict__, f)
 
-    def add_missing_dataset_colors(self, pastel_factor=0.3, colorblind_type=None):
-        # check provided dataset colors
-        invalid_colors = []
-        for name, d in self.datasets.items():
-            if "color" in d and not colors.is_color_like(d["color"]):
-                invalid_colors.append(d["color"])
-        if invalid_colors:
-            raise ValueError(f"Datasets were given these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
+    # def add_missing_dataset_colors(self, pastel_factor=0.3, colorblind_type=None):
+    #     # check provided dataset colors
+    #     invalid_colors = []
+    #     for name, d in self.datasets.items():
+    #         if "color" in d and not colors.is_color_like(d["color"]):
+    #             invalid_colors.append(d["color"])
+    #     if invalid_colors:
+    #         raise ValueError(f"Datasets were given these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
 
-        # fill in missing values with random colors distinct from existing colors
-        uncolored_datasets = set(name for name, d in self.datasets.items() if "color" not in d)
-        existing_colors = set(d["color"] for name, d in self.datasets.items() if "color" in d) | {"#FFFFFF", "#000000"}
-        if uncolored_datasets:
-            logging.info(f"Choosing distinct dataset colors")
-            new_colors = distinctipy.get_colors(len(uncolored_datasets), exclude_colors=[colors.to_rgb(c) for c in existing_colors], pastel_factor=pastel_factor, colorblind_type=colorblind_type)
-            new_colors = [colors.to_hex(c) for c in new_colors]
-            for name, color in zip(uncolored_datasets, new_colors):
-                self.datasets[name]["color"] = color
+    #     # fill in missing values with random colors distinct from existing colors
+    #     uncolored_datasets = set(name for name, d in self.datasets.items() if "color" not in d)
+    #     existing_colors = set(d["color"] for name, d in self.datasets.items() if "color" in d) | {"#FFFFFF", "#000000"}
+    #     if uncolored_datasets:
+    #         logging.info(f"Choosing distinct dataset colors")
+    #         new_colors = distinctipy.get_colors(len(uncolored_datasets), exclude_colors=[colors.to_rgb(c) for c in existing_colors], pastel_factor=pastel_factor, colorblind_type=colorblind_type)
+    #         new_colors = [colors.to_hex(c) for c in new_colors]
+    #         for name, color in zip(uncolored_datasets, new_colors):
+    #             self.datasets[name]["color"] = color
 
-    def plot_dataset_colors_legend(self, figsize: collections.abc.Iterable = None):
-        if figsize is None:
-            figsize = [3, 1 + 0.25 * len(self.datasets)]
-        fig, ax = plt.subplots(figsize=figsize)
-        color_def = {dataset_name: dataset_params["color"] for dataset_name, dataset_params in self.datasets.items()}
-        legend_elements = [Patch(label=cat, facecolor=color, edgecolor=None) for cat, color in color_def.items()]
-        ax.legend(handles=legend_elements, loc='upper center')
-        ax.set_title('Dataset')
-        ax.set_axis_off()
-        plt.tight_layout()
-        return fig
+    # def plot_dataset_colors_legend(self, figsize: collections.abc.Iterable = None):
+    #     if figsize is None:
+    #         figsize = [3, 1 + 0.25 * len(self.datasets)]
+    #     fig, ax = plt.subplots(figsize=figsize)
+    #     color_def = {dataset_name: dataset_params["color"] for dataset_name, dataset_params in self.datasets.items()}
+    #     legend_elements = [Patch(label=cat, facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+    #     ax.legend(handles=legend_elements, loc='upper center')
+    #     ax.set_title('Dataset')
+    #     ax.set_axis_off()
+    #     plt.tight_layout()
+    #     return fig
             
-    def add_missing_metadata_colors(self,
-                                    dataset: typing.Optional[Dataset] = None,
-                                    pastel_factor=0.3,
-                                    colorblind_type=None):
-        """
-        Identify missing colors based on metadata. If metadata_df is provided, categorical columns are used; otherwise, metadata_df is derived from the config datasets.
-        """
+    # def add_missing_metadata_colors(self,
+    #                                 datasets: Union[Dataset, Integration] = None,
+    #                                 pastel_factor=0.3,
+    #                                 colorblind_type=None):
+    #     """
+    #     Identify missing colors based on metadata. If metadata_df is provided, categorical columns are used; otherwise, metadata_df is derived from the config datasets.
+    #     """
 
-        # get categorical data for which colors should match
-        if dataset is None:
-            # read from h5ad files
-            metadata_df = pd.concat({name: Dataset.from_h5ad(d["filename"], backed="r").adata.obs.select_dtypes(include="category") for name, d in self.datasets.items()})
-        else:
-            metadata_df = dataset.adata.obs.select_dtypes(include="category")
+    #     # get categorical data for which colors should match
+    #     if dataset is None:
+    #         metadata_df = pd.concat({name: Dataset.from_h5ad(d["filename"], backed="r").adata.obs.select_dtypes(include="category") for name, d in self.datasets.items()})
+    #     else:
+    #         metadata_df = dataset.adata.obs.select_dtypes(include="category")
             
-        # check provided metadata colors
-        invalid_colors = []
-        for layer, layer_colors in self.metadata_colors.items():
-            if isinstance(layer_colors, dict):
-                for value, color in layer_colors.items():
-                    if not colors.is_color_like(color):
-                        invalid_colors.append(color)
-        if invalid_colors:
-            logging.error(f"Metadata colors included these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
-            sys.exit(1)
+    #     # check provided metadata colors
+    #     invalid_colors = []
+    #     for layer, layer_colors in self.metadata_colors.items():
+    #         if isinstance(layer_colors, dict):
+    #             for value, color in layer_colors.items():
+    #                 if not colors.is_color_like(color):
+    #                     invalid_colors.append(color)
+    #     if invalid_colors:
+    #         logging.error(f"Metadata colors included these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
+    #         sys.exit(1)
 
-        # fill in missing values with random colors distinct from existing colors
-        for layer, allvalues in metadata_df.items():
-            layer_colors = self.get_metadata_colors(layer)
-            existing_values = set(layer_colors.keys())
-            existing_colors = set(layer_colors.values()) | {"#FFFFFF", "#000000"} # add white/back so that it is excluded from new colors.
-            if np.NaN in allvalues:
-                existing_colors.add(self.metadata_colors["missing_data"])
-            colorless_values = set(allvalues.dropna().unique()) - existing_values
-            if colorless_values:
-                logging.info(f"Choosing distinct colors for metadata layer {layer}")
-                if layer not in self.metadata_colors:
-                    self.metadata_colors[layer] = {}
-                new_colors = distinctipy.get_colors(len(colorless_values), exclude_colors=[colors.to_rgb(c) for c in existing_colors], pastel_factor=pastel_factor, colorblind_type=colorblind_type)
-                new_colors = [colors.to_hex(c) for c in new_colors]
-                for value, color in zip(colorless_values, new_colors):
-                    self.metadata_colors[layer][value] = color
+    #     # fill in missing values with random colors distinct from existing colors
+    #     for layer, allvalues in metadata_df.items():
+    #         layer_colors = self.get_metadata_colors(layer)
+    #         existing_values = set(layer_colors.keys())
+    #         existing_colors = set(layer_colors.values()) | {"#FFFFFF", "#000000"} # add white/back so that it is excluded from new colors.
+    #         if np.NaN in allvalues:
+    #             existing_colors.add(self.metadata_colors["missing_data"])
+    #         colorless_values = set(allvalues.dropna().unique()) - existing_values
+    #         if colorless_values:
+    #             logging.info(f"Choosing distinct colors for metadata layer {layer}")
+    #             if layer not in self.metadata_colors:
+    #                 self.metadata_colors[layer] = {}
+    #             new_colors = distinctipy.get_colors(len(colorless_values), exclude_colors=[colors.to_rgb(c) for c in existing_colors], pastel_factor=pastel_factor, colorblind_type=colorblind_type)
+    #             new_colors = [colors.to_hex(c) for c in new_colors]
+    #             for value, color in zip(colorless_values, new_colors):
+    #                 self.metadata_colors[layer][value] = color
     
-    def get_metadata_colors(self, layer):
-        group_names = [group for group, group_attr in self.metadata_colors_group.items() if layer in group_attr["group"]]
-        layer_colors = {}
-        if layer in self.metadata_colors:
-            layer_colors = {**layer_colors, **self.metadata_colors[layer]}  # updates dict with info from metadata_colors
-        if len(group_names) == 1:
-            group = group_names[0]
-            layer_colors = {**layer_colors, **self.metadata_colors_group[group]['colors']} # updates dict with info from metadata_colors_group
-        elif len(group_names) > 1:
-            logging.error((
-                f"The following column in the metadata matrix (adata.obs) has multiple metadata color groups in the config TOML file:\n"
-                f"Metadata column: {layer}\n"
-                "Metadata color groups: " + ", ".join(group_names)
-            ))
-            sys.exit(1)
-        return layer_colors
+    # def get_metadata_colors(self, layer):
+    #     group_names = [group for group, group_attr in self.metadata_colors_group.items() if layer in group_attr["group"]]
+    #     layer_colors = {}
+    #     if layer in self.metadata_colors:
+    #         layer_colors = {**layer_colors, **self.metadata_colors[layer]}  # updates dict with info from metadata_colors
+    #     if len(group_names) == 1:
+    #         group = group_names[0]
+    #         layer_colors = {**layer_colors, **self.metadata_colors_group[group]['colors']} # updates dict with info from metadata_colors_group
+    #     elif len(group_names) > 1:
+    #         logging.error((
+    #             f"The following column in the metadata matrix (adata.obs) has multiple metadata color groups in the config TOML file:\n"
+    #             f"Metadata column: {layer}\n"
+    #             "Metadata color groups: " + ", ".join(group_names)
+    #         ))
+    #         sys.exit(1)
+    #     return layer_colors
 
-    def plot_metadata_colors_legend(self, char_per_line: int = 20, figsize: collections.abc.Iterable = None):
-        categorical_columns = [track for track, color_def in self.metadata_colors.items() if isinstance(color_def, dict)]
-        categorical_groups = [group for group, group_attr in self.metadata_colors_group.items() if isinstance(group_attr["colors"], dict)]
-        n_columns = len(categorical_columns) + len(categorical_groups) + 1
-        legend_lengths = [
-            len(color_def) for color_def in (self.metadata_colors | self.metadata_colors_group).values()
-            if isinstance(color_def, dict)
-        ]
-        if figsize is None:
-            figsize = [3*n_columns, 0.3 * max(legend_lengths)]
-        fig, axes = plt.subplots(1, n_columns, figsize=figsize, squeeze=False)
-        for ax, track in zip(axes[0], categorical_columns):
-            ax = ax
-            color_def = self.metadata_colors[track]
-            legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
-            ax.legend(handles=legend_elements, loc='upper center')
-            ax.set_title(track)
-            ax.set_axis_off()
-        for ax_id, group in enumerate(categorical_groups, len(categorical_columns)):
-            ax = axes[0][ax_id]
-            color_def = self.metadata_colors_group[group]["colors"]
-            legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
-            ax.legend(handles=legend_elements, loc='upper center')
-            ax.set_title(group)
-            ax.set_axis_off()
+    # def plot_metadata_colors_legend(self, char_per_line: int = 20, figsize: collections.abc.Iterable = None):
+    #     categorical_columns = [track for track, color_def in self.metadata_colors.items() if isinstance(color_def, dict)]
+    #     categorical_groups = [group for group, group_attr in self.metadata_colors_group.items() if isinstance(group_attr["colors"], dict)]
+    #     n_columns = len(categorical_columns) + len(categorical_groups) + 1
+    #     legend_lengths = [
+    #         len(color_def) for color_def in (self.metadata_colors | self.metadata_colors_group).values()
+    #         if isinstance(color_def, dict)
+    #     ]
+    #     if figsize is None:
+    #         figsize = [3*n_columns, 0.3 * max(legend_lengths)]
+    #     fig, axes = plt.subplots(1, n_columns, figsize=figsize, squeeze=False)
+    #     for ax, track in zip(axes[0], categorical_columns):
+    #         ax = ax
+    #         color_def = self.metadata_colors[track]
+    #         legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+    #         ax.legend(handles=legend_elements, loc='upper center')
+    #         ax.set_title(track)
+    #         ax.set_axis_off()
+    #     for ax_id, group in enumerate(categorical_groups, len(categorical_columns)):
+    #         ax = axes[0][ax_id]
+    #         color_def = self.metadata_colors_group[group]["colors"]
+    #         legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
+    #         ax.legend(handles=legend_elements, loc='upper center')
+    #         ax.set_title(group)
+    #         ax.set_axis_off()
 
-        # last column is missing data color
-        axes[0][-1].legend(handles=[Patch(label="Missing Data", facecolor=self.metadata_colors["missing_data"], edgecolor=None)], loc='upper left')
-        axes[0][-1].set_axis_off()
+    #     # last column is missing data color
+    #     axes[0][-1].legend(handles=[Patch(label="Missing Data", facecolor=self.metadata_colors["missing_data"], edgecolor=None)], loc='upper left')
+    #     axes[0][-1].set_axis_off()
 
-        plt.tight_layout()
-        return fig
+    #     plt.tight_layout()
+    #     return fig
 
-    def get_usage_matrix(self):
-        usage = []
-        for dataset_name, dataset in self.datasets.items():
-            adata = Dataset.from_h5ad(dataset["filename"]).adata
-            df = adata.obsm["cnmf_usage"]
-            df.index = pd.MultiIndex.from_product(([dataset_name], (df.index)))
-            df.columns = pd.MultiIndex.from_tuples([(dataset_name, int(col[0]), int(col[1])) for col in df.columns.str.split(".")])
-            usage.append(df)
-        usage = pd.concat(usage, axis=1).sort_index(axis=0).sort_index(axis=1)
-        usage.index.rename(["dataset", "sample"], inplace=True)
-        usage.columns.rename(["dataset", "k", "gep"], inplace=True)
-        return usage
+    # def get_usage_matrix(self):
+    #     usage = []
+    #     for dataset_name, dataset in self.datasets.items():
+    #         adata = Dataset.from_h5ad(dataset["filename"]).adata
+    #         df = adata.obsm["cnmf_usage"]
+    #         df.index = pd.MultiIndex.from_product(([dataset_name], (df.index)))
+    #         df.columns = pd.MultiIndex.from_tuples([(dataset_name, int(col[0]), int(col[1])) for col in df.columns.str.split(".")])
+    #         usage.append(df)
+    #     usage = pd.concat(usage, axis=1).sort_index(axis=0).sort_index(axis=1)
+    #     usage.index.rename(["dataset", "sample"], inplace=True)
+    #     usage.columns.rename(["dataset", "k", "gep"], inplace=True)
+    #     return usage
 
-    def get_sample_patient_mapping(self):
-        sample_to_patient = {}
-        for dataset_name, dataset in self.datasets.items():
-            adata = Dataset.from_h5ad(dataset["filename"]).adata
-            if "patient_id_column" in dataset:   # this code can be removed once patient-id mapping is implemented elsewhere
-                for sample, patient in adata.obs[dataset["patient_id_column"]].items():
-                    sample_to_patient[(dataset_name, sample)] = (dataset_name, patient)
-        return sample_to_patient
+    # def get_sample_patient_mapping(self):
+    #     sample_to_patient = {}
+    #     for dataset_name, dataset in self.datasets.items():
+    #         adata = Dataset.from_h5ad(dataset["filename"]).adata
+    #         if "patient_id_column" in dataset:   # this code can be removed once patient-id mapping is implemented elsewhere
+    #             for sample, patient in adata.obs[dataset["patient_id_column"]].items():
+    #                 sample_to_patient[(dataset_name, sample)] = (dataset_name, patient)
+    #     return sample_to_patient

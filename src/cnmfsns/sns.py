@@ -2,7 +2,7 @@ from . import Integration, Dataset
 
 import logging
 from collections.abc import Collection, Iterable
-import typing
+from typing import Union, Optional
 import numpy as np
 import pandas as pd
 import networkx as nx
@@ -11,21 +11,26 @@ import igraph
 import distinctipy
 import tomli_w
 import networkx as nx
+from scipy.stats import entropy
 
 class SNS():
     def __init__(self,
                  integration: Integration,
-                 subset_nodes: typing.Optional[Iterable] = None,
-                 communities: typing.Optional[dict] = None,
+                 subset_nodes: Optional[Iterable] = None,
+                 communities: Optional[dict] = None,
                  ):
         self.integration = integration
         self.subset_nodes = subset_nodes
         self.create_gep_network()
+        self.communities = communities
         if subset_nodes is not None:
             self.gep_graph = nx.subgraph(self.gep_graph, subset_nodes)
     @property
     def n_communities(self):
-        return len(self.communities)
+        if self.communities is None:
+            raise ValueError("Communities have not yet been defined.")
+        else:
+            return len(self.communities)
 
     @property
     def geps_in_graph(self):
@@ -43,10 +48,16 @@ class SNS():
             nodes.append((dataset_name, int(k_str), int(gep_str)))
         return nodes
     
-    def get_community_usage(self):
+    def get_community_usage(self, subset_datasets = None, normalized=True):
         usage = self.integration.get_usages()
         ic_usage = []
-        for dataset_name in self.integration.datasets:
+        
+        if subset_datasets is None:
+            subset_datasets = self.integration.datasets
+        elif isinstance(subset_datasets, str):
+            subset_datasets = [subset_datasets]
+        
+        for dataset_name in subset_datasets:
             data = []
             for community, nodes in self.communities.items():
                 geps = []
@@ -61,7 +72,38 @@ class SNS():
             data.columns.rename("Community", inplace=True)
             ic_usage.append(data.sort_index(axis=0))
         ic_usage = pd.concat(ic_usage)
+        if normalized:
+            ic_usage = ic_usage.div(ic_usage.sum(axis=1), axis=0)
         return ic_usage
+    
+    def get_sample_entropy(self, subset_datasets = None):
+        ic_usage = self.get_community_usage(subset_datasets = subset_datasets)
+        diversity = ic_usage.apply(lambda x: entropy(x.dropna()), axis=1)
+        return diversity
+    
+    def get_community_category_overrepresentation(self,
+                                                  layer: str,
+                                                  subset_datasets: Optional[Collection] = None
+                                                  ) -> pd.DataFrame:
+        df = self.integration.get_category_overrepresentation(layer=layer, subset_datasets=subset_datasets)
+        mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
+        df.columns = df.columns.map(mapper)
+        df = df.groupby(axis=1, level=0).median()
+        df = df.reindex(self.ordered_community_names, axis=1)
+        return df
+    
+    def get_community_metadata_correlation(self,
+                                           layer: str,
+                                           subset_datasets: Optional[Collection] = None,
+                                           method: str = "pearson"
+                                           ) -> pd.Series:
+        ser = self.integration.get_metadata_correlation(layer=layer, subset_datasets=subset_datasets, method=method)
+        mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
+        ser.index = ser.index.map(mapper)
+        ser = ser.groupby(axis=0, level=0).median()
+        ser = ser.reindex(self.ordered_community_names)
+        return ser
+
     
     def create_gep_network(self):
 
@@ -79,7 +121,6 @@ class SNS():
         subset.columns = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset.columns])
         subset_quantile.index = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset_quantile.index])
         subset_quantile.columns = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset_quantile.columns])
-
         # Build graph
         links = subset.stack().reset_index()
         links.columns = ['node1', 'node2', 'corr']
@@ -93,7 +134,6 @@ class SNS():
                 ds_pair_indices = (links['node1'].str.split("|").str[0] == ds1) & (links['node2'].str.split("|").str[0] == ds2)
                 links_ds_pair = links.loc[ds_pair_indices]
                 links.loc[ds_pair_indices, "postfilter_quantile"] = links_ds_pair["corr"].rank() / links_ds_pair["corr"].count()
-
         G = nx.from_pandas_edgelist(links, 'node1', 'node2', ["corr", "prefilter_quantile", "postfilter_quantile"])
 
         G.add_nodes_from(subset.index.to_list()) # ensures that nodes are not excluded because they are not connected
@@ -101,21 +141,20 @@ class SNS():
 
     def community_search(self,
                            algorithm="greedy_modularity",
-                           resolution: typing.Optional[float] = None,
-                           k: typing.Optional[int] = None,
-                           edge_weight: typing.Optional[str] = None
+                           resolution: Optional[float] = 2.0,
+                           k: Optional[int] = None,
+                           edge_weight: Optional[str] = None
                            ):
         
         assert edge_weight in (None, "corr", "prefilter_quantile", "postfilter_quantile")
         
-        G = self.gep_graph           
+        G = self.gep_graph
             
         # Community search
         logging.info(f"Community search: algorithm = {algorithm}, resolution = {resolution}")
         if algorithm == "greedy_modularity":
             algo_output = nx.algorithms.community.modularity_max.greedy_modularity_communities(
-                G, resolution=resolution, weight=edge_weight
-                )
+                G, resolution=resolution, weight=edge_weight)
             communities = {name: nodes for name, nodes in enumerate(algo_output, start=1)}
         elif algorithm == "leiden":
             G_igraph = igraph.Graph.from_networkx(G)
@@ -158,7 +197,6 @@ class SNS():
     def ordered_community_names(self):
         community_names = sorted(self.communities.keys(), key = lambda cstr: [int(lvl) for lvl in cstr.split(".")])
         return community_names
-        
     
     def add_community_weights_to_graph(self, shared_community_weight = 0.3, shared_dataset_weight = 0.1):
         edge_attr = {}
@@ -175,6 +213,12 @@ class SNS():
         toml_conformed = {str(community): sorted(geps, key=lambda x: int(x.split("|")[1])) for community, geps in self.communities.items()}
         with open(filename, "wb") as fh:
             tomli_w.dump(toml_conformed, fh)
+
+    def write_gep_network_graphml(self, filename):
+        nx.write_graphml(self.gep_graph, filename)
+    
+    def write_community_network_graphml(self, filename):
+        nx.write_graphml(self.comm_graph, filename)
 
     def compute_layout(self, algorithm="community_weighted_spring", shared_community_weight = 0.4, shared_dataset_weight = 0.2):
         if algorithm == "neato":
@@ -231,7 +275,9 @@ class SNS():
             centroid = (np.median(points[:, 0]), np.median(points[:, 1]))
             self.comm_layout[community_name] = centroid
 
-
+    def compute_community_network_layout(method):
+        raise NotImplementedError
+    
     def get_max_corr_communities(self) -> pd.DataFrame:
         corr = self.integration.corr_matrix
 
@@ -261,3 +307,43 @@ class SNS():
         edge_list = pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges"))
         self.comm_graph = nx.from_pandas_edgelist(pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges")), "comm1", "comm2", "n_edges")
         self.comm_graph.add_nodes_from(self.communities.keys())
+        
+    def get_representative_gep_table(self,
+                                method = "min_k",
+                                min_k: int = 2
+                                ) -> pd.DataFrame:
+        if method == "min_k":
+            logging.info(f"Selecting representative ranks for each community with min_k = {min_k}")
+            # get minimum k GEPs for each community/dataset combination.
+            table = []
+            for community, nodes in self.communities.items():
+                nodes = pd.DataFrame([n.split("|") for n in nodes], columns=["dataset", "k", "GEP"])
+                for dataset_name in self.integration.datasets:
+                    dataset_nodes = nodes[nodes["dataset"] == dataset_name].copy()
+                    if dataset_nodes.shape[0]:
+                        block = dataset_nodes[dataset_nodes["k"].astype(int) == dataset_nodes["k"].astype(int).min()].copy()
+                        block["Community"] = community
+                        table.append(block)
+            table = pd.concat(table).set_index("Community")
+        else:
+            raise ValueError
+        
+        return table
+        
+
+    def get_representative_geps(self,
+                                method = "min_k",
+                                min_k: int = 2
+                                ) -> pd.DataFrame:
+        geps = self.integration.get_geps()
+        table = self.get_representative_gep_table(method = method, min_k = min_k)
+        selected_geps = []
+        for community, gep in table.iterrows():
+            gep = geps[gep['dataset'], int(gep['k']), int(gep['GEP'])]
+            gep = gep.rename((community,) + gep.name)
+            print(gep.name)
+            selected_geps.append(gep)
+        selected_geps = pd.concat(selected_geps, axis=1)
+        selected_geps.columns.rename(("community", "dataset", "k", "GEP"), inplace=True)
+        return selected_geps
+        
