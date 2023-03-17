@@ -1,8 +1,12 @@
-from . import Colors, Dataset, Config, Integration, start_logging, __version__, cpus_available
-from .plots import *
-from .utils import load_df_from_npz, save_df_to_npz, save_df_to_text
-from .cnmf import cNMF
 
+from .dataset import Dataset
+from .integration import Integration
+from .config import Config
+from .colors import Colors
+from .sns import SNS
+from .cnmf import cNMF
+from .plots import *
+from . import utils, __version__, cpus_available
 
 import os
 import logging
@@ -13,15 +17,9 @@ from datetime import datetime
 from typing import Optional, Mapping
 
 import click
-import numpy as np
 import pandas as pd
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import networkx as nx
-import seaborn as sns
-import tomli_w
-import distinctipy
-from matplotlib.lines import Line2D
 
 class OrderedGroup(click.Group):
     """
@@ -62,7 +60,7 @@ def cmd_txt_to_h5ad(data_file, is_normalized, metadata, output, sparsify):
     """
     Create .h5ad file with data and metadata (`adata.obs`).
     """
-    start_logging()
+    utils.start_logging()
     df = pd.read_table(data_file, index_col=0)
     metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
     dataset = Dataset.from_df(data=df, obs=metadata_df, sparsify=sparsify, is_normalized=is_normalized)
@@ -81,7 +79,7 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
     """
     Update metadata in a .h5ad file at any point in the cNMF-SNS workflow. New metadata will overwrite (`adata.obs`).
     """
-    start_logging()
+    utils.start_logging()
     dataset = Dataset.from_h5ad(input_h5ad)
     metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
     dataset.update_obs(metadata_df)
@@ -97,7 +95,7 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
     "-o", "--output", type=click.Path(dir_okay=False, exists=False), required=False,
     help="Output .h5ad file. If not specified, no output file will be written.")
 def cmd_check_h5ad(input, output):
-    start_logging()
+    utils.start_logging()
     dataset = Dataset.from_h5ad(input)
     dataset.remove_unfactorizable_genes()
     
@@ -138,7 +136,7 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof):
         cnmfsns model-odg -n test -i test.h5ad --default_spline_degree 0 --default_dof 1
     """
     cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
-    start_logging(os.path.join(output_dir, name, "logfile.txt"))
+    utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
     dataset = Dataset.from_h5ad(input)
     
     # Create gene stats table and save h5ad file
@@ -223,7 +221,7 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
         cnmfsns set_parameters -n test -m genes_file -p path/to/genesfile.txt
     """
     os.makedirs(os.path.join(output_dir, name), exist_ok=True)
-    start_logging(os.path.join(output_dir, name, "logfile.txt"))
+    utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
     dataset = Dataset.from_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
 
     if odg_method == "genes_file":
@@ -295,9 +293,9 @@ def cmd_factorize(name, output_dir, worker_index, total_workers, slurm_script):
     Performs factorization according to parameters specified using `cnmfsns set-parameters`.
     """
     cnmf_obj = cNMF(output_dir=output_dir, name=name)
-    start_logging(os.path.join(output_dir, name, "logfile.txt"))
+    utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
     
-    run_params = load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
+    run_params = utils.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
     if run_params.shape[0] == 0:
         logging.error("No factorization to do: either no values of k were selected using `cnmfsns set-parameters` or iterations were set to 0.")
 
@@ -332,7 +330,7 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
     iterations, calculating consensus GEPs and usage matrices, and creating the k-selection and annotated usage plots.
     """
     cnmf_obj = cNMF(output_dir=output_dir, name=name)
-    start_logging(os.path.join(output_dir, name, "logfile.txt"))
+    utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
     cnmf_obj.postprocess(cpus=cpus,
                          local_density_threshold=local_density_threshold,
                          local_neighborhood_size=local_neighborhood_size,
@@ -375,7 +373,7 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
     """
     Create heatmaps of usages with annotation tracks.
     """
-    start_logging()
+    utils.start_logging()
     os.makedirs(output_dir, exist_ok=True)
     dataset = Dataset.from_h5ad(input_h5ad)
     
@@ -398,7 +396,6 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
         subset_columns.extend(dataset.get_metadata_df(include_categorical=False).columns.to_list())
     else:
         subset_columns = None
-    print(subset_columns)
     if not dataset.has_cnmf_results:
         logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `cnmfsns postprocess` before creating annotated usage heatmaps.")
         sys.exit(1)
@@ -428,13 +425,13 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
     
     # create directory structure, warn if not empty
     output_dir = os.path.normpath(output_dir)
-    start_logging()
+    utils.start_logging()
     global cpus_available
     cpus_available = cpus
     os.makedirs(output_dir, exist_ok=True)
     if os.listdir(output_dir):
         logging.warning(f"Integration directory {output_dir} is not empty. Files may be overwritten.")
-    start_logging(os.path.join(output_dir, "logfile.txt"))
+    utils.start_logging(os.path.join(output_dir, "logfile.txt"))
     os.makedirs(os.path.join(output_dir, "integrate"), exist_ok=True)
     if config_toml is None and len(input_h5ad) == 0:
         logging.error("Datasets for integration must be specified in a config TOML file using `-c` or using `-i` for individual .h5ad files. ")
@@ -478,7 +475,7 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
     
     # save correlation matrix
     corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")
-    save_df_to_npz(integration.corr_matrix, corr_path)
+    utils.save_df_to_npz(integration.corr_matrix, corr_path)
     
     integration.k_table.to_csv(os.path.join(output_dir, "integrate", "k_filters.txt"), sep="\t")
     
@@ -535,7 +532,7 @@ def cmd_create_network(output_dir, name, config_toml):
     """
     Create network integration.
     """
-    start_logging(os.path.join(output_dir, "logfile.txt"))
+    utils.start_logging(os.path.join(output_dir, "logfile.txt"))
 
     if config_toml is None:
         config = Config.from_toml(os.path.join(output_dir, "integrate", "config.toml"))
@@ -592,9 +589,14 @@ def cmd_create_network(output_dir, name, config_toml):
     community_algorithm = config.sns["community_algorithm"]
     snsmap.community_search(algorithm=community_algorithm,
                             resolution=config.sns["communities"][community_algorithm]["resolution"])
-
     nx.write_graphml(snsmap.gep_graph, os.path.join(sns_output_dir, "gep_graph.graphml"))
 
+    snsmap.compute_layout(
+        algorithm=config.sns["layout_algorithm"],
+        shared_community_weight = config.sns["layouts"]["community_weighted_spring"]["within_community"],
+        shared_dataset_weight = config.sns["layouts"]["community_weighted_spring"]["within_dataset"]
+    )
+    
     # make figure legends for metadata
     colors = Colors.from_config(config)
     colors.add_missing_dataset_colors(datasets=integration)
@@ -615,6 +617,8 @@ def cmd_create_network(output_dir, name, config_toml):
         
     representative_geps = snsmap.get_representative_geps()
     representative_geps.to_csv(os.path.join(sns_output_dir, "representative_geps.txt"), sep="\t") # outputs the GEP identities
+
+    logging.info("Creating SNS plots...")
 
     # plot membership of datasets and ranks for each community
     fig = plot_community_by_dataset_rank(snsmap, colors)
@@ -646,9 +650,10 @@ def cmd_create_network(output_dir, name, config_toml):
     fig.savefig(os.path.join(sns_output_dir, "gep_network_n_samples.png"), dpi=600)
     
     # Cumulative proportion of patients contributing to each GEP
-    fig = plot_gep_network_npatients(snsmap, colors)
-    fig.savefig(os.path.join(sns_output_dir, "gep_network_n_patients.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "gep_network_n_patients.png"), dpi=600)
+    if snsmap.integration.sample_to_patient is not None:
+        fig = plot_gep_network_npatients(snsmap, colors)
+        fig.savefig(os.path.join(sns_output_dir, "gep_network_n_patients.pdf"))
+        fig.savefig(os.path.join(sns_output_dir, "gep_network_n_patients.png"), dpi=600)
     
     # integrated community usage
     ic_usage = snsmap.get_community_usage()
@@ -661,7 +666,7 @@ def cmd_create_network(output_dir, name, config_toml):
         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
             df = dataset.get_category_overrepresentation(layer)
-            df.to_csv(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation", dataset_name, annotation_layer + ".txt"), sep='\t')
+            df.to_csv(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation", dataset_name, layer + ".txt"), sep='\t')
             
     # GEP-level, categorical data, overrepresentation bar plots
     for dataset_name in integration.datasets:
@@ -674,22 +679,11 @@ def cmd_create_network(output_dir, name, config_toml):
     for dataset_name in integration.datasets:
         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
-            fig = plot_overrepresentation_gep_network(snsmap, colors, layer=layer, dataset_name=dataset_name)   
-            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, annotation_layer + ".pdf"))
-            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, annotation_layer + ".png"), dpi=600)
+            fig = plot_overrepresentation_gep_network(snsmap, colors, layer=layer, subset_datasets=dataset_name)   
+            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, layer + ".pdf"))
+            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, layer + ".png"), dpi=600)
             plt.close(fig)
         
-
-
-
-
-
-
-
-
-
-
-
 
 
 

@@ -1,9 +1,12 @@
 
-from . import Dataset, cpus_available
+from .dataset import Dataset
+from . import cpus_available
 
-import logging
-from collections.abc import Iterable, Collection
+
+from collections.abc import Iterable, Collection, Mapping
 from typing import Union, Optional
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -63,9 +66,13 @@ class Integration():
     def sample_to_patient(self) -> dict:
         mapping = {}
         for dataset_name, dataset in self.datasets.items():
-            for sample_id, patient_id in dataset.adata.obs[dataset.patient_id_col].items():
-                mapping[(dataset_name, sample_id)] = (dataset_name, patient_id)
-        return pd.Series(mapping)
+            if dataset.patient_id_col is not None:
+                for sample_id, patient_id in dataset.adata.obs[dataset.patient_id_col].items():
+                    mapping[(dataset_name, sample_id)] = (dataset_name, patient_id)
+        if mapping:
+            return pd.Series(mapping)
+        else:
+            return None
     
     
     def get_corr_matrix_lowertriangle(self, max_k_filter=False, selected_k_filter=False, quantile_transformation=False):

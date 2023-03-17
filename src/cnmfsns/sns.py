@@ -1,8 +1,14 @@
-from . import Integration, Dataset
 
-import logging
+from .integration import Integration
+from .colors import Colors
+from .sns import SNS
+from . import utils
+
+
 from collections.abc import Collection, Iterable
 from typing import Union, Optional
+import logging
+
 import numpy as np
 import pandas as pd
 import networkx as nx
@@ -85,7 +91,7 @@ class SNS():
                                                   layer: str,
                                                   subset_datasets: Optional[Collection] = None
                                                   ) -> pd.DataFrame:
-        df = self.integration.get_category_overrepresentation(layer=layer, subset_datasets=subset_datasets)
+        df = self.integration.get_category(layer=layer, subset_datasets=subset_datasets)
         mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
         df.columns = df.columns.map(mapper)
         df = df.groupby(axis=1, level=0).median()
@@ -341,7 +347,6 @@ class SNS():
         for community, gep in table.iterrows():
             gep = geps[gep['dataset'], int(gep['k']), int(gep['GEP'])]
             gep = gep.rename((community,) + gep.name)
-            print(gep.name)
             selected_geps.append(gep)
         selected_geps = pd.concat(selected_geps, axis=1)
         selected_geps.columns.rename(("community", "dataset", "k", "GEP"), inplace=True)

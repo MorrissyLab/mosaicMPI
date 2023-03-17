@@ -1,9 +1,14 @@
 
-from . import Dataset, Integration, SNS, Config, utils
+from .dataset import Dataset
+from .integration import Integration
+from .config import Config
+from .sns import SNS
+from . import utils
 
 import logging
 from typing import Optional, Union
 from collections.abc import Collection, Iterable
+
 import matplotlib.pyplot as plt
 from matplotlib import colors as mpl_colors
 from matplotlib.figure import Figure

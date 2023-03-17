@@ -2,23 +2,20 @@
 from . import utils, cnmf, __version__
 
 import numpy as np
-from warnings import catch_warnings, simplefilter
 import pandas as pd
-import scipy as sp
 import logging
 from datetime import datetime
 import sys
 from typing import Union, Optional
 from collections.abc import Iterable, Collection
-import semantic_version
-import anndata as ad
-import seaborn as sns
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from statsmodels.gam.api import GLMGam, BSplines
 import os
 from glob import glob
+
+import scipy as sp
+import anndata as ad
+import pandas as pd
+import numpy as np
+from statsmodels.gam.api import GLMGam, BSplines
 
 def migrate_anndata(adata:ad.AnnData, force: bool = False):
     # migrates external and pre-1.0.0 anndata objects to newer format.

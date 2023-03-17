@@ -1,5 +1,13 @@
 
-from . import Dataset, Integration, Colors, SNS, utils
+from .dataset import Dataset
+from .integration import Integration
+from .colors import Colors
+from .sns import SNS
+from . import utils
+
+
+from collections.abc import Iterable, Collection, Mapping
+from typing import Union, Optional
 
 import pandas as pd
 import numpy as np
@@ -11,7 +19,6 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Polygon, Rectangle, Patch
 import matplotlib.pyplot as plt
 import upsetplot
-from typing import Optional, Union, Collection
 from scipy.cluster.hierarchy import linkage, dendrogram
 import networkx as nx
 
@@ -26,7 +33,6 @@ def plot_feature_dispersion(dataset: Dataset, show_selected:bool = False, all_pl
     Create diagnostic plots for data from model_overdispersion()
     """
     df = dataset.adata.var.sort_values("mean")
-    
     figs = {}
 
     # Figure: Default model mean and variance
@@ -846,6 +852,8 @@ def plot_gep_network_npatients(snsmap: SNS,
     colors.plot_dataset_colors_legend(ax=ax_legend)
 
     usages = snsmap.integration.get_usages(discretize = True).fillna(0).astype(bool)
+    if snsmap.integration.sample_to_patient is None:
+        raise ValueError("No samples have valid patient IDs. Make sure to set the patient_id_col property for each Dataset")
     usages.index = usages.index.map(snsmap.integration.sample_to_patient)
     usages = usages.groupby(axis=0, level=[0,1]).any()
         

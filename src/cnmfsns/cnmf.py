@@ -2,24 +2,25 @@
 
 from . import utils
 
-import numpy as np
-import pandas as pd
-import os, errno
+import os
+import errno
 import datetime
 import logging
 import uuid
 import itertools
-import yaml
 import subprocess
+from functools import partial
+from multiprocessing.pool import Pool
+
+import yaml
 import scipy.sparse as sp
+import numpy as np
+import pandas as pd
 from scipy.spatial.distance import squareform
 from sklearn.decomposition import non_negative_factorization
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import euclidean_distances
-from sklearn.utils import sparsefuncs
-from functools import partial
-from multiprocessing.pool import Pool
 from fastcluster import linkage
 from scipy.cluster.hierarchy import leaves_list
 import matplotlib.pyplot as plt
