@@ -88,7 +88,7 @@ class SNS():
                                                   layer: str,
                                                   subset_datasets: Optional[Collection] = None
                                                   ) -> pd.DataFrame:
-        df = self.integration.get_category(layer=layer, subset_datasets=subset_datasets)
+        df = self.integration.get_category_overrepresentation(layer=layer, subset_datasets=subset_datasets)
         mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
         df.columns = df.columns.map(mapper)
         df = df.groupby(axis=1, level=0).median()
