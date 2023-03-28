@@ -91,7 +91,7 @@ class SNS():
         df = self.integration.get_category_overrepresentation(layer=layer, subset_datasets=subset_datasets)
         mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
         df.columns = df.columns.map(mapper)
-        df = df.groupby(axis=1, level=0).median()
+        df = df.groupby(axis=1, level=0).mean()
         df = df.reindex(self.ordered_community_names, axis=1)
         return df
     
@@ -103,7 +103,7 @@ class SNS():
         ser = self.integration.get_metadata_correlation(layer=layer, subset_datasets=subset_datasets, method=method)
         mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
         ser.index = ser.index.map(mapper)
-        ser = ser.groupby(axis=0, level=0).median()
+        ser = ser.groupby(axis=0, level=0).mean()
         ser = ser.reindex(self.ordered_community_names)
         return ser
 
@@ -192,9 +192,43 @@ class SNS():
         communities = {str(k): v for k, v in communities.items()}
 
         self.communities = communities
-        self.community_colors = {community: color for community, color in zip(communities, distinctipy.get_colors(n_colors=len(communities), pastel_factor=0.2))}
         self.gep_communities = {gep: community for community, geps in communities.items() for gep in geps}
         self.create_community_network()
+
+    def prune_communities(self,
+                          min_nodes: int = 1,
+                          min_datasets: int = 1,
+                          min_nodes_per_dataset: int = 0,
+                          renumber = False, recolor = False):
+        pruned = {}
+        for community, nodes in self.communities.items():
+            if len(nodes) < min_nodes:
+                continue
+            
+            dataset_counts = {dsname: 0 for dsname in self.integration.datasets}
+            for node in nodes:
+                dsname = node.split("|")[0]
+                dataset_counts[dsname] += 1
+                
+            n_datasets = np.sum([x > 0 for x in dataset_counts.values()])
+            if n_datasets < min_datasets:
+                continue
+            
+            if any([x < min_nodes_per_dataset for x in dataset_counts.values()]):
+                continue
+            
+            pruned[community] = nodes
+            
+        if renumber:
+            renumbered = list(pruned.values())
+            renumbered.sort(key=lambda x: len(x), reverse=True)
+            renumbered = {str(num): nodes for num, nodes in enumerate(renumbered, 1)}
+            pruned = renumbered
+        
+        self.communities = pruned
+        self.gep_communities = {gep: community for community, geps in self.communities.items() for gep in geps}
+        self.create_community_network()
+
 
     @property
     def ordered_community_names(self):
@@ -205,8 +239,9 @@ class SNS():
         edge_attr = {}
         for edge in self.gep_graph.edges:
             weight = 1
-            if self.gep_communities[edge[0]] == self.gep_communities[edge[1]]:
-                weight *= shared_community_weight
+            if edge[0] in self.gep_communities and edge[1] in self.gep_communities:  # nodes might not have communities due to pruning, and so will be treated as if they are in different communities for layout purposes
+                if self.gep_communities[edge[0]] == self.gep_communities[edge[1]]:
+                    weight *= shared_community_weight
             if edge[0].split("|")[0] == edge[1].split("|")[0]:
                 weight *= shared_dataset_weight
             edge_attr[edge] = weight
@@ -223,7 +258,7 @@ class SNS():
     def write_community_network_graphml(self, filename):
         nx.write_graphml(self.comm_graph, filename)
 
-    def compute_layout(self, algorithm="community_weighted_spring", shared_community_weight = 0.4, shared_dataset_weight = 0.2):
+    def compute_layout(self, algorithm="community_weighted_spring", shared_community_weight = 200, shared_dataset_weight = 1.05, community_layout_algorithm="spring"):
         if algorithm == "neato":
             layout = nx.nx_agraph.graphviz_layout(self.gep_graph, prog="neato", args='-Goverlap=true')
         elif algorithm == "spring":
@@ -271,15 +306,54 @@ class SNS():
             for name, xy in layout.items()}
         self.layout = layout
         
-        # Centroid method for community layout
-        self.comm_layout = {}
-        for community_name, nodes in self.communities.items():
-            points = np.array([self.layout[node] for node in nodes])
-            centroid = (np.median(points[:, 0]), np.median(points[:, 1]))
-            self.comm_layout[community_name] = centroid
+        self.compute_community_network_layout(method=community_layout_algorithm)
 
-    def compute_community_network_layout(method):
-        raise NotImplementedError
+    def compute_community_network_layout(self, method: str = "neato"):
+        
+        logging.info(f"Computing community layout using {method} method.")
+        if method == "centroid":
+            # Centroid method for community layout
+            self.comm_layout = {}
+            for community_name, nodes in self.communities.items():
+                points = np.array([self.layout[node] for node in nodes])
+                centroid = (np.median(points[:, 0]), np.median(points[:, 1]))
+                self.comm_layout[community_name] = centroid
+                
+        elif method == "neato":
+            layout = nx.nx_agraph.graphviz_layout(self.comm_graph, prog="neato", args='-Goverlap=true')
+            # rescale layout
+            xmax = max(x for x, y in layout.values())
+            xmin = min(x for x, y in layout.values())
+            ymax = max(y for x, y in layout.values())
+            ymin = min(y for x, y in layout.values())
+            def rescale_point(xy, xmin, xmax, ymin, ymax, new_range):
+                x, y = xy
+                x = (new_range[1] - new_range[0]) * (x - xmin) / (xmax - xmin) + new_range[0]
+                y = (new_range[1] - new_range[0]) * (y - ymin) / (ymax - ymin) + new_range[0]
+                return (x, y)
+            layout = {
+                name: rescale_point(xy, xmin, xmax, ymin, ymax, (-1, 1))
+                for name, xy in layout.items()}
+            self.comm_layout = layout
+        
+        elif method == "spring":
+            layout = nx.spring_layout(self.comm_graph, weight="weight")
+            # rescale layout
+            xmax = max(x for x, y in layout.values())
+            xmin = min(x for x, y in layout.values())
+            ymax = max(y for x, y in layout.values())
+            ymin = min(y for x, y in layout.values())
+            def rescale_point(xy, xmin, xmax, ymin, ymax, new_range):
+                x, y = xy
+                x = (new_range[1] - new_range[0]) * (x - xmin) / (xmax - xmin) + new_range[0]
+                y = (new_range[1] - new_range[0]) * (y - ymin) / (ymax - ymin) + new_range[0]
+                return (x, y)
+            layout = {
+                name: rescale_point(xy, xmin, xmax, ymin, ymax, (-1, 1))
+                for name, xy in layout.items()}
+            self.comm_layout = layout
+        else:
+            raise NotImplementedError
     
     def get_max_corr_communities(self) -> pd.DataFrame:
         corr = self.integration.corr_matrix
@@ -305,10 +379,14 @@ class SNS():
             for c2, n2 in self.communities.items():
                 if c1 != c2:  # no self-loops
                     n_edges = len(list(nx.edge_boundary(self.gep_graph, n1, n2)))
-                    edge_list.append((c1, c2, n_edges))
+                    weight = np.sqrt(n_edges)
+                    edge_list.append((c1, c2, n_edges, weight))
 
-        edge_list = pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges"))
-        self.comm_graph = nx.from_pandas_edgelist(pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges")), "comm1", "comm2", "n_edges")
+        edge_list = pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges", "weight"))
+        self.comm_graph = nx.from_pandas_edgelist(df = pd.DataFrame(edge_list, columns = ("comm1", "comm2", "n_edges", "weight")),
+                                                  source = "comm1",
+                                                  target = "comm2",
+                                                  edge_attr=["n_edges", "weight"])
         self.comm_graph.add_nodes_from(self.communities.keys())
         
     def get_representative_gep_table(self,
@@ -321,6 +399,7 @@ class SNS():
             table = []
             for community, nodes in self.communities.items():
                 nodes = pd.DataFrame([n.split("|") for n in nodes], columns=["dataset", "k", "GEP"])
+                nodes = nodes[nodes["k"].astype(int) >= min_k]
                 for dataset_name in self.integration.datasets:
                     dataset_nodes = nodes[nodes["dataset"] == dataset_name].copy()
                     if dataset_nodes.shape[0]:
@@ -339,6 +418,7 @@ class SNS():
                                 min_k: int = 2
                                 ) -> pd.DataFrame:
         geps = self.integration.get_geps()
+        
         table = self.get_representative_gep_table(method = method, min_k = min_k)
         selected_geps = []
         for community, gep in table.iterrows():

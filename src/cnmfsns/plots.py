@@ -562,7 +562,7 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
                                         pie_size: float = 0.1,
                                         figsize: Collection = (9, 6),
                                         edge_weights: Optional[str] = None,
-                                        edge_color: str = "#888888",
+                                        edge_color: str = "#AAAAAA88",
                                         metric: str = "pearson_residual",
                                         show_legend: bool = True) -> Optional[Figure]:
     
@@ -587,7 +587,7 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
         width = np.array(list(nx.get_edge_attributes(snsmap.gep_graph, edge_weights).values()))
         width = width / np.max(width)
 
-    nx.draw_networkx_edges(snsmap.gep_graph, pos=snsmap.layout, edge_color=edge_color, ax=ax_plot, width=width)
+    nx.draw_networkx_edgeees(snsmap.gep_graph, pos=snsmap.layout, edge_color=edge_color, ax=ax_plot, width=width)
     overrepresentation = snsmap.integration.get_category_overrepresentation(subset_datasets=subset_datasets, layer=layer)
     overrepresentation = overrepresentation.fillna(0)
 
@@ -637,7 +637,7 @@ def plot_metadata_correlation_gep_network(snsmap: SNS,
                                           figsize=(7, 6),
                                           node_size=100,
                                           edge_weights: Optional[str] = None,
-                                          edge_color="#888888",
+                                          edge_color="#AAAAAA88",
                                           method: str = "pearson",
                                           cmap: str = "RdBu_r",
                                           show_legend=True) -> Optional[Figure]:
@@ -687,7 +687,7 @@ def plot_metadata_correlation_gep_network(snsmap: SNS,
         return fig
 
 
-def plot_gep_network_datasets(snsmap: SNS, colors: Colors, figsize = (9,6), edge_color = "#888888", node_size = 30, node_size_kval = False, labels = False, ax = None):
+def plot_gep_network_datasets(snsmap: SNS, colors: Colors, figsize = (9,6), edge_color = "#AAAAAA88", node_size = 30, node_size_kval = False, labels = False, ax = None):
      
     if ax is None:
         fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [2, 1]}, layout="tight")
@@ -738,7 +738,7 @@ def plot_gep_network_datasets(snsmap: SNS, colors: Colors, figsize = (9,6), edge
 def plot_gep_network_communities(snsmap: SNS,
                                  colors: Colors,
                                  figsize = (9,6),
-                                 edge_color = "#888888",
+                                 edge_color = "#AAAAAA88",
                                  node_size = 30,
                                  node_size_kval = False,
                                  ax = None):
@@ -756,7 +756,11 @@ def plot_gep_network_communities(snsmap: SNS,
     
     node_colors = []
     for node in snsmap.gep_graph:
-        node_colors.append(colors.community_colors[snsmap.gep_communities[node]])
+        if node in snsmap.gep_communities:
+            node_colors.append(colors.community_colors[snsmap.gep_communities[node]])
+        else:
+            # if node has been pruned
+            node_colors.append("#00000000")
 
     # Labels without dataset names
     labels = {}
@@ -793,7 +797,7 @@ def plot_gep_network_nsamples(snsmap: SNS,
                              colors: Colors,
                              figsize: Collection = (9, 6),
                              discretize = False,
-                             edge_color = "#888888",
+                             edge_color = "#AAAAAA88",
                              node_size = 30,
                              font_size=6,
                              ax = None):
@@ -835,7 +839,7 @@ def plot_gep_network_nsamples(snsmap: SNS,
 def plot_gep_network_npatients(snsmap: SNS,
                                colors: Colors,
                                figsize: Collection = (9, 6),
-                               edge_color = "#888888",
+                               edge_color = "#AAAAAA88",
                                node_size = 30,
                                font_size=6,
                                ax = None):
@@ -881,7 +885,8 @@ def plot_gep_network_npatients(snsmap: SNS,
 def plot_summary_community_network(snsmap: SNS,
                                    colors: Colors,
                                    figsize = (4, 4),
-                                   edge_color = "#888888",
+                                   edge_color = "#AAAAAA88",
+                                   label_edges = False,
                                    node_size = 500,
                                    ax: Axes = None):
     if ax is None:
@@ -891,15 +896,22 @@ def plot_summary_community_network(snsmap: SNS,
     ax_plot.set_aspect("equal")
     ax_plot.set_axis_off()
     ax_plot.set_title("Community Network")
-    if snsmap.comm_graph.edges:
-        width = np.array(list(nx.get_edge_attributes(snsmap.comm_graph, "n_edges").values()))
+    
+    G = snsmap.comm_graph
+    if G.edges:
+        width = np.array(list(nx.get_edge_attributes(G, "n_edges").values()))
         width = 20 * width / np.max(width)
     else:
         width = None
-    sizes = np.array([len(snsmap.communities[node]) for node in snsmap.comm_graph.nodes])
+    sizes = np.array([len(snsmap.communities[node]) for node in G.nodes])
     sizes = node_size * sizes / np.max(sizes)
-    node_colors = [colors.community_colors[node] for node in snsmap.comm_graph]
-    nx.draw(snsmap.comm_graph, pos=snsmap.comm_layout, node_color=node_colors, node_size=sizes, linewidths=0, width=width, edge_color=edge_color, with_labels=True, ax=ax_plot, font_size=20)
+    node_colors = [colors.community_colors[node] for node in G]
+    nx.draw(G, pos=snsmap.comm_layout, node_color=node_colors, node_size=sizes, linewidths=0, width=width, edge_color=edge_color, with_labels=True, ax=ax_plot, font_size=20)
+    
+    if label_edges:
+        edge_labels = {(n1, n2): str(n_edges) for n1, n2, n_edges in G.edges(data="n_edges")}
+        nx.draw_networkx_edge_labels(G, pos=snsmap.comm_layout, edge_labels=edge_labels)
+        
     return fig
 
 
@@ -909,7 +921,7 @@ def plot_metadata_correlation_community_network(snsmap: SNS,
                                       method: str = "pearson",
                                       subset_datasets: Optional[Union[str, Collection[str]]] = None,
                                       figsize: Collection = (5, 4),
-                                      edge_color = "#DDDDDD",
+                                      edge_color = "#AAAAAA88",
                                       node_size = 500,
                                       cmap = "RdBu_r",
                                       ax: Optional[Axes] = None,
@@ -964,8 +976,9 @@ def plot_overrepresentation_community_network(snsmap: SNS,
                                         ax: Optional[Axes] = None,
                                         pie_size: float = 0.1,
                                         figsize: Collection = (6, 4),
-                                        edge_color: str = "#DDDDDD",
+                                        edge_color: str = "#AAAAAA88",
                                         metric: str = "pearson_residual",
+                                        legend_pie_size: float = 0.1,
                                         show_legend: bool = True) -> Optional[Figure]:
     
     if show_legend:
@@ -1011,7 +1024,7 @@ def plot_overrepresentation_community_network(snsmap: SNS,
             enrichments=pd.Series(max_or, index=comm_or.index.sort_values().unique()),
             colors=overrepresentation.index.map(colors.get_metadata_colors(layer)),
             scale_factor=scale_factor,
-            size=pie_size,
+            size=legend_pie_size,
             draw_labels=True,
             label_font_size=6, ax=ax_legend)
         draw_circle_bar_scale(
@@ -1020,7 +1033,7 @@ def plot_overrepresentation_community_network(snsmap: SNS,
             size=pie_size,
             label_font_size=4, ax=ax_legend)
         ax_legend.set_title(f"{layer}")
-        ax_legend.text(0, -0.25, "overrepresentation", ha="center", va="center", )
+        ax_legend.text(0, 0 , "overrepresentation", ha="center", va="center", )
     
     # assert ax_plot.get_xlim() == ax_plot.get_ylim()
     # assert ax_plot.get_ylim() == ax_legend.get_ylim()
@@ -1062,6 +1075,7 @@ def plot_overrepresentation_gep_bar(snsmap: SNS,
     axes[0, 0].set_ylabel("rank (k)")
     for col, community in enumerate(snsmap.ordered_community_names):
         ax = axes[0, col]
+        ax.set_title(community)
         geps = []
         for node in snsmap.communities[community]:
             dataset_str, k_str, gep_str = node.split("|")

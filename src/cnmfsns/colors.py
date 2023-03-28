@@ -117,18 +117,30 @@ class Colors():
             for name, color in zip(uncolored_datasets, new_colors):
                 self.dataset_colors[name] = color
                 
+    def reset_community_colors(self,
+                                     snsmap,
+                                     pastel_factor=0.3,
+                                     colorblind_type=None) -> None:
+        communities = snsmap.communities.keys()
+        logging.info(f"Choosing distinct community colors")
+        new_colors = distinctipy.get_colors(len(communities),
+                                                pastel_factor=pastel_factor,
+                                                colorblind_type=colorblind_type)
+        new_colors = [mpl_colors.to_hex(c) for c in new_colors]
+        for name, color in zip(communities, new_colors):
+            self.community_colors[name] = color
+    
     def add_missing_community_colors(self,
                                      snsmap,
                                      pastel_factor=0.3,
                                      overwrite_existing = True,
                                      colorblind_type=None) -> None:
-        
         communities = snsmap.communities.keys()
-        # check provided dataset colors
+        # check provided community colors
         invalid_colors = [name for name, color in self.community_colors.items()
                           if not mpl_colors.is_color_like(color)]
         if invalid_colors:
-            raise ValueError(f"Datasets were given these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
+            raise ValueError(f"Communitieswere given these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
 
         # fill in missing values with random colors distinct from existing colors
         uncolored_communities = set(communities) - self.community_colors.keys()
