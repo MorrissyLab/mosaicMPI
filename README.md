@@ -38,11 +38,13 @@ Here are just a few of the things that cNMF-SNS does well:
   a shared subset
 - Ideal for incremental integration (adding datasets one at a time) since
   deconvolution is performed independently on each dataset
+- Does not assume the same level of sparsity (single-cell, bulk)
+- Identifies interpretable, additive non-negative gene expression programs
 
 
 ## :wrench: Install
 
-### :lock: From Private GitHub Repository
+### :lock: Pre-release (Private GitHub Repository)
 
 Before installing cNMF-SNS using pip, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
 ```
@@ -60,7 +62,7 @@ If you have installed a [personal access token from GitHub](https://github.com/s
 pip install git+https://<token>@github.com/MorrissyLab/cNMF-SNS.git
 ```
 
-### 2. Installing from public repositories
+### :cloud: Release (Public channels)
 
 > Note: This will work only when cNMF-SNS has been published to PyPI.
 
@@ -74,16 +76,11 @@ pip install cnmfsns
 conda install -c conda-forge cnmfsns
 ```
 
-## 1.0.0 release notes
-
-- python interface
-- single matrix input instead of confusing count and normalized inputs
-- Jupyter notebook for common workflows from sample data
-
-
 ## :open_book: Documentation
 
+### Tutorial
 
+To get started, sample proteomics datasets and a Jupyter notebook tutorial is available [here](/tutorial)
 
 ## Workflow 1A: Factorization for individual datasets
 
