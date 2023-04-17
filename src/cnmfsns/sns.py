@@ -228,6 +228,7 @@ class SNS():
         self.communities = pruned
         self.gep_communities = {gep: community for community, geps in self.communities.items() for gep in geps}
         self.create_community_network()
+        self.gep_graph = self.gep_graph.subgraph([node for community, nodes in self.communities for node in nodes])  # removes nodes not in a pruned community
 
 
     @property

@@ -395,7 +395,8 @@ def plot_community_usage_heatmap(snsmap: SNS,
                                  title = None,
                                  cluster_geps = False,
                                  cluster_samples = True,
-                                 show_sample_labels = True):
+                                 show_sample_labels = True,
+                                 prepend_dataset_colors = True):
     df = snsmap.get_community_usage()
     if subset_samples is not None:
         df = df.loc[subset_samples]
@@ -407,8 +408,12 @@ def plot_community_usage_heatmap(snsmap: SNS,
     if subset_metadata is not None:
         metadata = metadata.loc[:, subset_metadata]
     
-    
     metadata_colors = {col: colors.get_metadata_colors(col) for col in metadata.columns}
+    if prepend_dataset_colors:
+        metadata.insert(0, "dataset", metadata.index.get_level_values(0))
+        metadata_colors["dataset"] = colors.dataset_colors
+    
+    
     fig = annotated_heatmap(data=df, metadata=metadata,
                             metadata_colors=metadata_colors, 
                             missing_data_color=colors.missing_data_color, 
@@ -587,7 +592,7 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
         width = np.array(list(nx.get_edge_attributes(snsmap.gep_graph, edge_weights).values()))
         width = width / np.max(width)
 
-    nx.draw_networkx_edgeees(snsmap.gep_graph, pos=snsmap.layout, edge_color=edge_color, ax=ax_plot, width=width)
+    nx.draw_networkx_edges(snsmap.gep_graph, pos=snsmap.layout, edge_color=edge_color, ax=ax_plot, width=width)
     overrepresentation = snsmap.integration.get_category_overrepresentation(subset_datasets=subset_datasets, layer=layer)
     overrepresentation = overrepresentation.fillna(0)
 
