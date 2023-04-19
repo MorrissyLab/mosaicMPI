@@ -11,6 +11,7 @@ import pandas as pd
 import networkx as nx
 import matplotlib as mpl
 import igraph
+import pickle
 import distinctipy
 import tomli_w
 import networkx as nx
@@ -28,6 +29,13 @@ class SNS():
         self.communities = communities
         if subset_nodes is not None:
             self.gep_graph = nx.subgraph(self.gep_graph, subset_nodes)
+    
+    @classmethod
+    def from_pkl(cls, filename):
+        with open(filename, "rb") as handle:
+            sns_object = pickle.load(handle)
+        return sns_object
+    
     @property
     def n_communities(self):
         if self.communities is None:
@@ -430,3 +438,6 @@ class SNS():
         selected_geps.columns.rename(("community", "dataset", "k", "GEP"), inplace=True)
         return selected_geps
         
+    def to_pkl(self, filename):
+        with open(filename, "wb") as handle:
+            pickle.dump(self, handle)
