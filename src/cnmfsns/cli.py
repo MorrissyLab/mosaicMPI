@@ -44,25 +44,39 @@ def cli():
 @click.command(name="txt-to-h5ad")
 @click.option(
     "-d", "--data_file", type=click.Path(dir_okay=False, exists=True), required=True,
-    help="Input counts or normalized matrix as tab-delimited text file. Columns are samples/cells and rows are genes/features.")
+    help="Input counts or normalized matrix as delimited text file. Rows are samples/cells and columns are genes/features (unless --transpose is specified).")
 @click.option(
     "--is_normalized", is_flag=True, help="Specify if input data is normalized instead of count data.")
 @click.option(
     "-m", "--metadata", type=click.Path(dir_okay=False, exists=True), required=False,
-    help="Optional tab-separated text file with metadata for samples/cells with one row each. Columns are annotation layers.")
+    help="Optional delimited text file with metadata for samples/cells with one row each. Columns are annotation layers.")
 @click.option(
     "--sparsify", is_flag=True,
     help="Save resulting data in sparse format. Recommended to increase performance for sparse datasets such as scRNA-Seq, scATAC-Seq, and 10X Visium, but not for bulk expression data.")
 @click.option(
+    "--transpose", is_flag=True,
+    help="Transpose an input data matrix where rows are genes/features and columns are samples/cells into the correct orientation.")
+@click.option(
+    "--data_delimiter", type=str, default="\t",
+    help="Delimiter for data file, defaults to tab-delimited.")
+@click.option(
+    "--metadata_delimiter", type=str, default="\t",
+    help="Delimiter for metadata file, defaults to tab-delimited.")
+@click.option(
     "-o", '--output', type=click.Path(dir_okay=False, exists=False), required=True,
     help="Path to output .h5ad file.")
-def cmd_txt_to_h5ad(data_file, is_normalized, metadata, output, sparsify):
+def cmd_txt_to_h5ad(data_file, is_normalized, metadata, output, transpose, sparsify, data_delimiter, metadata_delimiter):
     """
     Create .h5ad file with data and metadata (`adata.obs`).
     """
     utils.start_logging()
-    df = pd.read_table(data_file, index_col=0)
-    metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
+    df = pd.read_table(data_file, index_col=0, sep=data_delimiter)
+    if transpose:
+        df = df.T
+    if metadata:
+        metadata_df = pd.read_table(metadata, index_col=0, sep=metadata_delimiter).dropna(axis=1, how="all")
+    else:
+        metadata_df = None
     dataset = Dataset.from_df(data=df, obs=metadata_df, sparsify=sparsify, is_normalized=is_normalized)
     logging.info("Data types for non-missing values in each layer of metadata:\n"
                  + dataset.get_metadata_type_summary())

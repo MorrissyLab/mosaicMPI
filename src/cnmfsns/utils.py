@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import pandas as pd
+from . import __version__
 
 def start_logging(output_path=None):
     if output_path is None:
@@ -18,6 +19,8 @@ def start_logging(output_path=None):
                 logging.StreamHandler()
             ]
         )
+        
+    logging.info(f"cNMF-SNS version {__version__}")
     return
 
 def newline_wrap(string, length=40):

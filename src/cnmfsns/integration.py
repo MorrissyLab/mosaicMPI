@@ -31,7 +31,13 @@ class Integration():
         self.max_median_corr = max_median_corr
         self.negative_corr_quantile = negative_corr_quantile
         self.k_subset = k_subset
-
+        
+        # check that all datasets have been factorized
+        unfactorized_datasets = [dataset_name for dataset_name, dataset in self.datasets.items() if not dataset.has_cnmf_results]
+        if unfactorized_datasets:
+            err_str = ", ".join(unfactorized_datasets)
+            raise RuntimeError(f"The following datasets are not factorized for any values of k: {err_str}")
+        
         # create the k-table
         combined = {}
         for dataset_name, dataset in self.datasets.items():

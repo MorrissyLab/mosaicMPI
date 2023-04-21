@@ -162,7 +162,8 @@ class Dataset():
             "cnmf_usage" in self.adata.obsm,
             "cnmf_gep_score" in self.adata.varm,
             "cnmf_gep_tpm" in self.adata.varm,
-            "cnmf_gep_raw" in self.adata.varm
+            "cnmf_gep_raw" in self.adata.varm,
+            "kvals" in self.adata.uns
         ]
         return all(matrix_checks)
         
