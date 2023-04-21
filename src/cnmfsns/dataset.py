@@ -204,7 +204,6 @@ class Dataset():
         
     def remove_unfactorizable_genes(self):
         df = self.to_df(normalized=False)
-        
         # Check for variables with missing values
         genes_with_missingvalues = df.isnull().any()
         
@@ -214,12 +213,13 @@ class Dataset():
             logging.warning(f"Subsetting variables to those with no missing values.")
                 
         # Check for genes with zero variance
-        zerovargenes = (df.var() == 0).sum()
-        if zerovargenes:
-            logging.warning(f"{zerovargenes} of {self.adata.n_vars} variables have a variance of zero in counts data (`adata.raw.X`).")
+        zerovargenes = (df.var() == 0)
+        if zerovargenes.any():
+            n_zerovar = zerovargenes.sum()
+            logging.warning(f"{n_zerovar} of {self.adata.n_vars} variables have a variance of zero in counts data (`adata.raw.X`).")
             logging.warning(f"Subsetting variables to those with nonzero variance.")
         
-        genes_to_keep = ~genes_with_missingvalues & ~zerovargenes
+        genes_to_keep = (~genes_with_missingvalues) & (~zerovargenes)
         
         self.adata = self.adata[:,genes_to_keep]
 
