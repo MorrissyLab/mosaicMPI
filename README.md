@@ -82,10 +82,14 @@ conda install -c conda-forge cnmfsns
 
 ## :open_book: Documentation
 
-### :notebook: Tutorial (python interface)
+### :notebook: Python interface tutorial
 
 To get started, sample proteomics datasets and a Jupyter notebook tutorial is available [here](/tutorial).
 
 ### :computer: Command line interface
 
-The command line interface is documented [here](/tutorial/CLI.md)
+See the [command line interface documentation](/CLI.md).
+
+## Getting Help
+
+For errors arising during use of cNMF-SNS, create and browse issues in the [GitHub "issues" tab](https://github.com/MorrissyLab/cNMF-SNS/issues).
