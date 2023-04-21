@@ -457,7 +457,7 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
             dsparams["filename"],
             name=dsname,
             color=(dsparams["color"] if "color" in dsparams else None),
-            backed="r",
+            backed=False,
             patient_id_col = (dsparams["patient_id_col"] if "patient_id_col" in dsparams else None),
             force_migrate = False
         )

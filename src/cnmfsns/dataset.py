@@ -124,6 +124,7 @@ class Dataset():
                   force_migrate=False, backed=False
                   ):
         adata = ad.read_h5ad(h5ad_file, backed=backed)
+        print(adata.to_df())
         dataset = Dataset.from_anndata(adata=adata, name=name, color=color,
                                        patient_id_col=patient_id_col, 
                                        force_migrate=force_migrate)

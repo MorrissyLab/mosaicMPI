@@ -236,7 +236,10 @@ class Integration():
             df.insert(0, "Dataset", df.index.get_level_values(0))
         return df
     
-    def get_category_overrepresentation(self, layer: str, subset_datasets = None) -> pd.DataFrame:
+    def get_category_overrepresentation(self,
+                                        layer: str,
+                                        subset_datasets: Optional[Union[str, Iterable]] = None,
+                                        truncate_negative: bool = False) -> pd.DataFrame:
         if subset_datasets is None:
             subset_datasets = self.datasets.keys()
         elif isinstance(subset_datasets, str):
@@ -247,7 +250,7 @@ class Integration():
         combined = {}
         for dataset_name in subset_datasets:
             if layer in self.datasets[dataset_name].adata.obs:
-                combined[dataset_name] = self.datasets[dataset_name].get_category_overrepresentation(layer=layer)
+                combined[dataset_name] = self.datasets[dataset_name].get_category_overrepresentation(layer=layer, truncate_negative=truncate_negative)
         combined = pd.concat(combined, axis=1)
         return combined
     

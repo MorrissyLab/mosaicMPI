@@ -243,17 +243,19 @@ class Colors():
     def get_metadata_colors(self, layer):
         group_names = [group for group, group_attr in self.metadata_colors_group.items() if layer in group_attr["group"]]
         layer_colors = {}
-        if layer in self.metadata_colors:
-            layer_colors = {**layer_colors, **self.metadata_colors[layer]}  # updates dict with info from metadata_colors
-        if len(group_names) == 1:
-            group = group_names[0]
-            layer_colors = {**layer_colors, **self.metadata_colors_group[group]['colors']} # updates dict with info from metadata_colors_group
+        if layer in self.metadata_colors and group_names:
+            raise ValueError(f"Metadata column {layer} cannot be within a color group if it is also explicitly defined with its own colors.")
         elif len(group_names) > 1:
             raise ValueError((
                 f"The following column in the metadata matrix (adata.obs) has multiple metadata color groups in the config TOML file:\n"
                 f"Metadata column: {layer}\n"
                 "Metadata color groups: " + ", ".join(group_names)
             ))
+        elif layer in self.metadata_colors:
+            layer_colors = {**layer_colors, **self.metadata_colors[layer]}  # updates dict with info from metadata_colors
+        elif len(group_names) == 1:
+            group = group_names[0]
+            layer_colors = {**layer_colors, **self.metadata_colors_group[group]['colors']} # updates dict with info from metadata_colors_group
         return layer_colors
 
     def plot_metadata_colors_legend(self,

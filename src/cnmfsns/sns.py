@@ -59,7 +59,7 @@ class SNS():
             nodes.append((dataset_name, int(k_str), int(gep_str)))
         return nodes
     
-    def get_community_usage(self, subset_datasets = None, normalized=True):
+    def get_community_usage(self, subset_datasets: Optional[Union[str, Iterable]] = None, normalized=True):
         usage = self.integration.get_usages()
         ic_usage = []
         
@@ -87,16 +87,18 @@ class SNS():
             ic_usage = ic_usage.div(ic_usage.sum(axis=1), axis=0)
         return ic_usage
     
-    def get_sample_entropy(self, subset_datasets = None):
+    def get_sample_entropy(self, subset_datasets: Optional[Union[str, Iterable]] = None):
         ic_usage = self.get_community_usage(subset_datasets = subset_datasets)
         diversity = ic_usage.apply(lambda x: entropy(x.dropna()), axis=1)
         return diversity
     
     def get_community_category_overrepresentation(self,
                                                   layer: str,
-                                                  subset_datasets: Optional[Collection] = None
+                                                  subset_datasets: Optional[Union[str, Iterable]] = None,
+                                                  truncate_negative: bool = False,
                                                   ) -> pd.DataFrame:
-        df = self.integration.get_category_overrepresentation(layer=layer, subset_datasets=subset_datasets)
+        
+        df = self.integration.get_category_overrepresentation(layer=layer, subset_datasets=subset_datasets, truncate_negative=truncate_negative)
         mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
         df.columns = df.columns.map(mapper)
         df = df.groupby(axis=1, level=0).mean()
@@ -105,7 +107,7 @@ class SNS():
     
     def get_community_metadata_correlation(self,
                                            layer: str,
-                                           subset_datasets: Optional[Collection] = None,
+                                           subset_datasets: Optional[Union[str, Iterable]] = None,
                                            method: str = "pearson"
                                            ) -> pd.Series:
         ser = self.integration.get_metadata_correlation(layer=layer, subset_datasets=subset_datasets, method=method)
@@ -399,7 +401,7 @@ class SNS():
         self.comm_graph.add_nodes_from(self.communities.keys())
         
     def get_representative_gep_table(self,
-                                method = "min_k",
+                                method: str = "min_k",
                                 min_k: int = 2
                                 ) -> pd.DataFrame:
         if method == "min_k":
@@ -423,7 +425,7 @@ class SNS():
         
 
     def get_representative_geps(self,
-                                method = "min_k",
+                                method: str = "min_k",
                                 min_k: int = 2
                                 ) -> pd.DataFrame:
         geps = self.integration.get_geps()
@@ -438,6 +440,12 @@ class SNS():
         selected_geps.columns.rename(("community", "dataset", "k", "GEP"), inplace=True)
         return selected_geps
         
-    def to_pkl(self, filename):
+    def to_pkl(self,
+               filename: str):
+        """Persists the SNS object using python's pickle format.
+
+        Args:
+            filename (str): filename for output
+        """
         with open(filename, "wb") as handle:
             pickle.dump(self, handle)
