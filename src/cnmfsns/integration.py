@@ -245,7 +245,7 @@ class Integration():
     def get_category_overrepresentation(self,
                                         layer: str,
                                         subset_datasets: Optional[Union[str, Iterable]] = None,
-                                        truncate_negative: bool = False) -> pd.DataFrame:
+                                        truncate_negative: bool = True) -> pd.DataFrame:
         if subset_datasets is None:
             subset_datasets = self.datasets.keys()
         elif isinstance(subset_datasets, str):

@@ -95,7 +95,7 @@ class SNS():
     def get_community_category_overrepresentation(self,
                                                   layer: str,
                                                   subset_datasets: Optional[Union[str, Iterable]] = None,
-                                                  truncate_negative: bool = False,
+                                                  truncate_negative: bool = True,
                                                   ) -> pd.DataFrame:
         
         df = self.integration.get_category_overrepresentation(layer=layer, subset_datasets=subset_datasets, truncate_negative=truncate_negative)
