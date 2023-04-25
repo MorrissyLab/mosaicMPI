@@ -31,7 +31,7 @@ class SNS():
             self.gep_graph = nx.subgraph(self.gep_graph, subset_nodes)
     
     @classmethod
-    def from_pkl(cls, filename):
+    def from_pkl(cls, filename) -> "SNS":
         with open(filename, "rb") as handle:
             sns_object = pickle.load(handle)
         return sns_object
@@ -269,16 +269,20 @@ class SNS():
     def write_community_network_graphml(self, filename):
         nx.write_graphml(self.comm_graph, filename)
 
-    def compute_layout(self, algorithm="community_weighted_spring", shared_community_weight = 200, shared_dataset_weight = 1.05, community_layout_algorithm="spring"):
+    def compute_layout(self,
+                       algorithm: str ="community_weighted_spring",
+                       shared_community_weight: float = 200,
+                       shared_dataset_weight: float = 1.05,
+                       community_layout_algorithm: str ="spring",
+                       **kwargs):
         if algorithm == "neato":
-            layout = nx.nx_agraph.graphviz_layout(self.gep_graph, prog="neato", args='-Goverlap=true')
+            layout = nx.nx_agraph.graphviz_layout(self.gep_graph, prog="neato", args='-Goverlap=true', **kwargs)
         elif algorithm == "spring":
-            layout = nx.spring_layout(self.gep_graph)
+            layout = nx.spring_layout(self.gep_graph, **kwargs)
             layout = {node: list(coords) for node, coords in layout.items()}
         elif algorithm == "community_weighted_spring":
             self.add_community_weights_to_graph(shared_community_weight=shared_community_weight, shared_dataset_weight=shared_dataset_weight)
-            layout = nx.spring_layout(self.gep_graph, weight="community_weight")
-
+            layout = nx.spring_layout(self.gep_graph, weight="community_weight", **kwargs)
             layout = {node: list(coords) for node, coords in layout.items()}
         elif algorithm == "umap":
             import umap
@@ -297,7 +301,7 @@ class SNS():
             x = table.values
             x = RobustScaler().fit_transform(x)
 
-            embedding = umap.UMAP(n_neighbors=25, min_dist=0.01).fit_transform(x)
+            embedding = umap.UMAP(n_neighbors=25, min_dist=0.01, **kwargs).fit_transform(x)
             layout = {"|".join((gep[0], str(gep[1]), str(gep[2]))): list(emb.astype(float)) for gep, emb in zip(table.index, embedding)}
         else:
             raise ValueError(f"{algorithm} is not a valid layout algorithm ")
@@ -319,10 +323,11 @@ class SNS():
         
         self.compute_community_network_layout(method=community_layout_algorithm)
 
-    def compute_community_network_layout(self, method: str = "neato"):
+    def compute_community_network_layout(self, method: str = "neato", weight="weight", **kwargs):
         
         logging.info(f"Computing community layout using {method} method.")
         if method == "centroid":
+            assert not kwargs
             # Centroid method for community layout
             self.comm_layout = {}
             for community_name, nodes in self.communities.items():
@@ -331,7 +336,7 @@ class SNS():
                 self.comm_layout[community_name] = centroid
                 
         elif method == "neato":
-            layout = nx.nx_agraph.graphviz_layout(self.comm_graph, prog="neato", args='-Goverlap=true')
+            layout = nx.nx_agraph.graphviz_layout(self.comm_graph, prog="neato", args='-Goverlap=true', **kwargs)
             # rescale layout
             xmax = max(x for x, y in layout.values())
             xmin = min(x for x, y in layout.values())
@@ -348,7 +353,7 @@ class SNS():
             self.comm_layout = layout
         
         elif method == "spring":
-            layout = nx.spring_layout(self.comm_graph, weight="weight")
+            layout = nx.spring_layout(self.comm_graph, weight=weight, **kwargs)
             # rescale layout
             xmax = max(x for x, y in layout.values())
             xmin = min(x for x, y in layout.values())

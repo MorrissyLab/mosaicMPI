@@ -795,7 +795,8 @@ def plot_gep_network_communities(snsmap: SNS,
             edge_color=edge_color,
             font_size=4, ax=ax_plot)
     ax_plot.set_title("GEP Network")
-    return fig
+    if ax is None:
+        return fig
 
 
 def plot_gep_network_nsamples(snsmap: SNS,
