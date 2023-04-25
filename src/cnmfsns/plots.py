@@ -916,8 +916,9 @@ def plot_summary_community_network(snsmap: SNS,
     if label_edges:
         edge_labels = {(n1, n2): str(n_edges) for n1, n2, n_edges in G.edges(data="n_edges")}
         nx.draw_networkx_edge_labels(G, pos=snsmap.comm_layout, edge_labels=edge_labels)
-        
-    return fig
+    
+    if ax is None:
+        return fig
 
 
 def plot_metadata_correlation_community_network(snsmap: SNS,
