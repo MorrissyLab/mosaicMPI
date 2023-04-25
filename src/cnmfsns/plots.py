@@ -538,13 +538,12 @@ def draw_circle_bar_plot(position, enrichments, colors, size, ax, scale_factor: 
                 ax.text(x+x_offset, y+y_offset, label, rotation=np.rad2deg(a), ha="left", va="center", rotation_mode='anchor', fontsize=label_font_size)
         previous = this
 
-def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size, linewidth=0.5):
-
+def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size, linewidth=0.5, rings=[0.5,1]):
     x, y = position
-    for ring in [0.25,0.5,0.75,1]:
+    for ring in rings:
         ax.add_patch(plt.Circle(position, np.sqrt(ring) * size, color="black", fill=False, linewidth=linewidth))
     ax.add_patch(Rectangle(position, size * 1.01, size * 1.01, color="#FFFFFF"))
-    for ring in [0.25,0.5,0.75,1]:
+    for ring in rings:
         value = ring/scale_factor
         ax.text(
             x + size * 0.05,
