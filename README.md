@@ -5,7 +5,7 @@
 
 # cNMF-SNS: powerful factorization-based multi-omics integration toolkit
 
-![version badge](https://img.shields.io/badge/version-1.0.13-blue)
+![version badge](https://img.shields.io/badge/version-1.1.0-blue)
 
 <details>
   <summary> future badges </summary>
@@ -90,6 +90,6 @@ To get started, sample proteomics datasets and a Jupyter notebook tutorial is av
 
 See the [command line interface documentation](/CLI.md).
 
-## Getting Help
+## :thought_balloon: Getting Help
 
 For errors arising during use of cNMF-SNS, create and browse issues in the [GitHub "issues" tab](https://github.com/MorrissyLab/cNMF-SNS/issues).
