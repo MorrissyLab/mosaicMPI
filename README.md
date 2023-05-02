@@ -58,7 +58,7 @@ conda install -c conda-forge cnmfsns
 Before installing cNMF-SNS using pip, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
 
 ```bash
-conda create --name cnmfsns -c conda-forge python=3.10 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph semantic_version yaml scikit-learn fastcluster scanpy pyyaml gseapy=1.0.3
+conda create --name cnmfsns -c conda-forge python=3.10 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph semantic_version pyyaml scikit-learn fastcluster scanpy pyyaml
 conda activate cnmfsns
 pip install git+https://github.com/MorrissyLab/cNMF-SNS.git
 ```
