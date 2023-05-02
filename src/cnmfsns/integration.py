@@ -127,7 +127,7 @@ class Integration():
             try:
                 from nancorrmp.nancorrmp import NaNCorrMp
             except ImportError:
-                logging.info(f"nancorrmp not installed. Calculating Pearson correlation matrix using 1 CPU.")
+                logging.info(f"nancorrmp not installed. To improve computation time, install using `pip install nancorrmp`. Calculating Pearson correlation matrix using 1 CPU.")
                 corr = self.get_geps().corr(method)
             else:
                 cpu_string = "all" if cpus == -1 else str(cpus)
