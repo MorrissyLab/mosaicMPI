@@ -17,23 +17,21 @@ Authors: [Ted Verhey](https://github.com/verheytb), [Heewon Seo](https://github.
 spatial expression data between and within datasets. cNMF provides a **robust, 
 unsupervised** deconvolution of each dataset into gene expression programs (GEPs).
 **Network-based integration** of GEPs enables flexible integration of many datasets
-across assays (eg. Protein, RNA-Seq) and patient cohorts.
+across assays (eg. Protein, RNA-Seq, scRNA-Seq, spatial expression) and patient cohorts.
 
 Communities with GEPs from multiple datasets can be annotated with dataset-specific
 annotations to facilitate interpretation.
-
-
 
 ## ⚡Main Features
 
 Here are just a few of the things that cNMF-SNS does well:
 
+- Identifies interpretable, additive non-negative gene expression programs
 - Integration of expression data does not require subsetting features/genes to
   a shared or 'overdispersed' subset
 - Ideal for incremental integration (adding datasets one at a time) since
   deconvolution is performed independently on each dataset generating invariant GEPs
-- Does not assume the same level of sparsity/depth (single-cell, bulk)
-- Identifies interpretable, additive non-negative gene expression programs
+- Integration does not require comparable data sparsity or sequencing depth (single-cell, bulk)
 - Two interfaces: command-line interface for rapid data exploration and python
   interface for extensibility and flexibility
 

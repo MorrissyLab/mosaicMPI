@@ -1,4 +1,4 @@
-## Code adapted and optimized from https://github.com/dylkot/cNMF/blob/master/src/cnmf/cnmf.py
+## Code adapted and improved from https://github.com/dylkot/cNMF/blob/master/src/cnmf/cnmf.py
 
 from . import utils
 
