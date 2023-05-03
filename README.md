@@ -22,6 +22,8 @@
 
 </details>
 
+Authors: [Ted Verhey](https://github.com/verheytb), [Heewon Seo](https://github.com/lootpiz), [Sorana Morrissy](https://github.com/ancasorana)
+
 **cNMF-SNS** (consensus Non-negative Matrix Factorization Solution Network Space) is a Python package enabling integration of bulk, single-cell, and
 spatial expression data between and within datasets. cNMF provides a **robust, 
 unsupervised** deconvolution of each dataset into gene expression programs (GEPs).
@@ -30,6 +32,8 @@ across assays (eg. Protein, RNA-Seq) and patient cohorts.
 
 Communities with GEPs from multiple datasets can be annotated with dataset-specific
 annotations to facilitate interpretation.
+
+
 
 ## ⚡Main Features
 
