@@ -71,7 +71,7 @@ pip install git+https://github.com/MorrissyLab/cNMF-SNS.git
 
 ### 📓 Python interface tutorial
 
-To get started, sample proteomics datasets and a Jupyter notebook tutorial is available [here](/tutorial).
+To get started, sample proteomics datasets and a Jupyter notebook tutorial is available [here](/tutorial/tutorial.ipynb).
 
 ### ⌨️ Command line interface
 
