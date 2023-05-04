@@ -113,7 +113,7 @@ class Integration():
         gep_matrix = {dataset_name: dataset.get_geps(type=type) for dataset_name, dataset in self.datasets.items()}
         gep_matrix = pd.concat(gep_matrix, axis=1).sort_index(axis=0).sort_index(axis=1)
         return gep_matrix
-    
+
     def get_usages(self, discretize=False, normalize=False):
         usages = {dataset_name: dataset.get_usages(discretize=discretize, normalize=normalize)
                          for dataset_name, dataset in self.datasets.items()}

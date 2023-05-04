@@ -1,5 +1,6 @@
 
 from .integration import Integration
+from .utils import node_to_gep
 
 
 from collections.abc import Collection, Iterable
@@ -444,6 +445,26 @@ class SNS():
         selected_geps = pd.concat(selected_geps, axis=1)
         selected_geps.columns.rename(("community", "dataset", "k", "GEP"), inplace=True)
         return selected_geps
+    
+    def get_median_of_community_geps(self,
+                        method: str = "median",
+                        min_k: int = 2
+                        ) -> pd.DataFrame:
+        gep_to_community = {node_to_gep(node): community for node, community in self.gep_communities.items()}
+        geps = self.integration.get_geps()
+        geps.columns = pd.MultiIndex.from_arrays([geps.columns.map(gep_to_community),
+                                geps.columns.get_level_values(0)
+                                ], names = ("Community", "Dataset"))
+        geps = geps.loc[:, ~geps.columns.to_frame().isnull().any(axis=1)]  # Remvoe GEPs not in any community
+        # aggregate GEPs to community
+        if method == "median":
+            community_scores = geps.groupby(axis=1, level=[0,1]).median()
+        elif method == "mean":
+            community_scores = geps.groupby(axis=1, level=[0,1]).mean()
+        else:
+            raise NotImplementedError
+        community_scores = community_scores.loc[:, self.ordered_community_names]  # sort community names
+        return community_scores
         
     def to_pkl(self,
                filename: str):
