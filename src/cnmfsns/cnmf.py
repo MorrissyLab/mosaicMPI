@@ -11,11 +11,14 @@ import itertools
 import subprocess
 from functools import partial
 from multiprocessing.pool import Pool
+from collections.abc import Collection, Iterable
+from typing import Union, Optional
 
 import yaml
 import scipy.sparse as sp
 import numpy as np
 import pandas as pd
+import anndata as ad
 from scipy.spatial.distance import squareform
 from sklearn.decomposition import non_negative_factorization
 from sklearn.cluster import KMeans
@@ -28,25 +31,13 @@ import scanpy as sc
 
 
 
-def worker_filter(iterable, worker_index, total_workers):
+def _worker_filter(iterable, worker_index, total_workers):
     return (p for i,p in enumerate(iterable) if (i-worker_index)%total_workers==0)
 
 def fast_ols_all_cols(X, Y):
     pinv = np.linalg.pinv(X)
     beta = np.dot(pinv, Y)
     return(beta)
-
-def fast_ols_all_cols_df(X,Y):
-    beta = fast_ols_all_cols(X, Y)
-    beta = pd.DataFrame(beta, index=X.columns, columns=Y.columns)
-    return(beta)
-
-def var_sparse_matrix(X):
-    mean = np.array(X.mean(axis=0)).reshape(-1)
-    Xcopy = X.copy()
-    Xcopy.data **= 2
-    var = np.array(Xcopy.mean(axis=0)).reshape(-1) - (mean**2)
-    return(var)
 
 
 def get_highvar_genes_sparse(expression, expected_fano_threshold=None,
@@ -159,20 +150,18 @@ def get_highvar_genes(input_counts, expected_fano_threshold=None,
 
 
 class cNMF():
-
+    """Legacy cNMF object based off of the cNMF package
+    """
 
     def __init__(self, output_dir=".", name=None):
         """
-        Parameters
-        ----------
 
-        output_dir : path, optional (default=".")
-            Output directory for analysis files.
-
-        name : string, optional (default=None)
-            A name for this analysis. Will be prefixed to all output files.
-            If set to None, will be automatically generated from date (and random string).
+        :param output_dir: Place to put cNMF resutls, defaults to "."
+        :type output_dir: str, optional
+        :param name: A name for this analysis. Will be prefixed to all output files, defaults to automatically generated timestamp (and random string).
+        :type name: str, optional
         """
+
 
         self.output_dir = output_dir
         if name is None:
@@ -219,184 +208,27 @@ class cNMF():
                 'k_selection_plot' :  os.path.join(self.output_dir, self.name, self.name+'.k_selection.png'),
                 'k_selection_stats' :  os.path.join(self.output_dir, self.name, self.name+'.k_selection_stats.df.npz'),
             }
-
-
-    def prepare(self, counts_fn, components, n_iter = 100, densify=False, tpm_fn=None, seed=None,
-                        beta_loss='frobenius',num_highvar_genes=2000, genes_file=None,
-                        alpha_usage=0.0, alpha_spectra=0.0, init='random'):
-        """
-        Load input counts, reduce to high-variance genes, and variance normalize genes.
-        Subsequently prepare file for distributing jobs over workers.
-
-
-        Parameters
-        ----------
-        counts_fn : str
-            Path to input counts matrix
-
-        components : list or numpy array
-            Values of K to run NMF for
-            
-        n_iter : integer, optional (defailt=100)
-            Number of iterations for factorization. If several ``k`` are specified, this many
-            iterations will be run for each value of ``k``.
-
-        densify : boolean, optional (default=False)
-            Convert sparse data to dense
-
-        tpm_fn : str or None, optional (default=None)
-            If provided, load tpm data from file. Otherwise will compute it from the counts file
-            
-        seed : int or None, optional (default=None)
-            Seed for sklearn random state.
-            
-        beta_loss : str or None, optional (default='frobenius')
-
-        num_highvar_genes : int or None, optional (default=2000)
-            If provided and genes_file is None, will compute this many highvar genes to use for factorization
-        
-        genes_file : str or None, optional (default=None)
-            If provided will load high-variance genes from a list of these genes
-            
-        alpha_usage : float, optional (default=0.0)
-            Regularization parameter for NMF corresponding to alpha_W in scikit-learn
-
-        alpha_spectra : float, optional (default=0.0)
-            Regularization parameter for NMF corresponding to alpha_H in scikit-learn
-        """
-        
-        
-        if counts_fn.endswith('.h5ad'):
-            input_counts = sc.read(counts_fn)
-        else:
-            ## Load txt or compressed dataframe and convert to scanpy object
-            if counts_fn.endswith('.npz'):
-                input_counts = utils.load_df_from_npz(counts_fn)
-            else:
-                input_counts = pd.read_csv(counts_fn, sep='\t', index_col=0)
-                
-            if densify:
-                input_counts = sc.AnnData(X=input_counts.values,
-                                       obs=pd.DataFrame(index=input_counts.index),
-                                       var=pd.DataFrame(index=input_counts.columns))
-            else:
-                input_counts = sc.AnnData(X=sp.csr_matrix(input_counts.values),
-                                       obs=pd.DataFrame(index=input_counts.index),
-                                       var=pd.DataFrame(index=input_counts.columns))
-
-                
-        if sp.issparse(input_counts.X) & densify:
-            input_counts.X = np.array(input_counts.X.todense())
- 
-        if tpm_fn is None:
-            tpm = sc.pp.normalize_per_cell(input_counts, copy=True, counts_per_cell_after=1e6)
-            sc.write(self.paths['tpm'], tpm)
-        elif tpm_fn.endswith('.h5ad'):
-            subprocess.call('cp %s %s' % (tpm_fn, self.paths['tpm']), shell=True)
-            tpm = sc.read(self.paths['tpm'])
-        else:
-            if tpm_fn.endswith('.npz'):
-                tpm = utils.load_df_from_npz(tpm_fn)
-            else:
-                tpm = pd.read_csv(tpm_fn, sep='\t', index_col=0)
-            
-            if densify:
-                tpm = sc.AnnData(X=tpm.values,
-                            obs=pd.DataFrame(index=tpm.index),
-                            var=pd.DataFrame(index=tpm.columns)) 
-            else:
-                tpm = sc.AnnData(X=sp.csr_matrix(tpm.values),
-                            obs=pd.DataFrame(index=tpm.index),
-                            var=pd.DataFrame(index=tpm.columns)) 
-
-            sc.write(self.paths['tpm'], tpm)
-        
-        if sp.issparse(tpm.X):
-            gene_tpm_mean = np.array(tpm.X.mean(axis=0)).reshape(-1)
-            gene_tpm_stddev = var_sparse_matrix(tpm.X)**.5
-        else:
-            gene_tpm_mean = np.array(tpm.X.mean(axis=0)).reshape(-1)
-            gene_tpm_stddev = np.array(tpm.X.std(axis=0, ddof=0)).reshape(-1)
-            
-            
-        input_tpm_stats = pd.DataFrame([gene_tpm_mean, gene_tpm_stddev],
-             index = ['__mean', '__std']).T
-        utils.save_df_to_npz(input_tpm_stats, self.paths['tpm_stats'])
-        
-        if genes_file is not None:
-            highvargenes = open(genes_file).read().rstrip().split('\n')
-        else:
-            highvargenes = None
-
-        norm_counts = self.get_norm_counts(input_counts, tpm, num_highvar_genes=num_highvar_genes,
-                                               high_variance_genes_filter=highvargenes)
-
-        self.save_norm_counts(norm_counts)
-        (replicate_params, run_params) = self.get_nmf_iter_params(ks=components, n_iter=n_iter, random_state_seed=seed,
-                                                                  beta_loss=beta_loss, alpha_usage=alpha_usage,
-                                                                  alpha_spectra=alpha_spectra, init=init)
-        self.save_nmf_iter_params(replicate_params, run_params)
-        
     
-    def combine(self, components=None, skip_missing_files=False):
-        """
-        Combine NMF iterations for the same value of K
-        Parameters
-        ----------
-        components : list or None
-            Values of K to combine iterations for. Defaults to all.
-
-        skip_missing_files : boolean
-            If True, ignore iteration files that aren't found rather than crashing. Default: False
-        """
-
-        if type(components) is int:
-            ks = [components]
-        elif components is None:
-            run_params = utils.load_df_from_npz(self.paths['nmf_replicate_parameters'])
-            ks = sorted(set(run_params.n_components))
-        else:
-            ks = components
-
-        for k in ks:
-            self.combine_nmf(k, skip_missing_files=skip_missing_files)    
-    
-    
-    
-    def get_norm_counts(self, counts, tpm,
-                         high_variance_genes_filter = None,
-                         num_highvar_genes = None
+    def get_norm_counts(self,
+                        counts: ad.AnnData,
+                        tpm: ad.AnnData,
+                         high_variance_genes_filter: Optional[np.array] = None,
+                         num_highvar_genes: Optional[int] = None
                          ):
         """
-        Parameters
-        ----------
-
-        counts : anndata.AnnData
-            Scanpy AnnData object (cells x genes) containing raw counts. Filtered such that
-            no genes or cells with 0 counts
-        
-        tpm : anndata.AnnData
-            Scanpy AnnData object (cells x genes) containing tpm normalized data matching
-            counts
-
-        high_variance_genes_filter : np.array, optional (default=None)
-            A pre-specified list of genes considered to be high-variance.
+        :param counts: Scanpy AnnData object (cells x genes) containing raw counts. Filtered such that no genes or cells with 0 counts.
+        :type counts: ad.AnnData
+        :param tpm: Scanpy AnnData object (cells x genes) containing tpm normalized data matching counts
+        :type tpm: ad.AnnData
+        :param high_variance_genes_filter: A pre-specified list of genes considered to be high-variance.
             Only these genes will be used during factorization of the counts matrix.
             Must match the .var index of counts and tpm.
             If set to None, high-variance genes will be automatically computed, using the
             parameters below.
-
-        num_highvar_genes : int, optional (default=None)
-            Instead of providing an array of high-variance genes, identify this many most overdispersed genes
-            for filtering
-
-        Returns
-        -------
-
-        normcounts : anndata.AnnData, shape (cells, num_highvar_genes)
-            A counts matrix containing only the high variance genes and with columns (genes)normalized to unit
-            variance
-
+        :type high_variance_genes_filter: np.array, optional
+        :param num_highvar_genes: Instead of providing an array of high-variance genes, identify this many most overdispersed genes
+            for filtering, defaults to None
+        :type num_highvar_genes: int, optional
         """
 
         if high_variance_genes_filter is None:
@@ -444,28 +276,24 @@ class cNMF():
                                beta_loss = 'kullback-leibler',
                                alpha_usage=0.0, alpha_spectra=0.0,
                                init='random'):
-        """
-        Create a DataFrame with parameters for NMF iterations.
+        """_summary_
 
-
-        Parameters
-        ----------
-        ks : integer, or list-like.
-            Number of topics (components) for factorization.
+        :param ks: Number of topics (components) for factorization.
             Several values can be specified at the same time, which will be run independently.
-
-        n_iter : integer, optional (defailt=100)
-            Number of iterations for factorization. If several ``k`` are specified, this many
-            iterations will be run for each value of ``k``.
-
-        random_state_seed : int or None, optional (default=None)
-            Seed for sklearn random state.
-            
-        alpha_usage : float, optional (default=0.0)
-            Regularization parameter for NMF corresponding to alpha_W in scikit-learn
-
-        alpha_spectra : float, optional (default=0.0)
-            Regularization parameter for NMF corresponding to alpha_H in scikit-learn
+        :type ks: integer or list-like
+        :param n_iter: Number of iterations for factorization. If several ``k`` are specified, this many
+            iterations will be run for each value of ``k``. defaults to 100
+        :type n_iter: int, optional
+        :param random_state_seed: Seed for sklearn random state. defaults to None
+        :type random_state_seed: int, optional
+        :param beta_loss: defaults to 'kullback-leibler'
+        :type beta_loss: str, optional
+        :param alpha_usage: Regularization parameter for NMF corresponding to alpha_W in scikit-learn, defaults to 0.0
+        :type alpha_usage: float, optional
+        :param alpha_spectra: Regularization parameter for NMF corresponding to alpha_H in scikit-learn, defaults to 0.0
+        :type alpha_spectra: float, optional
+        :param init: defaults to 'random'
+        :type init: str, optional
         """
 
         if type(ks) is int:
@@ -511,14 +339,11 @@ class cNMF():
 
     def _nmf(self, X, nmf_kwargs):
         """
-        Parameters
-        ----------
-        X : pandas.DataFrame,
-            Normalized counts dataFrame to be factorized.
 
-        nmf_kwargs : dict,
-            Arguments to be passed to ``non_negative_factorization``
-
+        :param X: Normalized counts dataFrame to be factorized.
+        :type X: pd.DataFrame
+        :param nmf_kwargs: Arguments to be passed to ``non_negative_factorization``
+        :type nmf_kwargs: dict
         """
         (usages, spectra, niter) = non_negative_factorization(X, **nmf_kwargs)
 
@@ -530,12 +355,10 @@ class cNMF():
                 ):
         """
         Iteratively run NMF with prespecified parameters.
-
         Use the `worker_i` and `total_workers` parameters for parallelization.
-
         Generic kwargs for NMF are loaded from self.paths['nmf_run_parameters'], defaults below::
 
-            ``non_negative_factorization`` default arguments:
+            non_negative_factorization default arguments:
                 alpha=0.0
                 l1_ratio=0.0
                 beta_loss='kullback-leibler'
@@ -546,23 +369,18 @@ class cNMF():
                 init='random'
                 random_state, n_components are both set by the prespecified self.paths['nmf_replicate_parameters'].
 
-
-        Parameters
-        ----------
-        norm_counts : pandas.DataFrame,
-            Normalized counts dataFrame to be factorized.
-            (Output of ``normalize_counts``)
-
-        run_params : pandas.DataFrame,
-            Parameters for NMF iterations.
-            (Output of ``prepare_nmf_iter_params``)
-
+        :param worker_i: worker index, defaults to 0
+        :type worker_i: int, optional
+        :param total_workers: total number of workers, defaults to 1
+        :type total_workers: int, optional
+        :param verbose: verbose, defaults to True
+        :type verbose: bool, optional
         """
         run_params = utils.load_df_from_npz(self.paths['nmf_replicate_parameters'])
         norm_counts = sc.read(self.paths['normalized_counts'])
         _nmf_kwargs = yaml.load(open(self.paths['nmf_run_parameters']), Loader=yaml.FullLoader)
 
-        jobs_for_this_worker = worker_filter(range(len(run_params)), worker_i, total_workers)
+        jobs_for_this_worker = _worker_filter(range(len(run_params)), worker_i, total_workers)
         for idx in jobs_for_this_worker:
             p = run_params.iloc[idx, :]
             if verbose:
@@ -605,22 +423,19 @@ class cNMF():
         return combined_spectra
     
     
-    def refit_usage(self, X, spectra):
-        """
-        Takes an input data matrix and a fixed spectra and uses NNLS to find the optimal
+    def refit_usage(self, X, spectra) -> pd.DataFrame:
+        """Takes an input data matrix and a fixed spectra and uses NNLS to find the optimal
         usage matrix. Generic kwargs for NMF are loaded from self.paths['nmf_run_parameters'].
         If input data are pandas.DataFrame, returns a DataFrame with row index matching X and
         columns index matching index of spectra
 
-        Parameters
-        ----------
-        X : pandas.DataFrame or numpy.ndarray, cells X genes
-            Non-negative expression data to fit spectra to
-
-        spectra : pandas.DataFrame or numpy.ndarray, programs X genes
-            Non-negative spectra of expression programs
+        :param X: Non-negative expression data to fit spectra to
+        :type X: pd.DataFrame or np.ndarray, cells x genes
+        :param spectra: Non-negative spectra of expression programs
+        :type spectra: pandas.DataFrame or numpy.ndarray, programs X genes
+        :return: refit usages
+        :rtype: pd.DataFrame
         """
-
         refit_nmf_kwargs = yaml.load(open(self.paths['nmf_run_parameters']), Loader=yaml.FullLoader)
         if type(spectra) is pd.DataFrame:
             refit_nmf_kwargs.update(dict(n_components = spectra.shape[0], H = spectra.values, update_H = False))
@@ -634,21 +449,20 @@ class cNMF():
         return(rf_usages)
     
     
-    def refit_spectra(self, X, usage):
-        """
-        Takes an input data matrix and a fixed usage matrix and uses NNLS to find the optimal
+    def refit_spectra(self, X, usage) -> pd.DataFrame:
+        """Takes an input data matrix and a fixed usage matrix and uses NNLS to find the optimal
         spectra matrix. Generic kwargs for NMF are loaded from self.paths['nmf_run_parameters'].
         If input data are pandas.DataFrame, returns a DataFrame with row index matching X and
         columns index matching index of spectra
 
-        Parameters
-        ----------
-        X : pandas.DataFrame or numpy.ndarray, cells X genes
-            Non-negative expression data to fit spectra to
-
-        usage : pandas.DataFrame or numpy.ndarray, cells X programs
-            Non-negative spectra of expression programs
+        :param X: Non-negative expression data to fit spectra to
+        :type X: pd.DataFrame or np.ndarray, cells x genes
+        :param usage: Non-negative spectra of expression programs
+        :type usage: pandas.DataFrame or numpy.ndarray, cells X genes
+        :return: refit spectra
+        :rtype: pd.DataFrame
         """
+
         return(self.refit_usage(X.T, usage.T).T)
 
 
@@ -893,10 +707,10 @@ class cNMF():
                 raise ValueError(f"cNMF postprocessing could not find output file {filename}. This can arise in low memory conditions.")
 
     def k_selection_plot(self, close_fig=False):
-        '''
-        Borrowed from Alexandrov Et Al. 2013 Deciphering Mutational Signatures
-        publication in Cell Reports
-        '''
+        """
+        :param close_fig: close figure after saving, defaults to False
+        :type close_fig: bool, optional
+        """
         run_params = utils.load_df_from_npz(self.paths['nmf_replicate_parameters'])
         stats = []
         for k in sorted(set(run_params.n_components)):

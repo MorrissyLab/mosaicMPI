@@ -992,15 +992,16 @@ def plot_overrepresentation_community_network(snsmap: SNS,
     
     if ax is None:
         fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [2, 1]}, layout="tight")
+        if show_legend:
+            ax_legend.set_xlim([-0.5, 0.5])
+            ax_legend.set_aspect("equal")
+            ax_legend.set_axis_off()
     else:
         ax_plot = ax
         ax_legend = ax
     ax_plot.set_aspect("equal")
     ax_plot.set_axis_off()
     ax_plot.set_title("Community Network")
-    ax_legend.set_xlim([-0.5, 0.5])
-    ax_legend.set_aspect("equal")
-    ax_legend.set_axis_off()
     
     if snsmap.comm_graph.edges:
         width = np.array(list(nx.get_edge_attributes(snsmap.comm_graph, "n_edges").values()))

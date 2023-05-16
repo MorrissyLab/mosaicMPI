@@ -21,12 +21,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import networkx as nx
 
-class OrderedGroup(click.Group):
+class _OrderedGroup(click.Group):
     """
     Overwrites Groups in click to allow ordered commands.
     """
     def __init__(self, name: Optional[str] = None, commands: Optional[Mapping[str, click.Command]] = None, **kwargs):
-        super(OrderedGroup, self).__init__(name, commands, **kwargs)
+        super(_OrderedGroup, self).__init__(name, commands, **kwargs)
         #: the registered subcommands by their exported names.
         self.commands = commands or collections.OrderedDict()
 
@@ -34,7 +34,7 @@ class OrderedGroup(click.Group):
         return self.commands
 
 
-@click.group(cls=OrderedGroup)
+@click.group(cls=_OrderedGroup)
 @click.version_option(version=__version__)
 def cli():
     """
@@ -279,7 +279,7 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
         kvals |= set(range(k_range[0], k_range[1] + 1, k_range[2]))
     kvals = sorted(list(kvals))
     # prepare cNMF directory for factorization
-    dataset.initialize_cnmf(output_dir = output_dir, name=name, kvals=kvals, n_iter=n_iter, beta_loss=beta_loss, seed=seed)
+    dataset.initialize_cnmf(cnmf_output_dir = output_dir, cnmf_name=name, kvals=kvals, n_iter=n_iter, beta_loss=beta_loss, seed=seed)
     
     # output dataset with new information on overdispersed genes and cNMF parameters
     dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))

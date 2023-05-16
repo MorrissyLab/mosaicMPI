@@ -17,58 +17,79 @@ import pandas as pd
 import numpy as np
 from statsmodels.gam.api import GLMGam, BSplines
 
-def migrate_anndata(adata:ad.AnnData, force: bool = False):
-    # migrates external and pre-1.0.0 anndata objects to newer format.
-    X = adata.to_df()
-    
-    if adata.raw is None:  # eg., PBMC dataset from scanpy
-        is_normalized=False
-        raw = adata.to_df()
-    else:
-        raw = pd.DataFrame(adata.raw.X, index=X.index, columns=X.columns)
-        corrdist = X.corrwith(raw, axis=1)
-        # checks that all samples are perfectly correlated between counts and normalized data
-        if ((corrdist - 1).abs() > 1e-6).any():
-            logging.warning("Counts and normalized expression matrices are not perfectly correlated. Counts data will be retained in migrated object.")
-            if not force:
-                errormsg = "Could not migrate AnnData object."
-                logging.error(errormsg)
-                raise ValueError(errormsg)
-        # check for whether user originally input normalized or counts data
-        is_normalized = ((X - raw).abs() < 1e-6).all().all()
-        X_is_tpm = ((X.sum(axis=1) - 1e6).abs() > 1e2).any()
-        if is_normalized and not X_is_tpm:
-            logging.warning("AnnData object contains non-TPM normalized data. New AnnData object will retain the count (unnormalized) data only.")
-        
-    if "odg" in adata.uns and "gene_stats" in adata.uns["odg"]:
-        gene_stat_columns = adata.uns["odg"]["gene_stats"].columns
-        if adata.var.columns.isin(gene_stat_columns).any():
-            overlapping_cols = adata.var.columns.isin(gene_stat_columns)
-            overlapping_colstr = ", ".join(overlapping_cols[overlapping_cols].index.to_list())
-            logging.warning(f"AnnData object contains cNMF gene stats which will override columns in adata.var: {overlapping_colstr}")
-        adata.var = pd.merge(left=adata.var, right=adata.uns["odg"]["gene_stats"], how="left", left_index=True, right_index=True)
-        del adata.uns["odg"]["gene_stats"]
-    
-    # create new AnnData object
-    new_adata = ad.AnnData(X=raw, obs=adata.obs, var=adata.var, varm=adata.varm, obsm=adata.obsm, uns=adata.uns)
-    if "history" not in new_adata.uns:
-        new_adata.uns["history"] = {}
-    return new_adata, is_normalized
-
 class Dataset():
     
     def __init__(self,
                  adata: ad.AnnData,
-                 name: Optional[str] = None,
-                 color: Optional[str] = None,
-                 patient_id_col: Optional[str] = None
+                 patient_id_col: Optional[str] = None,
+                 force_migrate: bool = False
                  ):
+        """Creates a :class:`~cnmfsns.dataset.Dataset` object from an `ad.AnnData` object.
+
+        :param adata: AnnData object with data
+        :type adata: ad.AnnData
+        :param patient_id_col: Name of metadata layer with patient ID information, defaults to None
+        :type patient_id_col: str, optional
+        :param force_migrate: forces conversion of AnnData objects even when adata.X and adata.raw.X are not linearly scaled relative to each other, defaults to False
+        :type force_migrate: bool, optional
+        :raises RuntimeError: Backed-mode Anndata objects cannot be migrated
+        :raises ValueError: Error is raised when force is False and adata is non-linearly scaled.
+        :return: Object with expression and metadata
+        :rtype: :class:`~cnmfsns.dataset.Dataset`
+        """
+
+        if adata.X is None:
+            logging.error(f"adata contains no expression data (adata.X)")
+            raise ValueError()
         
-        
-        self.name = name
-        self.color = color
-        self.adata = adata
         self.patient_id_col = patient_id_col
+        if hasattr(adata, "cnmfsns_version") and adata.cnmfsns_version is not None:
+            self.adata = adata
+        else:
+            # check and update old or external h5ad files for cNMF-SNS compliance
+    
+            X = adata.to_df()
+            
+            if adata.isbacked:
+                raise RuntimeError("adata is a backed AnnData object. AnnData objects opened in backed mode cannot be migrated.")
+
+            if adata.raw is None:
+                is_normalized=False
+                raw = adata.to_df()
+            else:
+                raw = pd.DataFrame(adata.raw.X, index=X.index, columns=X.columns)
+                corrdist = X.corrwith(raw, axis=1)
+                # checks that all samples are perfectly correlated between counts and normalized data
+                if ((corrdist - 1).abs() > 1e-6).any():
+                    logging.warning("Counts and normalized expression matrices are not perfectly correlated. Counts data will be retained in migrated object.")
+                    if not force_migrate:
+                        errormsg = "Could not migrate AnnData object."
+                        logging.error(errormsg)
+                        raise ValueError(errormsg)
+                # check for whether user originally input normalized or counts data
+                is_normalized = ((X - raw).abs() < 1e-6).all().all()
+                X_is_tpm = ((X.sum(axis=1) - 1e6).abs() > 1e2).any()
+                if is_normalized and not X_is_tpm:
+                    logging.warning("AnnData object contains non-TPM normalized data. New AnnData object will retain the count (unnormalized) data only.")
+                
+            if "odg" in adata.uns and "gene_stats" in adata.uns["odg"]:
+                gene_stat_columns = adata.uns["odg"]["gene_stats"].columns
+                if adata.var.columns.isin(gene_stat_columns).any():
+                    overlapping_cols = adata.var.columns.isin(gene_stat_columns)
+                    overlapping_colstr = ", ".join(overlapping_cols[overlapping_cols].index.to_list())
+                    logging.warning(f"AnnData object contains cNMF gene stats which will override columns in adata.var: {overlapping_colstr}")
+                adata.var = pd.merge(left=adata.var, right=adata.uns["odg"]["gene_stats"], how="left", left_index=True, right_index=True)
+                del adata.uns["odg"]["gene_stats"]
+            
+            # create new AnnData object
+            new_adata = ad.AnnData(X=raw, obs=adata.obs, var=adata.var, varm=adata.varm, obsm=adata.obsm, uns=adata.uns)
+            if "history" not in new_adata.uns:
+                new_adata.uns["history"] = {}
+
+            # update dataset object
+            self.adata = new_adata
+            self.is_normalized = is_normalized
+            self.cnmfsns_version = __version__
     
     @classmethod
     def from_df(cls,
@@ -77,10 +98,25 @@ class Dataset():
                   sparsify: bool = False,
                   obs: Optional[pd.DataFrame] = None,
                   var: Optional[pd.DataFrame] = None,
-                  name: Optional[str] = None,
-                  color: Optional[str] = None,
                   patient_id_col: Optional[str] = None
                   ):
+        """Creates a :class:`~cnmfsns.dataset.Dataset` object from a pandas DataFrame.
+
+        :param data: An observations × variables data
+        :type data: pd.DataFrame
+        :param is_normalized: Specify if data is already normalized or whether not. Raw data will be TPM normalized prior to overdispersed gene selection, whereas already normalized data will not.
+        :type is_normalized: bool
+        :param sparsify: Store data as a sparse matrix. [Note that this feature is experimental], defaults to False
+        :type sparsify: bool, optional
+        :param obs: An observations × metadata matrix, defaults to None
+        :type obs: `pd.DataFrame`, optional
+        :param var: A variables × metadata matrix, defaults to None
+        :type var: `pd.DataFrame`, optional
+        :param patient_id_col: Name of metadata layer with patient ID information, defaults to None
+        :type patient_id_col: str, optional
+        :return: Object with expression and metadata
+        :rtype: :class:`~cnmfsns.dataset.Dataset`
+        """
         if var is not None:
             var = var.reindex(data.columns)
         if sparsify:
@@ -88,55 +124,42 @@ class Dataset():
         data = data.astype("float32")
         uns = {"history": {}, "odg":{}}
         adata = ad.AnnData(X=data, var=var, uns=uns)
-        dataset = cls(adata=adata, name=name, color=color, patient_id_col=patient_id_col)
+        dataset = cls(adata=adata, patient_id_col=patient_id_col)
         if obs is not None:
-            dataset.update_obs(obs_df=obs)
-        dataset.is_normalized = is_normalized
-        dataset.cnmfsns_version = __version__
-        dataset.append_to_history("Initialized new AnnData object")  
-        return dataset
-    
-    @classmethod
-    def from_anndata(cls,
-                     adata: ad.AnnData,
-                     name: Optional[str] = None,
-                     color: Optional[str] = None,
-                     patient_id_col: Optional[str] = None,
-                     force_migrate: bool = False
-                     ):
-        dataset = cls(adata=adata, name=name, color=color, patient_id_col=patient_id_col)
-        if dataset.cnmfsns_version is None:
-            # importing old versions requires updating
-            dataset.adata, dataset.is_normalized = migrate_anndata(adata, force=force_migrate)
-            dataset.cnmfsns_version = __version__
-            dataset.append_to_history("Migrated pre-1.0.0 or external AnnData object")
-        if dataset.adata.X is None:
-            logging.error(f".h5ad file contains no expression data (adata.X)")
-            raise ValueError()
+            dataset.update_obs(obs=obs) 
         return dataset
     
     @classmethod
     def from_h5ad(cls,
                   h5ad_file: str,
                   name: Optional[str] = None,
-                  color: Optional[str] = None,
                   patient_id_col: Optional[str] = None,
                   force_migrate=False, backed=False
                   ):
+        """Creates a :class:`~cnmfsns.dataset.Dataset` object from an AnnData-compatible .h5ad file.
+
+        :param h5ad_file: Path to .h5ad file produced by scanpy, AnnData, or cNMF-SNS
+        :type h5ad_file: str
+        :param patient_id_col: Name of metadata layer with patient ID information, defaults to None
+        :type patient_id_col: str, optional
+        :param force_migrate: forces conversion of AnnData objects even when adata.X and adata.raw.X are not linearly scaled relative to each other, defaults to False
+        :type force_migrate: bool, optional
+        :param backed: Use backed mode to open h5ad file. This can save memory when the dataset is very large, but is not compatible with h5ad files produced outside of cNMF-SNS, defaults to False
+        :type backed: bool, optional
+        :return: Object with expression and metadata
+        :rtype: :class:`~cnmfsns.dataset.Dataset`
+        """
         adata = ad.read_h5ad(h5ad_file, backed=backed)
-        dataset = Dataset.from_anndata(adata=adata, name=name, color=color,
-                                       patient_id_col=patient_id_col, 
-                                       force_migrate=force_migrate)
+        dataset = Dataset(adata=adata, patient_id_col=patient_id_col, force_migrate=force_migrate)
         return dataset
-    
-    def append_to_history(self, text):
-        self.adata.uns["history"][datetime.utcnow().isoformat()] = text
-        
-    def get_history(self):
-        return self.adata.uns["history"]
     
     @property
     def is_normalized(self):
+        """Outputs the normalization status of the dataset.
+
+        :return: True if dataset contains normalized data, False if it is raw data.
+        :rtype: bool
+        """
         return self.adata.uns["is_normalized"]
     
     @is_normalized.setter
@@ -145,18 +168,24 @@ class Dataset():
         
     @property
     def cnmfsns_version(self):
+        """cNMF-SNS version used to create the dataset
+
+        :return: version
+        :rtype: str
+        """
         if "cnmfsns_version" in self.adata.uns:
             version = self.adata.uns["cnmfsns_version"]
         else:
             version = None
         return version
-    
-    @cnmfsns_version.setter
-    def cnmfsns_version(self, value: bool):
-        self.adata.uns["cnmfsns_version"] = value
         
     @property
     def has_cnmf_results(self):
+        """Test for wehther Dataset contains cNMF results for the dataset
+
+        :return: Whether complete cNMF results are contained for at least 1 rank (k)
+        :rtype: bool
+        """
         matrix_checks = [
             "cnmf_usage" in self.adata.obsm,
             "cnmf_gep_score" in self.adata.varm,
@@ -168,21 +197,42 @@ class Dataset():
         
     @property
     def overdispersed_genes(self):
+        """Overdispersed gene list used for cNMF
+
+        :return: gene list
+        :rtype: list
+        """
         return self.adata.uns["gene_list"]
+
+
+    @cnmfsns_version.setter
+    def cnmfsns_version(self, value: bool):
+        self.adata.uns["cnmfsns_version"] = value
+
         
-    def update_obs(self, obs_df):
+    def update_obs(self, obs):
+        """Update the observation metadata with a new metadata matrix
+
+        :param obs: An observations × metadata matrix, defaults to None
+        :type obs: `pd.DataFrame`, optional
+        """
         # convert 'object' dtype to categorical, converting bool values to strings as these are not supported by AnnData on-disk format
-        for col in obs_df.select_dtypes(include="object").columns:
-            obs_df[col] = obs_df[col].replace({True: "True", False: "False"}).astype("category")
-        missing_samples_in_X = obs_df.index.difference(self.adata.obs.index).astype(str).to_list()
+        for col in obs.select_dtypes(include="object").columns:
+            obs[col] = obs[col].replace({True: "True", False: "False"}).astype("category")
+        missing_samples_in_X = obs.index.difference(self.adata.obs.index).astype(str).to_list()
         if missing_samples_in_X:
             logging.warning("The following samples in the metadata were not present in the data (`adata.X`):\n  - " + "\n  - ".join(missing_samples_in_X))
-        missing_samples_in_md = self.adata.obs.index.difference(obs_df.index).astype(str).to_list()
+        missing_samples_in_md = self.adata.obs.index.difference(obs.index).astype(str).to_list()
         if missing_samples_in_md:
             logging.warning("The following samples in the data (`adata.X`) were absent in the metadata:\n  - " + "\n  - ".join(missing_samples_in_md))
-        self.adata.obs = obs_df.reindex(self.adata.obs.index)
+        self.adata.obs = obs.reindex(self.adata.obs.index)
     
     def get_metadata_type_summary(self):
+        """Return a printable summary of metadata and value types for each metadata layer.
+
+        :return: Summary of metadata
+        :rtype: str
+        """
         msg = ""
         for col in self.adata.obs.columns:
             msg += "    Column: " + col + "\n"
@@ -191,18 +241,32 @@ class Dataset():
         return msg
     
     def write_h5ad(self, filename):
+        """Write dataset to .h5ad file.
+
+        :param filename: filepath
+        :type filename: str
+        """
         filename = os.path.abspath(filename)
         logging.info(f"Writing to {filename}")
         self.adata.write_h5ad(filename)
         logging.info(f"Done")
     
     def to_df(self, normalized=False):
+        """Get data matrix as a `pd.DataFrame`
+
+        :param normalized: Set true for TPM normalized output, defaults to False
+        :type normalized: bool, optional
+        :return: observations × variables data matrix
+        :rtype: pd.DataFrame
+        """
         df = self.adata.to_df()
         if normalized and not self.is_normalized:
             df = df.div(df.sum(axis=1), axis=0) * 1e6  # TPM normalization
         return df
         
     def remove_unfactorizable_genes(self):
+        """Removes genes with missing values or zero variance from the data matrix.
+        """
         df = self.to_df(normalized=False)
         # Check for variables with missing values
         genes_with_missingvalues = df.isnull().any()
@@ -224,7 +288,18 @@ class Dataset():
         self.adata = self.adata[:,genes_to_keep]
 
     def compute_gene_stats(self, odg_default_spline_degree: int = 3, odg_default_dof: int = 8):
+        """
+        Computes gene statistics and fits two models of mean and variance of genes in the dataset. The first method is the
+        generalized additive model with smooth components (B-splines) to model the relationship of mean and variance
+        between genes in the dataset. It produces an odscore metric for overdispersion. The second is the count-statistics
+        method found in the cNMF package, which produces a modified v-score metric. All gene statistics are stored within the
+        dataset object and are accessible using `dataset.anndata.var`.
 
+        :param odg_default_spline_degree: B-Spline degree for GLM-GAM modelling of mean-variance relationship, defaults to 3
+        :type odg_default_spline_degree: int, optional
+        :param odg_default_dof: Degrees of freedom for GLM-GAM modelling of mean-varance, defaults to 8
+        :type odg_default_dof: int, optional
+        """
         data_raw = self.to_df()
         data_normalized = self.to_df(normalized=True)
         
@@ -259,6 +334,13 @@ class Dataset():
         self.append_to_history("Gene-level statistics and overdispersion modelling completed.")
         
     def select_overdispersed_genes_from_genelist(self, genes: Collection, min_mean=0):
+        """Select overdispersed genes/features using a custom list. Genes/features not present in the dataset are automatically filtered out.
+
+        :param genes: gene list
+        :type genes: Collection
+        :param min_mean: minimum gene expression for genes to be counted as overdispersed, defaults to 0
+        :type min_mean: int, optional
+        """
         self.adata.var["selected"] = self.adata.var.index.isin(genes) & self.adata.var["mean_counts"] >= min_mean
         self.adata.uns["odg"]["overdispersion_metric"] = ""
         self.adata.uns["odg"]["min_mean"] = min_mean
@@ -273,6 +355,22 @@ class Dataset():
                                    min_score: float = 1.0,
                                    top_n: int = None,
                                    quantile: float = None):
+        """Select overdispersed genes/features using an overdispersion metric. Optionally set a minimum gene expression level.
+        Set a threshold using the top N ('top_n'), minimum score ('min_score'), or proportion of features ('quantile') methods.
+        Overdispersed gene list is saved in the Dataset object.
+
+        :param overdispersion_metric: "odscore" or "vscore", defaults to "odscore"
+        :type overdispersion_metric: str, optional
+        :param min_mean: minimum gene expression for genes to be counted as overdispersed, defaults to 0
+        :type min_mean: int, optional
+        :param min_score: minimum score for overdispersion, defaults to 1.0
+        :type min_score: float, optional
+        :param top_n: Choose the top N most overdispersed genes, defaults to None
+        :type top_n: int, optional
+        :param quantile: Choose a quantile of overdispersion. For example, the top 10% of overdispersed genes would be 0.10. Defaults to None
+        :type quantile: float, optional
+        :raises ValueError: Error if invalid overdispersion metric is chosen.
+        """
         
         if overdispersion_metric not in self.adata.var.columns:
             if overdispersion_metric in ("odscore", "vscore"):
@@ -325,13 +423,30 @@ class Dataset():
         self.adata.uns["odg"]["quantile"] = quantile if quantile is not None else ""
         self.append_to_history("Overdispersed genes selected")
     
-    def initialize_cnmf(self, output_dir: str,
-                        name: str,
+    def initialize_cnmf(self, cnmf_output_dir: str,
+                        cnmf_name: str,
                         kvals: Collection = range(2, 61),
                         n_iter: int = 200,
                         beta_loss: str = "kullback-leibler",
-                        seed: Optional[int] = None):
-        cnmf_obj = cnmf.cNMF(output_dir=output_dir, name=name)
+                        seed: Optional[int] = None) -> cnmf.cNMF:
+        """Initialize a cNMF run for subsequent factorization.
+
+        :param cnmf_output_dir: Output directory for cNMF results
+        :type cnmf_output_dir: str
+        :param cnmf_name: Name of the cNMF results. Files will be output to [cnmf_output_dir]/[cnmf_name]/
+        :type cnmf_name: str
+        :param kvals: Ranks for cNMF factorization, defaults to range(2, 61)
+        :type kvals: Collection, optional
+        :param n_iter: Number of iterations from which to build a consensus solution, defaults to 200
+        :type n_iter: int, optional
+        :param beta_loss: beta-loss function, either "kullback-leibler" or "frobenius". Defaults to "kullback-leibler"
+        :type beta_loss: str, optional
+        :param seed: Random seed for reproducibility, defaults to None
+        :type seed: Optional[int], optional
+        :return: cNMF object
+        :rtype: :class:`cnmfsns.cnmf.cNMF`
+        """
+        cnmf_obj = cnmf.cNMF(output_dir=cnmf_output_dir, name=cnmf_name)
         
         # write TPM (normalized) data
         tpm = ad.AnnData(self.to_df(normalized=True))
@@ -353,10 +468,22 @@ class Dataset():
         # save parameters in AnnData object
         self.adata.uns["cnmf"] = cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss)[1]  # dict of cnmf parameters
         
-        self.append_to_history("cNMF parameters added. cNMF inputs initialized in {output_dir}/{name}")
+        self.append_to_history(f"cNMF parameters added. cNMF inputs initialized in {cnmf_output_dir}/{cnmf_name}")
         return cnmf_obj
     
     def add_cnmf_results(self, cnmf_output_dir, cnmf_name, local_density_threshold: float = None, local_neighborhood_size: float = None):
+        """
+        After factorization, add completed cNMF results in [cnmf_output_dir]/[cnmf_name] to the dataset object.
+
+        :param cnmf_output_dir: Output directory for cNMF results
+        :type cnmf_output_dir: str
+        :param cnmf_name: Name of the cNMF results. Files will be output to [cnmf_output_dir]/[cnmf_name]/
+        :type cnmf_name: str
+        :param local_density_threshold: Threshold for the local density filtering prior to GEP consensus. Acceptable thresholds are > 0 and <= 2 (2.0 is no filtering). Defaults to None.
+        :type local_density_threshold: float, optional
+        :param local_neighborhood_size: Fraction of the number of replicates to use as nearest neighbors for local density filtering. Defaults to None
+        :type local_neighborhood_size: float, optional
+        """
         self.adata.uns["cnmf_name"] = cnmf_name
 
         # infer from filenames which local density threshold was used
@@ -417,9 +544,22 @@ class Dataset():
         self.append_to_history("cNMF results added from output directory {cnmf_output_dir}/{cnmf_name}")
 
     def get_usages(self,
-                   k: int = None,
+                   k: Union[int, Iterable] = None,
                    discretize: bool = False,
-                   normalize: bool = False):
+                   normalize: bool = False
+                   ) -> pd.DataFrame:
+        """
+        Calculate usage of each GEP in each sample/observation.
+
+        :param k: If an integer or list of integers, returns usages only for specified ranks. Otherwise, returns usage of all GEPs across ranks. Defaults to None
+        :type k: int, optional
+        :param discretize: Discretizes the usage matrix such that for each value of k, each sample has usage of only 1 GEP (the one with the maximum usage). Defaults to False
+        :type discretize: bool, optional
+        :param normalize: Normalize the GEP usage matrix such that for each value of k, usage of all GEPs sums to 1. Defaults to False
+        :type normalize: bool, optional
+        :return: observation × GEP matrix
+        :rtype: pd.DataFrame
+        """
         df = self.adata.obsm["cnmf_usage"].copy()
         df.columns = pd.MultiIndex.from_tuples(df.columns.str.split(".").to_list())
         df.columns = df.columns.set_levels([l.astype("int") for l in df.columns.levels])
@@ -438,7 +578,20 @@ class Dataset():
         df = df.sort_index(axis=0).sort_index(axis=1)   
         return df
     
-    def get_geps(self, k: Union[int, Iterable] = None, type="cnmf_gep_score"):
+    def get_geps(self,
+                 k: Union[int, Iterable] = None,
+                 type="cnmf_gep_score"
+                 ) -> pd.DataFrame:
+        """
+        Get GEPs.
+
+        :param k: If an integer or list of integers, returns GEPs only for specified ranks. Otherwise, returns GEPs from all ranks. Defaults to None
+        :type k: Union[int, Iterable], optional
+        :param type: "cnmf_gep_score" or "cnmf_gep_tpm", defaults to "cnmf_gep_score"
+        :type type: str, optional
+        :return: features × GEP matrix
+        :rtype: pd.DataFrame
+        """
         df = self.adata.varm[type].copy()
         df.columns = pd.MultiIndex.from_tuples(df.columns.str.split(".").to_list())
         df.columns = df.columns.set_levels([l.astype("int") for l in df.columns.levels])
@@ -451,6 +604,16 @@ class Dataset():
                         include_categorical: bool = True,
                         include_numerical: bool = True
                         ) -> pd.DataFrame:
+        """Get sample/observation metadata.
+
+        :param include_categorical: Include categorical metadata layers, defaults to True
+        :type include_categorical: bool, optional
+        :param include_numerical: Include numerical metadata layers, defaults to True
+        :type include_numerical: bool, optional
+        :raises ValueError: Error if metadata types are not recognized
+        :return: observations × metadata matrix
+        :rtype: pd.DataFrame
+        """
         dtypes = []
         if include_categorical:
             dtypes.append("category")
@@ -467,6 +630,15 @@ class Dataset():
                                         layer: str,
                                         truncate_negative: bool = True
                                         ) -> pd.DataFrame:
+        """Calculate Pearson residual of chi-squared test, associating GEPs for each rank (k) to categories of samples/observations. By default, truncates negative values.
+
+        :param layer: name of categorical data layer
+        :type layer: str
+        :param truncate_negative: Truncate negative residuals to 0, defaults to True
+        :type truncate_negative: bool, optional
+        :return: category × GEP matrix of overrepresentation values
+        :rtype: pd.DataFrame
+        """
         usage = self.get_usages().copy()
         sample_to_class = self.get_metadata_df()[layer]
         usage.index = usage.index.map(sample_to_class)
@@ -486,7 +658,32 @@ class Dataset():
                                  layer: str,
                                  method: str = "pearson"
                                  ) -> pd.Series:
+        """Calculate Pearson correlation of GEP usage to numerical metadata across samples/observations.
+
+        :param layer: name of numerical data layer
+        :type layer: str
+        :param method: Correlation method: "pearson", "spearman", or "kendall". Defaults to "pearson"
+        :type method: str, optional
+        :return: correlation of GEP to metadata
+        :rtype: pd.Series
+        """
         usage = self.get_usages().copy()
         metadata = self.get_metadata_df()[layer]
         md_corr = usage.corrwith(metadata, method=method)
         return md_corr
+        
+    def append_to_history(self, entry):
+        """Add entry to Dataset history.
+
+        :param entry: Description of event to record in the history.
+        :type entry: str
+        """
+        self.adata.uns["history"][datetime.utcnow().isoformat()] = entry
+        
+    def get_history(self):
+        """Returns timestamped history of Dataset object.
+
+        :return: history
+        :rtype: dict
+        """
+        return self.adata.uns["history"]

@@ -4,7 +4,7 @@ from .utils import node_to_gep
 
 
 from collections.abc import Collection, Iterable
-from typing import Union, Optional
+from typing import Union, Optional, Dict, List
 import logging
 
 import numpy as np
@@ -21,9 +21,18 @@ from scipy.stats import entropy
 class SNS():
     def __init__(self,
                  integration: Integration,
-                 subset_nodes: Optional[Iterable] = None,
-                 communities: Optional[dict] = None,
+                 subset_nodes: Optional[Iterable[str]] = None,
+                 communities: Optional[Dict[str, Collection[str]]] = None,
                  ):
+        """Create a Solution Network Space from an :class:`~cnmfsns.integration.Integration` object.
+
+        :param integration: Integration of multiple datasets.
+        :type integration: :class:`~cnmfsns.integration.Integration`
+        :param subset_nodes: Create an SNS from a subset of the larger GEP graph, defaults to None
+        :type subset_nodes: Iterable[str], optional
+        :param communities: Use pre-defined communities, defaults to None
+        :type communities: Dict[str, Collection[str]], optional
+        """
         self.integration = integration
         self.subset_nodes = subset_nodes
         self.create_gep_network()
@@ -33,12 +42,24 @@ class SNS():
     
     @classmethod
     def from_pkl(cls, filename) -> "SNS":
+        """Read an SNS object from a pickled object.
+
+        :param filename: Path to pickled SNS object.
+        :type filename: str
+        :return: SNS
+        :rtype: :class:`cnmfsns.sns.SNS`
+        """
         with open(filename, "rb") as handle:
             sns_object = pickle.load(handle)
         return sns_object
     
     @property
-    def n_communities(self):
+    def n_communities(self) -> int:
+        """Get the number of communities in the SNS.
+
+        :return: Number of communities
+        :rtype: int
+        """
         if self.communities is None:
             raise ValueError("Communities have not yet been defined.")
         else:
@@ -46,13 +67,14 @@ class SNS():
 
     @property
     def geps_in_graph(self):
-        """Get the nodes in the GEP graph as (dataset, k, gep) tuples.
+        """
+        Get the nodes in the GEP graph as (dataset, k, gep) tuples.
         This is helpful for indexing usage matrices etc., whereas the
         nodes from Dataset.gep_graph.nodes will be given as pipe-delimited
         strings.
 
-        Returns:
-            list of tuples: nodes in the GEP graph
+        :return: list of GEPs
+        :rtype: list of tuples
         """
         nodes = []
         for node in self.gep_graph.nodes:
@@ -60,8 +82,18 @@ class SNS():
             nodes.append((dataset_name, int(k_str), int(gep_str)))
         return nodes
     
-    def get_community_usage(self, subset_datasets: Optional[Union[str, Iterable]] = None, normalized=True):
-        usage = self.integration.get_usages()
+    def get_community_usage(self, subset_datasets: Optional[Union[str, Iterable[str]]] = None, normalize=True):
+        """
+        Get median usage of each community of GEPs for each samples. 
+
+        :param subset_datasets: dataset name or iterable of dataset names to subset the results, defaults to None
+        :type subset_datasets: str or Iterable[str], optional
+        :param normalize: Normalize the GEP usage matrix such that for each value of k, usage of all GEPs sums to 1. Defaults to False
+        :type normalize: bool, optional
+        :return: observations × communities matrix
+        :rtype: pd.DataFrame
+        """
+        usage = self.integration.get_usages(normalize=normalize)
         ic_usage = []
         
         if subset_datasets is None:
@@ -84,11 +116,18 @@ class SNS():
             data.columns.rename("Community", inplace=True)
             ic_usage.append(data.sort_index(axis=0))
         ic_usage = pd.concat(ic_usage)
-        if normalized:
+        if normalize:
             ic_usage = ic_usage.div(ic_usage.sum(axis=1), axis=0)
         return ic_usage
     
     def get_sample_entropy(self, subset_datasets: Optional[Union[str, Iterable]] = None):
+        """Get shannon diversity of Community Usage for each sample.
+
+        :param subset_datasets: dataset name or iterable of dataset names to subset the results, defaults to None
+        :type subset_datasets: str or Iterable[str], optional
+        :return: Shannon Entropy for each dataset and sample
+        :rtype: pd.Series
+        """
         ic_usage = self.get_community_usage(subset_datasets = subset_datasets)
         diversity = ic_usage.apply(lambda x: entropy(x.dropna()), axis=1)
         return diversity
@@ -98,7 +137,17 @@ class SNS():
                                                   subset_datasets: Optional[Union[str, Iterable]] = None,
                                                   truncate_negative: bool = True,
                                                   ) -> pd.DataFrame:
-        
+        """_summary_
+
+        :param layer: name of categorical data layer
+        :type layer: str
+        :param subset_datasets: dataset name or iterable of dataset names to subset the results, defaults to None
+        :type subset_datasets: str or Iterable[str], optional
+        :param truncate_negative: Truncate negative residuals to 0, defaults to True
+        :type truncate_negative: bool, optional
+        :return: category × GEP matrix of overrepresentation values
+        :rtype: pd.DataFrame
+        """
         df = self.integration.get_category_overrepresentation(layer=layer, subset_datasets=subset_datasets, truncate_negative=truncate_negative)
         mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
         df.columns = df.columns.map(mapper)
@@ -111,6 +160,18 @@ class SNS():
                                            subset_datasets: Optional[Union[str, Iterable]] = None,
                                            method: str = "pearson"
                                            ) -> pd.Series:
+        """Calculate Pearson correlation of GEP usage to numerical metadata across samples/observations.
+
+        :param layer: name of numerical data layer
+        :type layer: str
+        :param subset_datasets: _description_, defaults to None
+        :type subset_datasets: Optional[Union[str, Iterable]], optional
+        :param method: Correlation method: "pearson", "spearman", or "kendall". Defaults to "pearson"
+        :type method: str, optional
+        :return: median correlation of GEP communities to metadata
+        :rtype: pd.Series
+        """
+
         ser = self.integration.get_metadata_correlation(layer=layer, subset_datasets=subset_datasets, method=method)
         mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
         ser.index = ser.index.map(mapper)
@@ -120,7 +181,9 @@ class SNS():
 
     
     def create_gep_network(self):
-
+        """
+        Creates a GEP graph based on pairwise correlation thresholds and selected ranks.
+        """
         # get matrix of edges after filtering
         subset = self.integration.get_corr_matrix_lowertriangle(selected_k_filter=True)
         subset_quantile = self.integration.get_corr_matrix_lowertriangle(selected_k_filter=True, quantile_transformation=True)
@@ -159,13 +222,31 @@ class SNS():
                            k: Optional[int] = None,
                            edge_weight: Optional[str] = None
                            ):
-        
-        assert edge_weight in (None, "corr", "prefilter_quantile", "postfilter_quantile")
+        """Identifies communities from the GEP graph.
+
+        :param algorithm: Valid algorithms include: "greedy_modularity", "leiden", "asyn_lpa", "girvan_newman". Defaults to "greedy_modularity"
+        :type algorithm: str, optional
+        :param resolution: Resolution parameter is related to the relative size and number of communities. (resolution must not be set for asyn_lpa and girvan_newman algorithms), defaults to 2.0
+        :type resolution: float, optional
+        :param k: Number of clusters (applies to the girvan_newman algorithm only), defaults to None
+        :type k: int, optional
+        :param edge_weight: Add edge weights, using either the correlation (corr), and quantile-transformed correlation,
+            which can be calculated prior to or after filtering (prefilter_quantile and postfilter_quantile, respectively). Defaults to None
+        :type edge_weight: str, optional
+        """
         
         G = self.gep_graph
             
-        # Community search
+        # Check parameters
         logging.info(f"Community search: algorithm = {algorithm}, resolution = {resolution}")
+        if k is not None and (algorithm in ("greedy_modularity","leiden","asyn_lpa")):
+            raise ValueError(f"{algorithm} community search algorithm does not support parameter k.")
+        if resolution is not None and algorithm in ("asyn_lpa", "girvan_newman", "asyn_fluidc"):
+            raise ValueError(f"{algorithm} community search algorithm does not support the resolution parameter.")
+        if edge_weight not in (None, "corr", "prefilter_quantile", "postfilter_quantile"):
+            raise ValueError(f'{edge_weight} is not a valid edge weighting method. Choose from: "corr", "prefilter_quantile", "postfilter_quantile".')
+
+        # Community search algorithms
         if algorithm == "greedy_modularity":
             algo_output = nx.algorithms.community.modularity_max.greedy_modularity_communities(
                 G, resolution=resolution, weight=edge_weight)
@@ -177,40 +258,47 @@ class SNS():
             for community, member_nodes in enumerate(algo_output, start=1):
                 communities[community] = G_igraph.vs[member_nodes]['_nx_name']
         elif algorithm == "asyn_lpa":
-            assert resolution is None
             algo_output = nx.algorithms.community.label_propagation.asyn_lpa_communities(G, weight=edge_weight)
             communities = {name: nodes for name, nodes in enumerate(algo_output, start=1)}
         elif algorithm =="girvan_newman":
-            assert resolution is None
-            assert isinstance(k, int)
             algo_output = nx.algorithms.community.centrality.girvan_newman(G)
             for partition in algo_output:
                 if len(partition) >= k:
                     break
-            
             communities = {}
             for name, nodes in enumerate(partition, start=1):
                 communities[name] = nodes
         elif algorithm == "asyn_fluidc":
-            assert resolution is None
-            assert isinstance(k, int)
             algo_output = nx.algorithms.community.asyn_fluidc(G, k, max_iter=100)
             communities = {name: nodes for name, nodes in enumerate(algo_output, start=1)}
         else:
             raise ValueError(f"{algorithm} is not a valid community detection algorithm")
 
-        # community names must be strings to avoid problems with TOML persistence
+        # community names must be strings to avoid problems with TOML persistence and flexibility for custom community naming (eg., for subclustering)
         communities = {str(k): v for k, v in communities.items()}
 
         self.communities = communities
         self.gep_communities = {gep: community for community, geps in communities.items() for gep in geps}
+
+        # also create a community network with default parameters, so that self.comm_graph is available if needed. However, self.create_community_network can be called again
         self.create_community_network()
 
     def prune_communities(self,
                           min_nodes: int = 1,
                           min_datasets: int = 1,
                           min_nodes_per_dataset: int = 0,
-                          renumber = False, recolor = False):
+                          renumber = False):
+        """Prune communities based on one or more filters.
+
+        :param min_nodes: Minimum number of nodes per community, defaults to 1
+        :type min_nodes: int, optional
+        :param min_datasets: Minimum number of datasets with nodes in a community, defaults to 1
+        :type min_datasets: int, optional
+        :param min_nodes_per_dataset: Minimum number of nodes per dataset in a community, defaults to 0
+        :type min_nodes_per_dataset: int, optional
+        :param renumber: Reset the names of the communities after pruning, defaults to False
+        :type renumber: bool, optional
+        """
         pruned = {}
         for community, nodes in self.communities.items():
             if len(nodes) < min_nodes:
@@ -243,14 +331,28 @@ class SNS():
 
 
     @property
-    def ordered_community_names(self):
+    def ordered_community_names(self) -> List[str]:
+        """Get community names, ordered numerically after separating clusters and subclusters. For example, this algorithm can properly sort communities labelled 1.1, 1.2, 1.3, 2.1, 2.2, 2.10, 2.15.
+
+        :return: list of communities
+        :rtype: list[str]
+        """
         community_names = sorted(self.communities.keys(), key = lambda cstr: [int(lvl) for lvl in cstr.split(".")])
         return community_names
     
-    def add_community_weights_to_graph(self, shared_community_weight = 0.3, shared_dataset_weight = 0.1):
+    def add_community_weights_to_graph(self, base_weight = 1.0, shared_community_weight = 500, shared_dataset_weight = 1.05):
+        """Add attributes to the GEP graph for generating the community-weighted network. If an edge connects two GEPs 
+
+        :param base_weight: Starting weight for all edges, defaults to 1.0
+        :type base_weight: float, optional
+        :param shared_community_weight: Multiplier if edges connect GEPs in the same community, defaults to 500
+        :type shared_community_weight: float, optional
+        :param shared_dataset_weight: Multiplier if edges connect GEPs in the same dataset, defaults to 1.05
+        :type shared_dataset_weight: float, optional
+        """
         edge_attr = {}
         for edge in self.gep_graph.edges:
-            weight = 1
+            weight = base_weight
             if edge[0] in self.gep_communities and edge[1] in self.gep_communities:  # nodes might not have communities due to pruning, and so will be treated as if they are in different communities for layout purposes
                 if self.gep_communities[edge[0]] == self.gep_communities[edge[1]]:
                     weight *= shared_community_weight
@@ -259,30 +361,63 @@ class SNS():
             edge_attr[edge] = weight
         nx.set_edge_attributes(self.gep_graph, edge_attr, name="community_weight")
 
-    def write_communities_toml(self, filename):
+    def write_communities_toml(self, filename: str):
+        """Write communities to TOML file.
+
+        :param filename: path to TOML file
+        :type filename: str
+        """
         toml_conformed = {str(community): sorted(geps, key=lambda x: int(x.split("|")[1])) for community, geps in self.communities.items()}
         with open(filename, "wb") as fh:
             tomli_w.dump(toml_conformed, fh)
 
-    def write_gep_network_graphml(self, filename):
+    def write_gep_network_graphml(self, filename: str):
+        """Output the GEP network in graphml format.
+
+        :param filename: path to .graphml file
+        :type filename: str
+        """
         nx.write_graphml(self.gep_graph, filename)
     
     def write_community_network_graphml(self, filename):
+        """Output the community network in graphml format.
+
+        :param filename: path to .graphml file
+        :type filename: str
+        """
         nx.write_graphml(self.comm_graph, filename)
 
     def compute_layout(self,
-                       algorithm: str ="community_weighted_spring",
-                       shared_community_weight: float = 200,
+                       algorithm: str = "community_weighted_spring",
+                       base_weight: float = 1.0,
+                       shared_community_weight: float = 500,
                        shared_dataset_weight: float = 1.05,
-                       community_layout_algorithm: str ="spring",
+                       community_layout_algorithm: str = "spring",
                        **kwargs):
+        """Compute the network layout using a specified algorithm.
+
+        :param algorithm: Algorithm for network layout. Choose from "neato" (from pyGraphViz, minimizes edge and node overlap), "spring", "community_weighted_spring" (weights
+            the network for optimal separation of communities and/or datasets), "umap", defaults to "community_weighted_spring"
+        :type algorithm: str, optional
+        :param base_weight: Starting weight for all edges (applies to community_weighted_spring algorithm only), defaults to 1.0
+        :type base_weight: float, optional
+        :param shared_community_weight: Multiplier if edges connect GEPs in the same community (applies to community_weighted_spring algorithm only), defaults to 500
+        :type shared_community_weight: float, optional
+        :param shared_dataset_weight: Multiplier if edges connect GEPs in the same dataset (applies to community_weighted_spring algorithm only), defaults to 1.05
+        :type shared_dataset_weight: float, optional
+        :param community_layout_algorithm: Algorithm for layout of community network. Choose from "centroid" (centroid of all community GEPs based on the GEP graph),
+            "spring", and "neato" (from pyGraphViz, minimizes edge and node overlap). Defaults to "spring"
+        :type community_layout_algorithm: str, optional
+        """
         if algorithm == "neato":
             layout = nx.nx_agraph.graphviz_layout(self.gep_graph, prog="neato", args='-Goverlap=true', **kwargs)
         elif algorithm == "spring":
             layout = nx.spring_layout(self.gep_graph, **kwargs)
             layout = {node: list(coords) for node, coords in layout.items()}
         elif algorithm == "community_weighted_spring":
-            self.add_community_weights_to_graph(shared_community_weight=shared_community_weight, shared_dataset_weight=shared_dataset_weight)
+            self.add_community_weights_to_graph(base_weight = base_weight,
+                                                shared_community_weight=shared_community_weight,
+                                                shared_dataset_weight=shared_dataset_weight)
             layout = nx.spring_layout(self.gep_graph, weight="community_weight", **kwargs)
             layout = {node: list(coords) for node, coords in layout.items()}
         elif algorithm == "umap":
@@ -299,9 +434,7 @@ class SNS():
             geps = pd.concat(geps, axis=1).sort_index(axis=1)
             # Standardize features for dimensionality reduction
             table = geps.dropna().T
-            x = table.values
-            x = RobustScaler().fit_transform(x)
-
+            x = RobustScaler().fit_transform(table.values)
             embedding = umap.UMAP(n_neighbors=25, min_dist=0.01, **kwargs).fit_transform(x)
             layout = {"|".join((gep[0], str(gep[1]), str(gep[2]))): list(emb.astype(float)) for gep, emb in zip(table.index, embedding)}
         else:
@@ -322,12 +455,21 @@ class SNS():
             for name, xy in layout.items()}
         self.layout = layout
         
-        self.compute_community_network_layout(method=community_layout_algorithm)
+        self.compute_community_network_layout(algorithm=community_layout_algorithm)
 
-    def compute_community_network_layout(self, method: str = "neato", weight="weight", **kwargs):
+    def compute_community_network_layout(self, algorithm: str = "spring", weight="weight", **kwargs):
+        """_summary_
+
+        :param algorithm: Algorithm for layout of community network. Choose from "centroid" (centroid of all community GEPs based on the GEP graph),
+            "spring", and "neato" (from pyGraphViz, minimizes edge and node overlap). Defaults to "spring", defaults to "spring"
+        :type algorithm: str, optional
+        :param weight: Edge weights. Options include: "weight" (sqrt(n_edges)), "n_edges" (number of edges), or a custom string which represents edge attributes in self.comm_graph. Defaults to "weight"
+        :type weight: str, optional
+        :raises NotImplementedError: Error if invalid algorithm is chosen
+        """
         
-        logging.info(f"Computing community layout using {method} method.")
-        if method == "centroid":
+        logging.info(f"Computing community layout using {algorithm} method.")
+        if algorithm == "centroid":
             assert not kwargs
             # Centroid method for community layout
             self.comm_layout = {}
@@ -336,7 +478,7 @@ class SNS():
                 centroid = (np.median(points[:, 0]), np.median(points[:, 1]))
                 self.comm_layout[community_name] = centroid
                 
-        elif method == "neato":
+        elif algorithm == "neato":
             layout = nx.nx_agraph.graphviz_layout(self.comm_graph, prog="neato", args='-Goverlap=true', **kwargs)
             # rescale layout
             xmax = max(x for x, y in layout.values())
@@ -353,7 +495,7 @@ class SNS():
                 for name, xy in layout.items()}
             self.comm_layout = layout
         
-        elif method == "spring":
+        elif algorithm == "spring":
             layout = nx.spring_layout(self.comm_graph, weight=weight, **kwargs)
             # rescale layout
             xmax = max(x for x, y in layout.values())
@@ -373,6 +515,11 @@ class SNS():
             raise NotImplementedError
     
     def get_max_corr_communities(self) -> pd.DataFrame:
+        """Create a matrix with community and dataset on each axis. Returns the highest correlation coefficient between nodes in each subset (based on community and dataset).
+
+        :return: maximum correlation coefficient matrix for communities/datasets
+        :rtype: pd.DataFrame
+        """
         corr = self.integration.corr_matrix
 
         index = pd.MultiIndex.from_product([self.communities, self.integration.datasets.keys()], names=["Community", "Dataset"])
@@ -390,6 +537,8 @@ class SNS():
         return max_corr_communities
 
     def create_community_network(self) -> None:
+        """Creates community network after community search.
+        """
         logging.info("Creating community network")
         edge_list = []
         for c1, n1 in self.communities.items():
@@ -410,6 +559,15 @@ class SNS():
                                 method: str = "min_k",
                                 min_k: int = 2
                                 ) -> pd.DataFrame:
+        """Return a dataframe with GEPs that represent each community. Representative GEPs are the lowest rank GEPs in each community.
+
+        :param method: Method for identifying 'representative' GEPs, defaults to "min_k"
+        :type method: str, optional
+        :param min_k: Minimum k-value for representative GEPs. Can be set higher than 2 to prevent low-resolution results. Defaults to 2.
+        :type min_k: int, optional
+        :return: Representative GEP table
+        :rtype: pd.DataFrame
+        """
         if method == "min_k":
             logging.info(f"Selecting representative ranks for each community with min_k = {min_k}")
             # get minimum k GEPs for each community/dataset combination.
@@ -434,6 +592,15 @@ class SNS():
                                 method: str = "min_k",
                                 min_k: int = 2
                                 ) -> pd.DataFrame:
+        """Return a dataframe with GEPs that represent each community. Representative GEPs are the lowest rank GEPs in each community.
+
+        :param method: Method for identifying 'representative' GEPs, defaults to "min_k"
+        :type method: str, optional
+        :param min_k: Minimum k-value for representative GEPs. Can be set higher than 2 to prevent low-resolution results. Defaults to 2.
+        :type min_k: int, optional
+        :return: features × GEP table subset for 'representative' GEPs
+        :rtype: pd.DataFrame
+        """
         geps = self.integration.get_geps()
         
         table = self.get_representative_gep_table(method = method, min_k = min_k)
@@ -446,16 +613,26 @@ class SNS():
         selected_geps.columns.rename(("community", "dataset", "k", "GEP"), inplace=True)
         return selected_geps
     
-    def get_median_of_community_geps(self,
-                        method: str = "median",
-                        min_k: int = 2
-                        ) -> pd.DataFrame:
+    def consensus(self,
+                  method: str = "median",
+                  min_k: int = 2
+                  ) -> pd.DataFrame:
+        """Generate a 'consensus' GEP for each community and dataset by taking the median of all constituent GEPs, separately for each dataset.
+
+        :param method: Choose from: "mean", "median". Defaults to "median"
+        :type method: str, optional
+        :param min_k: Minimum k value to filter GEPs prior to consensus, defaults to 2
+        :type min_k: int, optional
+        :return: Communities-Datasets × variables consensus matrix
+        :rtype: pd.DataFrame
+        """
         gep_to_community = {node_to_gep(node): community for node, community in self.gep_communities.items()}
         geps = self.integration.get_geps()
+        geps = geps.loc[:, geps.columns.get_level_values(1).astype(int) >= min_k]
         geps.columns = pd.MultiIndex.from_arrays([geps.columns.map(gep_to_community),
                                 geps.columns.get_level_values(0)
                                 ], names = ("Community", "Dataset"))
-        geps = geps.loc[:, ~geps.columns.to_frame().isnull().any(axis=1)]  # Remvoe GEPs not in any community
+        geps = geps.loc[:, ~geps.columns.to_frame().isnull().any(axis=1)]  # Remove GEPs not in any community
         # aggregate GEPs to community
         if method == "median":
             community_scores = geps.groupby(axis=1, level=[0,1]).median()
@@ -468,10 +645,11 @@ class SNS():
         
     def to_pkl(self,
                filename: str):
-        """Persists the SNS object using python's pickle format.
+        """
+        Persists the SNS object using python's pickle format.
 
-        Args:
-            filename (str): filename for output
+        :param filename: path to .pkl file
+        :type filename: str
         """
         with open(filename, "wb") as handle:
             pickle.dump(self, handle)
