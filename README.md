@@ -5,9 +5,10 @@
 
 # cNMF-SNS: powerful factorization-based multi-omics integration toolkit
 
-![version badge](https://img.shields.io/badge/version-1.2.5-blue)
+![version badge](https://img.shields.io/badge/version-1.3.0-blue)
 [![PyPI Latest Release](https://img.shields.io/pypi/v/cnmfsns.svg)](https://pypi.org/project/cnmfsns/)
 [![Conda Latest Release](https://anaconda.org/conda-forge/cnmfsns/badges/version.svg)](https://anaconda.org/anaconda/cnmfsns/)
+[![Documentation status](https://readthedocs.org/projects/cnmfsns/badge/?version=latest&style=flat)]()
 [![Downloads](https://static.pepy.tech/personalized-badge/cnmfsns?period=month&units=international_system&left_color=black&right_color=orange&left_text=PyPI%20downloads%20per%20month)](https://pepy.tech/project/cnmfsns)
 [![License](https://img.shields.io/pypi/l/cnmfsns.svg)](https://github.com/MorrissyLab/cNMF-SNS/blob/main/LICENSE)
 
@@ -56,9 +57,12 @@ pip install git+https://github.com/MorrissyLab/cNMF-SNS.git
 
 ## 📖 Documentation
 
-### 📓 Python interface tutorial
+### 📓 Python interface
 
 To get started, sample proteomics datasets and a Jupyter notebook tutorial is available [here](/tutorial/tutorial.ipynb).
+
+Detailed API reference can be found on [ReadTheDocs]().
+
 
 ### ⌨️ Command line interface
 
