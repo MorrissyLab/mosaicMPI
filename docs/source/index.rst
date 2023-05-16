@@ -4,10 +4,7 @@ cNMF-SNS documentation
 ======================
 
 
-**Date**: |today| **Version**: |version|
-
-
-**Download documentation**: `Zipped HTML <cNMF-SNS.zip>`__
+**Date**: |today|
 
 
 **Useful links**:
@@ -15,6 +12,7 @@ cNMF-SNS documentation
 `PyPI <https://pypi.org/project/cnmfsns/>`__ |
 `GitHub <https://github.com/MorrissyLab/cNMF-SNS>`__ |
 `Issues <https://github.com/MorrissyLab/cNMF-SNS/issues>`__ |
+
 
 **Citation**:
 
