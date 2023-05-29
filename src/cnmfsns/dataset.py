@@ -43,7 +43,8 @@ class Dataset():
             raise ValueError()
         
         self.patient_id_col = patient_id_col
-        if hasattr(adata, "cnmfsns_version") and adata.cnmfsns_version is not None:
+        
+        if "cnmfsns_version" in adata.uns and adata.uns["cnmfsns_version"] is not None:
             self.adata = adata
         else:
             # check and update old or external h5ad files for cNMF-SNS compliance
