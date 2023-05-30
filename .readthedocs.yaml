@@ -7,11 +7,11 @@ build:
 
 # Build from the docs/ directory with Sphinx
 sphinx:
-  configuration: docs/conf.py
+  configuration: docs/source/conf.py
 
 formats:
    - pdf
 
 # Conda environment
 conda:
-  environment: environment.yml
+  environment: docs/readthedocs_env.yml
