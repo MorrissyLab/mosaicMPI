@@ -3,3 +3,4 @@ channels:
   - defaults
 dependencies:
   - cnmfsns
+  - sphinx < 7
