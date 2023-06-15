@@ -549,7 +549,8 @@ class cNMF():
         tpm = sc.read(self.paths['tpm'])
         tpm_stats = utils.load_df_from_npz(self.paths['tpm_stats'])
 
-        norm_usages = norm_usages.loc[tpm.obs.index,:].astype(tpm.X.dtype)
+        norm_usages = norm_usages.loc[tpm.obs.index,:].astype(tpm.X.dtype).dropna()
+        tpm = tpm[norm_usages.index,:]
         rf_usages = rf_usages.loc[tpm.obs.index,:]
 
         spectra_tpm = self.refit_spectra(tpm.X, norm_usages)
