@@ -786,7 +786,7 @@ def cmd_create_network(output_dir, name, config_toml):
  
     # GEP-level, numerical data, correlation network
     for dataset_name in integration.datasets:
-        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name), exist_ok=True)
+        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
             fig = plot_metadata_correlation_gep_network(snsmap, colors, layer=layer, subset_datasets=dataset_name)   
             fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name, layer + ".pdf"))
