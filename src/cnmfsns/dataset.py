@@ -42,7 +42,6 @@ class Dataset():
             logging.error(f"adata contains no expression data (adata.X)")
             raise ValueError()
         
-        self.patient_id_col = patient_id_col
         
         if "cnmfsns_version" in adata.uns and adata.uns["cnmfsns_version"] is not None:
             self.adata = adata
@@ -92,6 +91,11 @@ class Dataset():
             self.is_normalized = is_normalized
             self.cnmfsns_version = __version__
     
+        if patient_id_col is not None and patient_id_col not in self.adata.obs.columns:
+            avail_columns = ", ".join(self.adata.obs.columns)
+            raise ValueError(f"{patient_id_col} is not a valid column in the metadata matrix. Available columns are: {avail_columns}")
+        self.patient_id_col = patient_id_col
+    
     @classmethod
     def from_df(cls,
                   data: pd.DataFrame,
@@ -133,7 +137,6 @@ class Dataset():
     @classmethod
     def from_h5ad(cls,
                   h5ad_file: str,
-                  name: Optional[str] = None,
                   patient_id_col: Optional[str] = None,
                   force_migrate=False, backed=False
                   ):
@@ -151,7 +154,7 @@ class Dataset():
         :rtype: :class:`~cnmfsns.dataset.Dataset`
         """
         adata = ad.read_h5ad(h5ad_file, backed=backed)
-        dataset = Dataset(adata=adata, patient_id_col=patient_id_col, force_migrate=force_migrate)
+        dataset = cls(adata=adata, patient_id_col=patient_id_col, force_migrate=force_migrate)
         return dataset
     
     @property
@@ -166,7 +169,20 @@ class Dataset():
     @is_normalized.setter
     def is_normalized(self, value: bool):
         self.adata.uns["is_normalized"] = value
-        
+    
+    @property
+    def patient_id_col(self):
+        """Outputs the normalization status of the dataset.
+
+        :return: True if dataset contains normalized data, False if it is raw data.
+        :rtype: bool
+        """
+        return self.adata.uns["patient_id_col"]
+    
+    @patient_id_col.setter
+    def patient_id_col(self, value: str):
+        self.adata.uns["patient_id_col"] = value
+
     @property
     def cnmfsns_version(self):
         """cNMF-SNS version used to create the dataset
@@ -241,7 +257,8 @@ class Dataset():
                 msg += f"        {value_type}: {count}\n"
         return msg
     
-    def write_h5ad(self, filename):
+    def write_h5ad(self,
+                   filename: str):
         """Write dataset to .h5ad file.
 
         :param filename: filepath
@@ -252,7 +269,8 @@ class Dataset():
         self.adata.write_h5ad(filename)
         logging.info(f"Done")
     
-    def to_df(self, normalized=False):
+    def to_df(self,
+              normalized: bool = False):
         """Get data matrix as a `pd.DataFrame`
 
         :param normalized: Set true for TPM normalized output, defaults to False
@@ -640,7 +658,7 @@ class Dataset():
         :return: category × GEP matrix of overrepresentation values
         :rtype: pd.DataFrame
         """
-        usage = self.get_usages().copy()
+        usage = self.get_usages(normalize=True).copy()
         sample_to_class = self.get_metadata_df()[layer]
         usage.index = usage.index.map(sample_to_class)
         observed = usage.groupby(axis=0, level=0).sum()

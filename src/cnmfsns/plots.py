@@ -7,7 +7,7 @@ from . import utils
 
 
 from collections.abc import Iterable, Collection, Mapping
-from typing import Union, Optional
+from typing import Union, Optional, Literal
 
 import pandas as pd
 import numpy as np
@@ -27,101 +27,132 @@ import networkx as nx
 # Dataset-related plots #
 #########################
 
-
-def plot_feature_dispersion(dataset: Dataset, show_selected:bool = False, all_plots: bool = False):
-    """
-    Create diagnostic plots for data from model_overdispersion()
-    """
+def plot_feature_dispersion(dataset: Dataset,
+                            show_selected: bool = False,
+                            show_model_curve: bool = True,
+                            y_unit: Literal["log_variance", "odscore", "log_odscore", "vscore", "log_vscore"] = "log_variance",
+                            ax: Optional[Axes] = None):
+    
     df = dataset.adata.var.sort_values("mean")
-    figs = {}
-
-    # Figure: Default model mean and variance
-    fig, axes = plt.subplots(1, 3, figsize=[12, 4], layout="tight")
+    if "log_odscore" not in df.columns:  # required for compatibility with older h5ad files which do not have this column
+        df["log_odscore"] = np.log10(df["odscore"])
+        df["log_vscore"] = np.log10(df["vscore"])
     
-    ax = axes[0]  # untransformed
+    if ax is None:
+        fig, ax_plot = plt.subplots(figsize=[4, 4], layout="tight")
+    else:
+        ax_plot = ax
+
+    
     if show_selected:
-        sns.histplot(df, x="log_mean", y="log_variance", hue="selected", bins=[100,100], ax=ax, alpha=0.5, palette={True: "red", False: "blue"})
-        ax.legend(handles=[
+        sns.histplot(df, x="log_mean", y=y_unit, hue="selected", bins=[100,100], ax=ax_plot, alpha=0.5, palette={True: "red", False: "blue"})
+        ax_plot.legend(handles=[
             Patch(color="blue", alpha=0.5, label="False"),
             Patch(color="red", alpha=0.5, label="True"),
             Line2D([0], [0], color='green', label="model")
         ], title="selected")
     else:
-        sns.histplot(df, x="log_mean", y="log_variance", bins=[100,100], ax=ax, color="blue")
-    ax.plot(df["log_mean"], df["gam_fittedvalues"], color="green")
-    ax.set_title("Mean-Variance")
-    ax.set_xlabel("log10(mean)")
-    ax.set_ylabel("log10(variance)")
-
-    ax = axes[1]  # transformed
-    if show_selected:
-        sns.histplot(df, x="log_mean", y="odscore", hue="selected", bins=[100,100], ax=ax, palette={True: "red", False: "blue"})
-        ax.legend(handles=[
-            Patch(color="blue", alpha=0.5, label="False"),
-            Patch(color="red", alpha=0.5, label="True"),
-            Line2D([0], [0], color='green', label="model")
-        ], title="selected")
-    else:
-        sns.histplot(df, x="log_mean", y="odscore", bins=[100,100], ax=ax, color="blue")
-    ax.hlines(1, xmin=df["log_mean"].min(), xmax=df["log_mean"].max(), color="green")
-    ax.set_title("Mean-Overdispersion (Default)")
-    ax.set_xlabel("log10(mean)")
-    ax.set_ylabel("od-score")
+        sns.histplot(df, x="log_mean", y=y_unit, bins=[100,100], ax=ax_plot, color="blue")
     
-    ax=axes[2]  # thresholds
-    ax.set_title("od-score Distribution")
+    # Show the model curve from the GAM
+    if show_model_curve:
+        if y_unit == "log_variance":
+            ax_plot.plot(df["log_mean"], df["gam_fittedvalues"], color="green")
+        elif y_unit == "odscore":
+            ax_plot.axhline(1)
+        elif y_unit == "log_odscore":
+            ax_plot.axhline(0)
+        else:
+            raise ValueError('show_model_curve must be False if the y-unit is "vscore" or "log_vscore".')
+    
+    ax_plot.set_xlabel("log10(mean)")
+    if y_unit == "log_variance":
+        ax_plot.set_ylabel("log10(variance)")
+    elif y_unit == "odscore":
+        ax_plot.set_ylabel("odscore")
+    elif y_unit == "log_odscore":
+        ax_plot.set_ylabel("log10(odscore)")
+    elif y_unit == "vscore":
+        ax_plot.set_ylabel("vscore")
+    elif y_unit == "log_vscore":
+        ax_plot.set_ylabel("log10(vscore)")
+
+
+    if ax is None:
+        return fig
+
+
+   
+
+def plot_feature_overdispersion_histogram(dataset: Dataset,
+                                          show_selected: bool = False,
+                                          y_unit: Literal["odscore", "log_odscore"] = "log_variance",
+                                          ax: Optional[Axes] = None):
+    df = dataset.adata.var.sort_values("mean")
+    if "log_odscore" not in df.columns:  # required for compatibility with older h5ad files which do not have this column
+        df["log_odscore"] = np.log10(df["odscore"])
+    
+    if ax is None:
+        fig, ax_plot = plt.subplots(figsize=[4, 4], layout="tight")
+    else:
+        ax_plot = ax
+
+
+    ax_plot.set_title("od-score Distribution")
     if df["odscore"].notnull().any():
         if show_selected:
-            sns.histplot(df, x="odscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
-            ax.legend(handles=[
+            sns.histplot(df, x="odscore", hue="selected", bins=100, linewidth=0, ax=ax_plot, palette={True: "red", False: "blue"})
+            ax_plot.legend(handles=[
                 Patch(color="blue", alpha=0.5, label="False"),
                 Patch(color="red", alpha=0.5, label="True")
             ], title="selected")
         else:
-            sns.histplot(df, x="odscore", bins=100, linewidth=0, ax=ax, color="blue")
-    ax.set_xlabel("od-score")
-    figs["default"] = fig
+            sns.histplot(df, x=y_unit, bins=100, linewidth=0, ax=ax_plot, color="blue")
+    
+    if ax is None:
+        return fig
 
-    if all_plots:
-        # Figure: cnmf model mean and variance
-        fig, axes = plt.subplots(1, 3, figsize=[12, 4], layout="tight")
-        ax = axes[0]
-        if show_selected:
-            sns.histplot(df, x="log_mean", y="log_variance", hue="selected", bins=[100,100], ax=ax, alpha=0.5, palette={True: "red", False: "blue"})
-        else:
-            sns.histplot(df, x="log_mean", y="log_variance", bins=[100,100], ax=ax, color="blue")
-        ax.set_title("Mean-Variance")
-        ax.set_xlabel("log10(mean)")
-        ax.set_ylabel("log10(variance)")
-        ax = axes[1]
-        if show_selected:
-            sns.histplot(df, x="log_mean", y="vscore", hue="selected", bins=[100,100], ax=ax, palette={True: "red", False: "blue"})
-        else:
-            sns.histplot(df, x="log_mean", y="vscore", bins=[100,100], ax=ax, color="blue")
-        ax.set_title("Mean-Overdispersion (cnmf)")
-        ax.set_xlabel("log10(mean)")
-        ax.set_ylabel("v-score")
-        ax=axes[2]  # thresholds
-        ax.set_title("v-score Distribution")
-        if df["vscore"].notnull().any():
-            if show_selected:
-                sns.histplot(df, x="vscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
-                ax.legend(handles=[
-                    Patch(color="blue", alpha=0.5, label="False"),
-                    Patch(color="red", alpha=0.5, label="True")
-                ], title="selected")
-            else:
-                sns.histplot(df, x="vscore", bins=100, linewidth=0, ax=ax, color="blue")
-        ax.set_xlabel("v-score")
-        figs["cnmf"] = fig
 
-        fig, ax = plt.subplots(figsize=[12,12], layout="tight")
-        sns.histplot(data=df.fillna(0), x="odscore", y="vscore", bins=[100, 100], ax=ax)
-        ax.set_xlabel("od-score")
-        ax.set_ylabel("v-score")
-        figs["score_comparison"] = fig
+    # if all_plots:
+    #     # Figure: cnmf model mean and variance
+    #     fig, axes = plt.subplots(1, 3, figsize=[12, 4], layout="tight")
+    #     ax = axes[0]
+    #     if show_selected:
+    #         sns.histplot(df, x="log_mean", y="log_variance", hue="selected", bins=[100,100], ax=ax, alpha=0.5, palette={True: "red", False: "blue"})
+    #     else:
+    #         sns.histplot(df, x="log_mean", y="log_variance", bins=[100,100], ax=ax, color="blue")
+    #     ax.set_title("Mean-Variance")
+    #     ax.set_xlabel("log10(mean)")
+    #     ax.set_ylabel("log10(variance)")
+    #     ax = axes[1]
+    #     if show_selected:
+    #         sns.histplot(df, x="log_mean", y="vscore", hue="selected", bins=[100,100], ax=ax, palette={True: "red", False: "blue"})
+    #     else:
+    #         sns.histplot(df, x="log_mean", y="vscore", bins=[100,100], ax=ax, color="blue")
+    #     ax.set_title("Mean-Overdispersion (cnmf)")
+    #     ax.set_xlabel("log10(mean)")
+    #     ax.set_ylabel("v-score")
+    #     ax=axes[2]  # thresholds
+    #     ax.set_title("v-score Distribution")
+    #     if df["vscore"].notnull().any():e
+    #         if show_selected:
+    #             sns.histplot(df, x="vscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
+    #             ax.legend(handles=[
+    #                 Patch(color="blue", alpha=0.5, label="False"),
+    #                 Patch(color="red", alpha=0.5, label="True")
+    #             ], title="selected")
+    #         else:
+    #             sns.histplot(df, x="vscore", bins=100, linewidth=0, ax=ax, color="blue")
+    #     ax.set_xlabel("v-score")
+    #     figs["cnmf"] = fig
+
+    #     fig, ax = plt.subplots(figsize=[12,12], layout="tight")
+    #     sns.histplot(data=df.fillna(0), x="odscore", y="vscore", bins=[100, 100], ax=ax)
+    #     ax.set_xlabel("od-score")
+    #     ax.set_ylabel("v-score")
+    #     figs["score_comparison"] = fig
         
-    return figs
+    # return figs
 
 
 def plot_stability_error(dataset: Dataset, figsize=(6, 4)):
@@ -307,11 +338,12 @@ def plot_rank_reduction(integration: Integration, figsize=None):
         plt.tight_layout()
     return fig
 
-def plot_pairwise_corr(integration: Integration, subplot_size = [3, 3.5], overlaid=False):
+def plot_pairwise_corr(integration: Integration, subplot_size = [3, 3.5], overlaid=False, bins=50):
     tril = integration.get_corr_matrix_lowertriangle()
-    n_datasets = len(tril.index.levels[0])
     sps_width, sps_height = subplot_size
-    fig, axes = plt.subplots(n_datasets, n_datasets, figsize=[sps_width * n_datasets, sps_height * n_datasets], sharex=True, sharey=True, squeeze=False, layout="tight")
+    n_datasets = integration.n_datasets
+    fig, axes = plt.subplots(n_datasets, n_datasets,
+                             figsize=[sps_width * n_datasets, sps_height * n_datasets], sharex=True, sharey=True, squeeze=False, layout="tight")
     fig.suptitle(f"Correlation distribution between datasets")
     fig.supxlabel("Correlation coefficient")
     for row, dataset_row in enumerate(tril.index.levels[0]):
@@ -332,18 +364,19 @@ def plot_pairwise_corr(integration: Integration, subplot_size = [3, 3.5], overla
                     ax.text(x=0.01, y=1.01, s=f"quantile={included_fraction:.3f}\nmin_corr={min_corr:.3f}", size=8, ha='left', va='bottom', transform=ax.transAxes, color="black")
                 else:
                     hist_kwargs = {"color": "gray"}
-                sns.histplot(x=corr, ax=ax,legend=(row == 0)&(col == 0), bins=50, linewidth=0, **hist_kwargs)
+                sns.histplot(x=corr, ax=ax,legend=(row == 0)&(col == 0), bins=bins, linewidth=0, **hist_kwargs)
 
                 ax.set_ylabel(dataset_row)
                 ax.set_xlabel(dataset_col)
                 ax.set_xlim(-1,1)
     return fig
 
-def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5]):
-    tril = tril = integration.get_corr_matrix_lowertriangle(max_k_filter=True)
+def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5], bins=50):
+    tril = integration.get_corr_matrix_lowertriangle(max_k_filter=True)
+    n_datasets = integration.n_datasets
     sps_width, sps_height = subplot_size
-    fig, axes = plt.subplots(integration.n_datasets, integration.n_datasets,
-                             figsize=[sps_width * integration.n_datasets, sps_height * integration.n_datasets],
+    fig, axes = plt.subplots(n_datasets, n_datasets,
+                             figsize=[sps_width * n_datasets, sps_height * n_datasets],
                              sharex=True, sharey=True, squeeze=False, layout="tight")
     fig.suptitle(f"Correlation distribution between datasets")
     fig.supxlabel("Correlation coefficient")
@@ -356,7 +389,7 @@ def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5
                 corr = pd.DataFrame({"corr": tril.loc[dataset_row, dataset_col].values.flatten()}).dropna()
                 corr["sign"] = (corr["corr"] >= 0).map({True: "Positive", False: "Negative"})
                 corr["abscorr"] = corr["corr"].abs()
-                sns.histplot(data=corr, x="abscorr", hue="sign", palette= {"Positive": "red", "Negative": "blue"}, bins=50, alpha=0.5, linewidth=0,
+                sns.histplot(data=corr, x="abscorr", hue="sign", palette= {"Positive": "red", "Negative": "blue"}, bins=bins, alpha=0.5, linewidth=0,
                              hue_order= ["Negative", "Positive"], ax=ax,legend=(row == 0)&(col == 0))
 
                 # show min_corr as text in top left of plot and vertical line
@@ -1058,18 +1091,27 @@ def plot_overrepresentation_community_network(snsmap: SNS,
 def plot_overrepresentation_gep_bar(snsmap: SNS,
                                      colors: Colors,
                                      dataset_name: str,
+                                     layers: Optional[Union[str, Collection[str]]] = None,
                                      figsize: Optional[Collection] = None):
     dataset = snsmap.integration.datasets[dataset_name]
-    metadata = dataset.get_metadata_df(include_numerical=False).dropna(how="all", axis=1)
+
+    # layers to plot
+    if layers is None:
+        metadata_layers = dataset.get_metadata_df(include_numerical=False).dropna(how="all", axis=1).columns.to_list()
+    elif isinstance(layers, str):
+        metadata_layers = [layers]
+    else:
+        metadata_layers = layers
+
     # number of bars in each community for this dataset
     community_gep_counts = [len([node for node in snsmap.communities[c] if node.split("|")[0] == dataset_name]) for c in snsmap.ordered_community_names]
     
     if figsize is None:
         figsize = (snsmap.n_communities + 0.05 * sum(community_gep_counts),
-                   (metadata.shape[1] + 1)* 2)
+                   (len(metadata_layers) + 1)* 2)
     
     fig, axes = plt.subplots(
-        metadata.shape[1] + 1, snsmap.n_communities,
+        len(metadata_layers) + 1, snsmap.n_communities,
         figsize = figsize,
         sharey='row', squeeze=False,
         gridspec_kw={"width_ratios": community_gep_counts},
@@ -1097,7 +1139,7 @@ def plot_overrepresentation_gep_bar(snsmap: SNS,
         ax.yaxis.set_major_locator(mpl.ticker.MaxNLocator(nbins="auto", integer=True))  # y-ticks are integers!
     
     # subsequent subplot rows have metadata overrepresentation
-    for row, layer in enumerate(metadata.columns, 1):
+    for row, layer in enumerate(metadata_layers, 1):
         overrepresentation = dataset.get_category_overrepresentation(layer=layer)
         for col, community in enumerate(snsmap.ordered_community_names):
             ax = axes[row, col]
@@ -1122,22 +1164,30 @@ def plot_overrepresentation_gep_bar(snsmap: SNS,
 def plot_metadata_correlation_gep_bar(snsmap: SNS,
                                       colors: Colors,
                                       dataset_name: str,
+                                      layers: Optional[Union[str, Collection[str]]] = None,
                                       method: str = "pearson",
                                       figsize: Optional[Collection] = None
                                       ) -> Optional[Figure]:
     
     dataset = snsmap.integration.datasets[dataset_name]
-    metadata = dataset.get_metadata_df(include_categorical=False).dropna(how="all", axis=1)
-    
+
+    # layers to plot
+    if layers is None:
+        metadata_layers = dataset.get_metadata_df(include_categorical=False).dropna(how="all", axis=1).columns.to_list()
+    elif isinstance(layers, str):
+        metadata_layers = [layers]
+    else:
+        metadata_layers = layers
+
     # number of bars in each community for this dataset
     community_gep_counts = [len([node for node in snsmap.communities[c] if node.split("|")[0] == dataset_name]) for c in snsmap.ordered_community_names]
     
     if figsize is None:
         figsize = (snsmap.n_communities + 0.05 * sum(community_gep_counts),
-                   (metadata.shape[1] + 1)* 2)
+                   (len(metadata_layers) + 1)* 2)
     
     fig, axes = plt.subplots(
-        metadata.shape[1] + 1, snsmap.n_communities,
+        len(metadata_layers) + 1, snsmap.n_communities,
         figsize = figsize,
         sharey='row', squeeze=False,
         gridspec_kw={"width_ratios": community_gep_counts},
@@ -1164,7 +1214,7 @@ def plot_metadata_correlation_gep_bar(snsmap: SNS,
         ax.yaxis.set_major_locator(mpl.ticker.MaxNLocator(nbins="auto", integer=True))  # y-ticks are integers!
     
     # subsequent subplot rows have metadata overrepresentation
-    for row, layer in enumerate(metadata.columns, 1):
+    for row, layer in enumerate(metadata_layers, 1):
         md_corr = dataset.get_metadata_correlation(layer=layer, method=method)
         for col, community in enumerate(snsmap.ordered_community_names):
             ax = axes[row, col]
