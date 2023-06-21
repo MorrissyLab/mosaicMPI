@@ -5,7 +5,7 @@
 
 # cNMF-SNS: powerful factorization-based multi-omics integration toolkit
 
-![version badge](https://img.shields.io/badge/version-1.4.1-blue)
+![version badge](https://img.shields.io/badge/version-1.5.0-blue)
 [![PyPI Latest Release](https://img.shields.io/pypi/v/cnmfsns.svg)](https://pypi.org/project/cnmfsns/)
 [![Conda Latest Release](https://img.shields.io/conda/vn/conda-forge/cnmfsns)](https://anaconda.org/conda-forge/cnmfsns/)
 [![Documentation status](https://readthedocs.org/projects/cnmf-sns/badge/?version=latest&style=flat)]()
@@ -56,6 +56,12 @@ pip install git+https://github.com/MorrissyLab/cNMF-SNS.git
 ```
 
 ## 📖 Documentation
+
+### 🗐 Data requirements
+
+cNMF-SNS can factorize a wide variety of datasets, but will work optimally in these conditions:
+  - Use untransformed (raw) data where possible. For (sc)RNA-Seq data, use feature counts, not TPM or other log-transformed values.
+
 
 ### 📓 Python interface
 

@@ -164,7 +164,7 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof):
     gene_stats.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
 
     # create mean vs variance plots
-    fig = plot_feature_dispersion(dataset, show_selected=False)["default"]
+    fig = plot_feature_dispersion(dataset, show_selected=False)
     fig.savefig(os.path.join(output_dir, name, "odgenes.pdf"), facecolor='white')
     fig.savefig(os.path.join(output_dir, name, "odgenes.png"), dpi=400, facecolor='white')
 
@@ -265,8 +265,8 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
         dataset.select_overdispersed_genes(overdispersion_metric=metric_str, min_mean=min_mean,
                                            **method)
 
-    # create mean vs variance plots, updated with selected genes
-    fig = plot_feature_dispersion(dataset, show_selected=True)["default"]
+    # create mean vs variance plot, updated with selected genes
+    fig = plot_feature_dispersion(dataset, show_selected=True)
     fig.savefig(os.path.join(output_dir, name, "odgenes.pdf"), facecolor='white')
     fig.savefig(os.path.join(output_dir, name, "odgenes.png"), dpi=400, facecolor='white')
 
@@ -623,9 +623,11 @@ def cmd_create_network(output_dir, name, config_toml):
     
     snsmap.write_communities_toml( os.path.join(sns_output_dir, "communities.toml"))
     pd.DataFrame.from_dict(data=snsmap.gep_communities, orient='index').to_csv(os.path.join(sns_output_dir, 'gep_communities.txt'), sep="\t", header=False)
-        
-    representative_geps = snsmap.get_representative_geps()
-    representative_geps.to_csv(os.path.join(sns_output_dir, "representative_geps.txt"), sep="\t") # outputs the GEPs to text file
+    
+    central_gep_ids = snsmap.get_central_geps()
+    central_geps = snsmap.integration.get_geps()[central_gep_ids.index]
+    central_geps.columns = pd.MultiIndex.from_tuples([[community] + list(gep_id) for community, gep_id in zip(central_gep_ids, central_gep_ids.index)], names=["Community", "dataset", "k", "GEP"])
+    central_geps.to_csv(os.path.join(sns_output_dir, "central_geps.txt"), sep="\t") # outputs the GEPs to text file
 
     logging.info("Creating SNS plots...")
 

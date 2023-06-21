@@ -4,7 +4,7 @@ from .utils import node_to_gep
 
 
 from collections.abc import Collection, Iterable
-from typing import Union, Optional, Dict, List
+from typing import Union, Optional, Dict, List, Literal
 import logging
 
 import numpy as np
@@ -82,14 +82,19 @@ class SNS():
             nodes.append((dataset_name, int(k_str), int(gep_str)))
         return nodes
     
-    def get_community_usage(self, subset_datasets: Optional[Union[str, Iterable[str]]] = None, normalize=True):
+    def get_community_usage(self,
+                            subset_datasets: Optional[Union[str, Iterable[str]]] = None,
+                            normalize: bool = True,
+                            discretize: bool = False):
         """
         Get median usage of each community of GEPs for each samples. 
 
         :param subset_datasets: dataset name or iterable of dataset names to subset the results, defaults to None
         :type subset_datasets: str or Iterable[str], optional
-        :param normalize: Normalize the GEP usage matrix such that for each value of k, usage of all GEPs sums to 1. Defaults to False
+        :param normalize: Normalize the community usage matrix such that for each value of k, usage of all communities of GEPs sums to 1. Defaults to False
         :type normalize: bool, optional
+        :param discretize: Discretizes the community usage matrix such that for each value of k, each sample has usage of only 1 community (the one with the maximum usage). Defaults to False
+        :type discretize: bool, optional
         :return: observations × communities matrix
         :rtype: pd.DataFrame
         """
@@ -118,6 +123,8 @@ class SNS():
         ic_usage = pd.concat(ic_usage)
         if normalize:
             ic_usage = ic_usage.div(ic_usage.sum(axis=1), axis=0)
+        if discretize:
+            ic_usage = ic_usage.eq(ic_usage.max(axis=1), axis=0).astype(int)
         return ic_usage
     
     def get_sample_entropy(self, subset_datasets: Optional[Union[str, Iterable]] = None):
@@ -555,63 +562,171 @@ class SNS():
                                                   edge_attr=["n_edges", "weight"])
         self.comm_graph.add_nodes_from(self.communities.keys())
         
-    def get_representative_gep_table(self,
-                                method: str = "min_k",
-                                min_k: int = 2
-                                ) -> pd.DataFrame:
-        """Return a dataframe with GEPs that represent each community. Representative GEPs are the lowest rank GEPs in each community.
-
-        :param method: Method for identifying 'representative' GEPs, defaults to "min_k"
-        :type method: str, optional
-        :param min_k: Minimum k-value for representative GEPs. Can be set higher than 2 to prevent low-resolution results. Defaults to 2.
-        :type min_k: int, optional
-        :return: Representative GEP table
-        :rtype: pd.DataFrame
+    def get_central_geps(self,
+                         correlation_axis: Literal["geps", "usage"] = "geps"
+                         ):
+        """Select GEPs based on correlation with the median of all GEPs in each community
+        
+        :param correlation_axis: axis on which to compute correlations between GEPs whether correlating the GEPs or the usages, defaults to "geps"
+        :type correlation_axis: int or dict
+        :return: Communities, indexed by the most central GEP for each dataset
+        :rtype: pd.Series
         """
-        if method == "min_k":
-            logging.info(f"Selecting representative ranks for each community with min_k = {min_k}")
-            # get minimum k GEPs for each community/dataset combination.
-            table = []
+        selected_geps = {}
+
+        if correlation_axis == "geps":
+            cg = self.consensus()
+            geps_df = self.integration.get_geps()
             for community, nodes in self.communities.items():
-                nodes = pd.DataFrame([n.split("|") for n in nodes], columns=["dataset", "k", "GEP"])
-                nodes = nodes[nodes["k"].astype(int) >= min_k]
                 for dataset_name in self.integration.datasets:
-                    dataset_nodes = nodes[nodes["dataset"] == dataset_name].copy()
-                    if dataset_nodes.shape[0]:
-                        block = dataset_nodes[dataset_nodes["k"].astype(int) == dataset_nodes["k"].astype(int).min()].copy()
-                        block["Community"] = community
-                        table.append(block)
-            table = pd.concat(table).set_index("Community")
-        else:
-            raise ValueError
-        
-        return table
-        
+                    geps = [node_to_gep(node) for node in nodes]
+                    geps = [gep for gep in geps if gep[0] == dataset_name]
+                    if geps:
+                        top_gep = geps_df[geps].corrwith(cg[(community, dataset_name)]).idxmax()
+                        selected_geps[top_gep] = community
+            
 
-    def get_representative_geps(self,
-                                method: str = "min_k",
-                                min_k: int = 2
-                                ) -> pd.DataFrame:
-        """Return a dataframe with GEPs that represent each community. Representative GEPs are the lowest rank GEPs in each community.
+        elif correlation_axis == "usage":
+            cu = self.get_community_usage()
+            usages = self.integration.get_usages(normalize=True)
+            for community, nodes in self.communities.items():
+                for dataset_name in self.integration.datasets:
+                    geps = [node_to_gep(node) for node in nodes]
+                    geps = [gep for gep in geps if gep[0] == dataset_name]
+                    if geps:
+                        top_gep = usages.loc[dataset_name, geps].corrwith(cu.loc[dataset_name, community]).idxmax()
+                        selected_geps[top_gep] = community
 
-        :param method: Method for identifying 'representative' GEPs, defaults to "min_k"
-        :type method: str, optional
-        :param min_k: Minimum k-value for representative GEPs. Can be set higher than 2 to prevent low-resolution results. Defaults to 2.
-        :type min_k: int, optional
-        :return: features × GEP table subset for 'representative' GEPs
+        selected_geps = pd.Series(selected_geps, name="Community")
+        selected_geps.index.rename(("dataset", "k", "GEP"), inplace=True)
+        selected_geps = selected_geps.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
+
+        return selected_geps
+
+    def get_selected_rank_geps(self,
+                            k: Union[int, Dict[str, int]]):
+        """Select GEPs based on rank. k may be either a single value for all datasets
+        as an integer, or as a dict with separate values for each dataset.
+
+        :param k: a rank or dict with dataset keys and rank values, defaults to None
+        :type k: int or dict
+        :return: Communities, indexed by the lowest rank GEP(s) for each dataset
+        :rtype: pd.Series
+        """
+        geps = pd.Series(self.gep_communities, name="Community")
+        geps.index = pd.MultiIndex.from_tuples((node_to_gep(node) for node in geps.index), names=["dataset", "k", "GEP"])
+        geps = geps.sort_index()
+        if isinstance(k, int):
+            selected_geps = geps.xs(k, level=1, drop_level=False)
+        elif isinstance(k, dict):
+            selected_geps = []
+            for dataset_name, ds_k in k.items():
+                selected_geps.append(geps.xs(dataset_name, drop_level=False).xs(ds_k, level=1, drop_level=False))
+            selected_geps = pd.concat(selected_geps)
+        selected_geps = selected_geps.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
+        return selected_geps
+
+
+    def get_lowest_rank_geps(self,
+                                min_k: Optional[Union[int, Dict[str, int]]] = None,
+                            ) -> pd.Series:
+        """Identify the GEPS that are the lowest rank for each dataset. A minimum rank to be considered may be supplied,
+        either for all datasets as an integer, or as a dict with separate thresholds for each dataset.
+
+        :param min_k: a minimum rank to consider for the minimal-rank GEPs, defaults to None
+        :type min_k: int or dict, optional
+        :return: Communities, indexed by the lowest rank GEP(s) for each dataset
+        :rtype: pd.Series
+        """
+        geps = pd.Series(self.gep_communities, name="Community")
+        geps.index = pd.MultiIndex.from_tuples((node_to_gep(node) for node in geps.index), names=["dataset", "k", "GEP"])
+        geps = geps.sort_index()
+        if isinstance(min_k, int):
+            geps = geps[geps.index.get_level_values(1) >= min_k]
+        elif isinstance(min_k, dict):
+            
+            keep = []
+            for gep in geps.index:
+                if not gep[0] in min_k:
+                    keep.append(True)
+                elif gep[1] >= min_k[gep[0]]:
+                    keep.append(True)
+                else:
+                    keep.append(False)
+            geps = geps[keep]
+
+        selected_geps = []
+        for community, cgeps in geps.groupby(geps):
+            for dataset_name, cdgeps in cgeps.groupby(axis=0, level=0):
+                min_rank = cdgeps.index.get_level_values(1).min()
+                min_rank_geps = cdgeps[cdgeps.index.get_level_values(1) == min_rank]
+                selected_geps.append(min_rank_geps)
+        selected_geps = pd.concat(selected_geps)
+        selected_geps = selected_geps.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
+        return selected_geps
+
+    def count_intracommunity_edges(self):
+        """Counts edges within each community that are within and between datasets.
+
+        :return: Table with number of edges for each dataset and dataset pair
         :rtype: pd.DataFrame
         """
-        geps = self.integration.get_geps()
-        
-        table = self.get_representative_gep_table(method = method, min_k = min_k)
-        selected_geps = []
-        for community, gep in table.iterrows():
-            gep = geps[gep['dataset'], int(gep['k']), int(gep['GEP'])]
-            gep = gep.rename((community,) + gep.name)
-            selected_geps.append(gep)
-        selected_geps = pd.concat(selected_geps, axis=1)
-        selected_geps.columns.rename(("community", "dataset", "k", "GEP"), inplace=True)
-        return selected_geps
+        edgedata = {}
+        for cname, cmembers in self.communities.items():
+            community_graph = self.gep_graph.subgraph(cmembers)
+            stats = {}
+            for edge in community_graph.edges:
+                datasets = tuple(sorted((edge[0].split("|")[0], edge[1].split("|")[0])))
+                if datasets not in stats:
+                    stats[datasets] = 0
+                else:
+                    stats[datasets] += 1
+            edgedata[cname] = stats
+        edgedata = pd.DataFrame(edgedata).T.fillna(0)
+        edgedata.columns = ["-".join(sorted(items)) for items in edgedata.columns]
+        return edgedata
+
+    def most_correlated_edge_between_datasets(self,
+                                              ds1: str,
+                                              ds2: str,
+                                              ds1_rank: Optional[int] = None,
+                                              ds2_rank: Optional[int] = None):
+
+        """Identifies the most correlated edge between two datasets within each community.
+        Optionally, you can fix the rank of 1 or both datasets to restrict the search space.
+
+        :param ds1: name of dataset 1
+        :type ds1: str
+        :param ds2: name of dataset 2
+        :type ds2: str
+        :param ds1_rank: rank of dataset 1
+        :type ds1_rank: int, optional
+        :param ds2_rank: rank of dataset 2
+        :type ds2_rank: int, optional
+        :return: High-correlation edges, one per community
+        :rtype: pd.DataFrame
+        """
+        selected_edges = []
+        for cname, cmembers in self.communities.items():
+            # get correlation values
+            community_idx = pd.MultiIndex.from_tuples([node_to_gep(node) for node in cmembers])
+            ds1_idx = community_idx[community_idx.get_level_values(0) == ds1]
+            if ds1_rank is not None:
+                ds1_idx = ds1_idx[ds1_idx.get_level_values(1) == ds1_rank]
+            ds2_idx = community_idx[community_idx.get_level_values(0) == ds2]
+            if ds2_rank is not None:
+                ds2_idx = ds2_idx[ds2_idx.get_level_values(1) == ds2_rank]
+            community_corr = self.integration.corr_matrix.loc[ds1_idx, ds2_idx]
+            maxcorr = community_corr[community_corr == community_corr.max().max()]
+            maxcorr = maxcorr.dropna(how="all", axis=0).dropna(how="all", axis=1)
+            maxcorr = maxcorr.melt(ignore_index=False).dropna()
+            maxcorr["Community"] = cname 
+            maxcorr = maxcorr.reset_index().set_index("Community").drop(columns="value")
+            maxcorr.columns = pd.MultiIndex.from_product([(ds1, ds2), ("dataset", "k", "GEP")])
+            selected_edges.append(maxcorr)
+        selected_edges = pd.concat(selected_edges)
+        return selected_edges
+
     
     def consensus(self,
                   method: str = "median",
