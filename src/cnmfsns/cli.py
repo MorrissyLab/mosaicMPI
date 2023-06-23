@@ -705,7 +705,7 @@ def cmd_create_network(output_dir, name, config_toml):
     logging.info("Creating community-level bar plots")
 
     # Community-level, categorical data, overrepresentation bar plots
-    for dataset_name in integration.datasets:
+    for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
             fig = plot_overrepresentation_community_bar(snsmap, colors, layer=layer, subset_datasets=dataset_name)
@@ -714,7 +714,7 @@ def cmd_create_network(output_dir, name, config_toml):
             plt.close(fig)
         
     # Community-level, numerical metadata, correlation bar plots
-    for dataset_name in integration.datasets:
+    for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
             fig = plot_metadata_correlation_community_bar(snsmap, colors, layer=layer, subset_datasets=dataset_name)

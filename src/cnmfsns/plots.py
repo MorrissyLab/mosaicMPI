@@ -247,7 +247,8 @@ def annotated_heatmap(
             if pd.api.types.is_categorical_dtype(annot) or pd.api.types.is_object_dtype(annot):
                 ordered_rgb = annot.iloc[xind].replace(metadata_colors[track])
                 if ordered_rgb.isnull().any():
-                    ordered_rgb = ordered_rgb.cat.add_categories(missing_data_color)
+                    if pd.api.types.is_categorical_dtype(annot):
+                        ordered_rgb = ordered_rgb.cat.add_categories(missing_data_color)
                     ordered_rgb = ordered_rgb.fillna(missing_data_color)
                 ordered_rgb = ordered_rgb.astype("object").map(mpl.colors.to_rgb)
                 ordered_rgb = np.array([list(rgb) for rgb in ordered_rgb])
