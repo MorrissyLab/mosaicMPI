@@ -643,6 +643,7 @@ class Dataset():
             unexplained_col_str = ", ".join(unexplained_cols)
             raise ValueError(f"{unexplained_col_str} metadata columns have unrecognized dtypes.")
         df = self.adata.obs.select_dtypes(include=dtypes)
+        df = df.dropna(axis=1, how="all")
         return df
     
     def get_category_overrepresentation(self,
@@ -662,6 +663,13 @@ class Dataset():
         sample_to_class = self.get_metadata_df()[layer]
         usage.index = usage.index.map(sample_to_class)
         observed = usage.groupby(axis=0, level=0).sum()
+
+        n_categories = observed.shape[0]
+        if n_categories < 2:
+            logging.warning(f"Overrepresentation could not be calculated for layer '{layer}', as only {n_categories} categories were found in the data. "
+                            f"Note that empty values in the metadata are not considered a category. "
+                            f"Overrepresentation cannot be calculated with fewer than 2 categories for each layer. ")
+            return pd.DataFrame(np.NaN, index = observed.index, columns=observed.columns)
         expected = []
         for k, obs_k in observed.groupby(axis=1, level=1):
             exp_k = pd.DataFrame(obs_k.sum(axis=1)) @ pd.DataFrame(obs_k.sum(axis=0)).T / obs_k.sum().sum()

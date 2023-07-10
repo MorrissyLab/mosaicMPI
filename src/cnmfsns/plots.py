@@ -245,7 +245,9 @@ def annotated_heatmap(
             ax = fig.add_subplot(gs2[i], sharex=ax_heatmap)
             ax.set_facecolor(missing_data_color)
             if pd.api.types.is_categorical_dtype(annot) or pd.api.types.is_object_dtype(annot):
-                ordered_rgb = annot.iloc[xind].replace(metadata_colors[track])
+                ordered_rgb = annot.iloc[xind]
+                ordered_rgb[~ordered_rgb.isin(metadata_colors[track])] = np.NaN
+                ordered_rgb = ordered_rgb.replace(metadata_colors[track])
                 if ordered_rgb.isnull().any():
                     if pd.api.types.is_categorical_dtype(annot):
                         ordered_rgb = ordered_rgb.cat.add_categories(missing_data_color)
@@ -441,7 +443,7 @@ def plot_community_usage_heatmap(snsmap: SNS,
     metadata = snsmap.integration.get_metadata_df()
     if subset_metadata is not None:
         metadata = metadata.loc[:, subset_metadata]
-    
+
     metadata_colors = {col: colors.get_metadata_colors(col) for col in metadata.columns}
     if prepend_dataset_colors:
         metadata.insert(0, "dataset", metadata.index.get_level_values(0))
@@ -630,7 +632,12 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
     overrepresentation = overrepresentation.fillna(0)
 
     max_or = np.max(overrepresentation.values.flatten())
-    scale_factor = 1 / max_or
+    if max_or == 0:
+        scale_factor = 1
+    else:
+        scale_factor = 1 / max_or
+    
+    
     for gep, gep_or in overrepresentation.items():
         node = "|".join((str(p) for p in gep))
 
@@ -1048,7 +1055,10 @@ def plot_overrepresentation_community_network(snsmap: SNS,
     overrepresentation = overrepresentation.fillna(0)
 
     max_or = np.max(overrepresentation.values.flatten())
-    scale_factor = 1 / max_or
+    if max_or == 0:
+        scale_factor = 1
+    else:
+        scale_factor = 1 / max_or
     for community, comm_or in overrepresentation.items():
         if community in snsmap.comm_graph and comm_or.any():
             color_list = comm_or.index.map(colors.get_metadata_colors(layer))
@@ -1254,7 +1264,7 @@ def plot_overrepresentation_community_bar(snsmap: SNS,
     # if existing axes object is provided, plots with legend on that axes. Otherwise, creates a new figure with a separate plot and legend Axes.
     if ax is None:
         if figsize is None:
-            figsize = [0.1 * df.shape[1] + 3, 3]
+            figsize = [0.1 * df.shape[1] + 4, 4]
         fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [4, 1]}, layout="tight")
         ax_legend.set_axis_off()
     else:
