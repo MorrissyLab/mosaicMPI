@@ -14,6 +14,7 @@ import matplotlib as mpl
 import igraph
 import pickle
 import distinctipy
+import tomli
 import tomli_w
 import networkx as nx
 from scipy.stats import entropy
@@ -284,6 +285,20 @@ class SNS():
         # community names must be strings to avoid problems with TOML persistence and flexibility for custom community naming (eg., for subclustering)
         communities = {str(k): v for k, v in communities.items()}
 
+        self.communities = communities
+        self.gep_communities = {gep: community for community, geps in communities.items() for gep in geps}
+
+        # also create a community network with default parameters, so that self.comm_graph is available if needed. However, self.create_community_network can be called again
+        self.create_community_network()
+
+    def read_communities_from_toml(self, toml_file):
+
+        with open(toml_file, 'rb') as f:
+            communities = tomli.load(f)
+            
+        # community names must be strings to avoid problems with TOML persistence and flexibility for custom community naming (eg., for subclustering)
+        communities = {str(k): v for k, v in communities.items()}
+        
         self.communities = communities
         self.gep_communities = {gep: community for community, geps in communities.items() for gep in geps}
 

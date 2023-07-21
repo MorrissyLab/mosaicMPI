@@ -234,8 +234,8 @@ class Dataset():
         :type obs: `pd.DataFrame`, optional
         """
         # convert 'object' dtype to categorical, converting bool values to strings as these are not supported by AnnData on-disk format
-        for col in obs.select_dtypes(include="object").columns:
-            obs[col] = obs[col].replace({True: "True", False: "False"}).astype("category")
+        for col in obs.select_dtypes(include=("bool", "object")).columns:
+            obs[col] = obs[col].astype("str").astype("category")
         missing_samples_in_X = obs.index.difference(self.adata.obs.index).astype(str).to_list()
         if missing_samples_in_X:
             logging.warning("The following samples in the metadata were not present in the data (`adata.X`):\n  - " + "\n  - ".join(missing_samples_in_X))

@@ -540,7 +540,11 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
 @click.option(
     '-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), 
     help="TOML config file. Defaults to file output from `cnmfsns integrate` step: [output_dir]/integrate/config.toml")
-def cmd_create_network(output_dir, name, config_toml):
+@click.option(
+    '-m', '--communities_toml', type=click.Path(exists=True, dir_okay=False), 
+    help="TOML file containing communities from a previous run. This file overrides community discovery according to parameters in the config TOML file.")
+
+def cmd_create_network(output_dir, name, config_toml, communities_toml):
     """
     Create network integration.
     """
@@ -594,10 +598,16 @@ def cmd_create_network(output_dir, name, config_toml):
         
     snsmap = SNS(integration=integration, subset_nodes=subset_nodes)
     
-    community_algorithm = config.sns["community_algorithm"]
-    snsmap.community_search(algorithm=community_algorithm,
-                            resolution=config.sns["communities"][community_algorithm]["resolution"])
+
+    if communities_toml is None:
+        community_algorithm = config.sns["community_algorithm"]
+        snsmap.community_search(algorithm=community_algorithm,
+                                resolution=config.sns["communities"][community_algorithm]["resolution"])
+    else:
+        snsmap.read_communities_from_toml(communities_toml)
     nx.write_graphml(snsmap.gep_graph, os.path.join(sns_output_dir, "gep_graph.graphml"))
+
+
 
     snsmap.compute_layout(
         algorithm=config.sns["layout_algorithm"],
