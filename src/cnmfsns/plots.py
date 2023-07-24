@@ -341,21 +341,44 @@ def plot_rank_reduction(integration: Integration, figsize=None):
         plt.tight_layout()
     return fig
 
-def plot_pairwise_corr(integration: Integration, subplot_size = [3, 3.5], overlaid=False, bins=50):
+
+def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 3.5], overlaid=False, bins=50, inside_padding = 0.02) -> Figure:
+    """Plot histograms of the pairwise correlation distribution for each dataset pair.
+
+    :param integration: Integration object
+    :type integration: Integration
+    :param subplot_size: width and height of each subplot, defaults to [3, 3.5]
+    :type subplot_size: Collection, optional
+    :param overlaid: Overlay negative and positive parts to compare the distribution, defaults to False
+    :type overlaid: bool, optional
+    :param bins: Number of bins for histogram, defaults to 50
+    :type bins: int, optional
+    :param inside_padding: Amount to shrink data within the axes, defaults to 0.02
+    :type inside_padding: float, optional
+    :return: figure
+    :rtype: Figure
+    """
     tril = integration.get_corr_matrix_lowertriangle()
     sps_width, sps_height = subplot_size
     n_datasets = integration.n_datasets
     fig, axes = plt.subplots(n_datasets, n_datasets,
                              figsize=[sps_width * n_datasets, sps_height * n_datasets], sharex=True, sharey=True, squeeze=False, layout="tight")
-    fig.suptitle(f"Correlation distribution between datasets")
-    fig.supxlabel("Correlation coefficient")
+    fig.supxlabel("Correlation")
     for row, dataset_row in enumerate(tril.index.levels[0]):
         for col, dataset_col in enumerate(tril.columns.levels[0]):
             ax = axes[row,col]
-            if row < col:
+            if row == 0 and col == integration.n_datasets - 1:
+                handles = [
+                    Rectangle((0, 0), width = 0.8, height = 0.8, facecolor='red', label="Included"),
+                    Rectangle((0, 0), width = 0.8, height = 0.8, facecolor='grey', label="Excluded")
+                ]
+                ax.legend(handles=handles, loc='center', frameon=False)
+                ax.set_axis_off()
+            elif row < col:
                 ax.set_axis_off()
             else:
                 corr = pd.Series(tril.loc[dataset_row, dataset_col].values.flatten()).dropna()
+                max_corr = corr.max()
                 if integration.pairwise_thresholds is not None:
                     min_corr = integration.pairwise_thresholds.loc[(dataset_row, dataset_col)]
                     hist_kwargs = {
@@ -364,48 +387,85 @@ def plot_pairwise_corr(integration: Integration, subplot_size = [3, 3.5], overla
                         "hue_order": ["Excluded", "Included"]
                     }
                     included_fraction = (corr > min_corr).sum() / corr.shape[0]
-                    ax.text(x=0.01, y=1.01, s=f"quantile={included_fraction:.3f}\nmin_corr={min_corr:.3f}", size=8, ha='left', va='bottom', transform=ax.transAxes, color="black")
+                    ax.text(x=0.01, y=1.08, s=f"AUC = {included_fraction:.3f}", size=8, ha='left', va='bottom', transform=ax.transAxes, color="black")
+                    ax.text(x=0.01, y=1.01, s=f"range = {min_corr:.3f}-{max_corr:.3f}", size=8, ha='left', va='bottom', transform=ax.transAxes, color="red")
                 else:
                     hist_kwargs = {"color": "gray"}
-                sns.histplot(x=corr, ax=ax,legend=(row == 0)&(col == 0), bins=bins, linewidth=0, **hist_kwargs)
+                sns.histplot(x=corr, ax=ax,legend=False, bins=bins, linewidth=0, multiple="stack", **hist_kwargs)
 
                 ax.set_ylabel(dataset_row)
                 ax.set_xlabel(dataset_col)
-                ax.set_xlim(-1,1)
+                ax.set_xlim(-1 - inside_padding, 1 + inside_padding)
+
+    ymax = max([ax.get_ylim()[1] for row in axes for ax in row])
+    for row in axes:
+        for ax in row:
+            ax.set_ylim((
+                - ymax * inside_padding,
+                ymax + ymax * inside_padding
+            ))
+
     return fig
 
-def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5], bins=50):
+def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5], bins=50, inside_padding = 0.02):
     tril = integration.get_corr_matrix_lowertriangle(max_k_filter=True)
     n_datasets = integration.n_datasets
     sps_width, sps_height = subplot_size
     fig, axes = plt.subplots(n_datasets, n_datasets,
                              figsize=[sps_width * n_datasets, sps_height * n_datasets],
                              sharex=True, sharey=True, squeeze=False, layout="tight")
-    fig.suptitle(f"Correlation distribution between datasets")
-    fig.supxlabel("Correlation coefficient")
+    fig.supxlabel("Correlation")
     for row, dataset_row in enumerate(tril.index.levels[0]):
         for col, dataset_col in enumerate(tril.columns.levels[0]):
             ax = axes[row,col]
-            if row < col:
+            if row == 0 and col == integration.n_datasets - 1:
+                handles = [
+                    Rectangle((0, 0), width = 0.8, height = 0.8, facecolor='red', alpha=0.4, label="Positive"),
+                    Rectangle((0, 0), width = 0.8, height = 0.8, facecolor='blue', alpha=0.4, label="Negative")
+                ]
+                ax.legend(handles=handles, loc='center', frameon=False)
+                ax.set_axis_off()
+            elif row < col:
                 ax.set_axis_off()
             else:
                 corr = pd.DataFrame({"corr": tril.loc[dataset_row, dataset_col].values.flatten()}).dropna()
+                max_corr = corr["corr"].max()
                 corr["sign"] = (corr["corr"] >= 0).map({True: "Positive", False: "Negative"})
                 corr["abscorr"] = corr["corr"].abs()
-                sns.histplot(data=corr, x="abscorr", hue="sign", palette= {"Positive": "red", "Negative": "blue"}, bins=bins, alpha=0.5, linewidth=0,
-                             hue_order= ["Negative", "Positive"], ax=ax,legend=(row == 0)&(col == 0))
+                sns.histplot(data=corr, x="abscorr", hue="sign", palette= {"Positive": "red", "Negative": "blue"}, bins=bins, alpha=0.4, linewidth=0,
+                             hue_order= ["Negative", "Positive"], ax=ax,legend=False)
+
 
                 # show min_corr as text in top left of plot and vertical line
                 min_corr = integration.pairwise_thresholds.loc[(dataset_row, dataset_col)]
                 included_fraction = (corr["corr"] > min_corr).sum() / corr.shape[0]  # could also show the quantile of the min_corr threshold
-                ax.text(x=0.01, y=1.01, s=f"quantile={included_fraction:.3f}\nmin_corr={min_corr:.3f}", size=8, ha='left', va='bottom', transform=ax.transAxes, color="black")
+                ax.text(x=0.01, y=1.01, s=f"AUC = {included_fraction:.3f}\nrange = {min_corr:.3f}-{max_corr:.3f}",
+                        size=8, ha='left', va='bottom', transform=ax.transAxes, color="black")
                 ax.axvline(min_corr, color="black")
                 ax.set_ylabel(dataset_row)
                 ax.set_xlabel(dataset_col)
-                ax.set_xlim(0,1)
+                ax.set_xlim(0 - inside_padding, 1 + inside_padding)
+
+    ymax = max([ax.get_ylim()[1] for row in axes for ax in row])
+    for row in axes:
+        for ax in row:
+            ax.set_ylim((
+                - ymax * inside_padding,
+                ymax + ymax * inside_padding
+            ))
+
     return fig
 
-def plot_overdispersed_features_upset(integration: Integration, figsize=[6, 4]):
+def plot_overdispersed_features_upset(integration: Integration, figsize: Collection = (6, 4)) -> Figure:
+    """Plot overlaps of overdispersed features between datasets
+
+    :param integration: integration object
+    :type integration: Integration
+    :param figsize: width and height of figure, defaults to [6, 4]
+    :type figsize: Collection, optional
+    :return: figure
+    :rtype: Figure
+    """
     overdispersed_feature_lists = {dataset_name: dataset.overdispersed_genes for dataset_name, dataset in integration.datasets.items()}
     fig = Figure(figsize=figsize)
     upsetplot.UpSet(upsetplot.from_contents(overdispersed_feature_lists)).plot(fig=fig)
@@ -413,6 +473,15 @@ def plot_overdispersed_features_upset(integration: Integration, figsize=[6, 4]):
     return fig
 
 def plot_features_upset(integration: Integration, figsize=[6, 4]):
+    """Plot overlaps of features between datasets
+
+    :param integration: integration object
+    :type integration: Integration
+    :param figsize: width and height of figure, defaults to [6, 4]
+    :type figsize: Collection, optional
+    :return: figure
+    :rtype: Figure
+    """
     feature_lists = {dataset_name: list(dataset.adata.var.index) for dataset_name, dataset in integration.datasets.items()}
     fig = Figure(figsize=figsize)
     upsetplot.UpSet(upsetplot.from_contents(feature_lists)).plot(fig=fig)
@@ -487,7 +556,7 @@ def plot_community_usage_per_sample(snsmap: SNS,
             ax.set_xlabel("")
 
 
-def plot_community_by_dataset_rank(snsmap: SNS, colors: Colors, figsize: Collection = None):
+def plot_community_by_dataset_rank(snsmap: SNS, colors: Colors, figsize: Collection = None, highlight_central_gep: bool = True):
     """
     Plot communities by dataset and rank representation
     """
@@ -496,9 +565,13 @@ def plot_community_by_dataset_rank(snsmap: SNS, colors: Colors, figsize: Collect
         1: ("s", 30),  # 1 factor: square markers, size 30
         2: (2, 30)     # 2 factors: marker #2 (up tick), size 30
         }
+
+    if highlight_central_gep:
+        central_ranks = pd.DataFrame(snsmap.get_central_geps()).reset_index().set_index(["Community", "dataset"])["k"]
+
     n_datasets = snsmap.integration.n_datasets
     if figsize is None:
-        figsize = [1 + n_datasets * 5, 1 + len(snsmap.communities)/4]
+        figsize = [2 + n_datasets * 5.5, 1 + len(snsmap.communities)/4]
     fig, axes = plt.subplots(1, n_datasets+1, figsize=figsize, sharex=True, sharey=True, layout="tight")
     for dataset, ax in zip(snsmap.integration.datasets, axes):
         for y, community in enumerate(snsmap.ordered_community_names):
@@ -526,6 +599,11 @@ def plot_community_by_dataset_rank(snsmap: SNS, colors: Colors, figsize: Collect
                         scatter_x.append(x)
                         scatter_y.append(y)
                 ax.scatter(scatter_x, scatter_y, color=colors.dataset_colors[dataset], marker=style[0], s=style[1])
+            
+            if highlight_central_gep and (community, dataset) in central_ranks:
+                x = snsmap.integration.selected_k[dataset].index(central_ranks[(community, dataset)])
+                ax.add_patch(Rectangle((x - 0.4, y-0.4), width = 0.8, height = 0.8, edgecolor="k", facecolor='none'))
+
         ax.set_yticks(list(range(len(snsmap.ordered_community_names))))
         ax.set_yticklabels(snsmap.ordered_community_names)
         ax.set_xticks(list(range(len(snsmap.integration.selected_k[dataset]))))
@@ -541,6 +619,8 @@ def plot_community_by_dataset_rank(snsmap: SNS, colors: Colors, figsize: Collect
     cbdrlegend.append(Line2D([0],[0], marker='s', color='black', label="1 GEP", markerfacecolor="black", markersize=8))
     cbdrlegend.append(Line2D([0],[0], marker=2, color='black', label="2 GEPs", markerfacecolor="black", markersize=8))
     cbdrlegend.append(Line2D([0],[0], marker=None, color='black', label="3+ GEPs", markerfacecolor="black", markersize=8))
+    if highlight_central_gep:
+        cbdrlegend.append(Rectangle((0, 0), width = 0.8, height = 0.8, edgecolor="k", facecolor='none', label="Central GEP"))
     axes[-1].legend(handles=cbdrlegend, loc='center', frameon=False)
     axes[-1].set_axis_off()
     return fig
