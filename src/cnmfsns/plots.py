@@ -113,48 +113,6 @@ def plot_feature_overdispersion_histogram(dataset: Dataset,
         return fig
 
 
-    # if all_plots:
-    #     # Figure: cnmf model mean and variance
-    #     fig, axes = plt.subplots(1, 3, figsize=[12, 4], layout="tight")
-    #     ax = axes[0]
-    #     if show_selected:
-    #         sns.histplot(df, x="log_mean", y="log_variance", hue="selected", bins=[100,100], ax=ax, alpha=0.5, palette={True: "red", False: "blue"})
-    #     else:
-    #         sns.histplot(df, x="log_mean", y="log_variance", bins=[100,100], ax=ax, color="blue")
-    #     ax.set_title("Mean-Variance")
-    #     ax.set_xlabel("log10(mean)")
-    #     ax.set_ylabel("log10(variance)")
-    #     ax = axes[1]
-    #     if show_selected:
-    #         sns.histplot(df, x="log_mean", y="vscore", hue="selected", bins=[100,100], ax=ax, palette={True: "red", False: "blue"})
-    #     else:
-    #         sns.histplot(df, x="log_mean", y="vscore", bins=[100,100], ax=ax, color="blue")
-    #     ax.set_title("Mean-Overdispersion (cnmf)")
-    #     ax.set_xlabel("log10(mean)")
-    #     ax.set_ylabel("v-score")
-    #     ax=axes[2]  # thresholds
-    #     ax.set_title("v-score Distribution")
-    #     if df["vscore"].notnull().any():e
-    #         if show_selected:
-    #             sns.histplot(df, x="vscore", hue="selected", bins=100, linewidth=0, ax=ax, palette={True: "red", False: "blue"})
-    #             ax.legend(handles=[
-    #                 Patch(color="blue", alpha=0.5, label="False"),
-    #                 Patch(color="red", alpha=0.5, label="True")
-    #             ], title="selected")
-    #         else:
-    #             sns.histplot(df, x="vscore", bins=100, linewidth=0, ax=ax, color="blue")
-    #     ax.set_xlabel("v-score")
-    #     figs["cnmf"] = fig
-
-    #     fig, ax = plt.subplots(figsize=[12,12], layout="tight")
-    #     sns.histplot(data=df.fillna(0), x="odscore", y="vscore", bins=[100, 100], ax=ax)
-    #     ax.set_xlabel("od-score")
-    #     ax.set_ylabel("v-score")
-    #     figs["score_comparison"] = fig
-        
-    # return figs
-
-
 def plot_stability_error(dataset: Dataset, figsize=(6, 4)):
     '''
     Borrowed from Alexandrov Et Al. 2013 Deciphering Mutational Signatures
@@ -185,7 +143,7 @@ def plot_stability_error(dataset: Dataset, figsize=(6, 4)):
 
 def annotated_heatmap(
         data, title, metadata=None, metadata_colors=None, missing_data_color="#BBBBBB", heatmap_cmap='YlOrRd', 
-        row_cluster=True, col_cluster=True, plot_col_dendrogram=True, show_sample_labels=True, ylabel=""):
+        row_cluster=True, col_cluster=True, plot_col_dendrogram=True, show_sample_labels=True, ylabel=None, cbar_label=None):
     n_columns = data.shape[1]
     if metadata is None:
         n_metadata_columns = 0
@@ -275,7 +233,7 @@ def annotated_heatmap(
     # Colormap for heatmap
     ax = fig.add_subplot(gs0[1])
     ax.set_axis_off()
-    plt.colorbar(im_heatmap, ax=ax, location="top")
+    plt.colorbar(im_heatmap, ax=ax, location="top", label=cbar_label)
     return fig
 
 def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors, subset_metadata = None, subset_samples = None, title = None, cluster_geps = False, cluster_samples = True, show_sample_labels = True):
@@ -297,7 +255,7 @@ def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors, subset_metada
                             col_cluster=cluster_samples,
                             show_sample_labels=show_sample_labels,
                             plot_col_dendrogram=True,
-                            ylabel="GEP")
+                            ylabel="Program")
     return fig
 
 
@@ -317,7 +275,7 @@ def plot_gep_correlation_matrix(integration: Integration, colors, figsize=(20,20
     if hide_gep_labels:
         cg.ax_heatmap.set_xticks([])
         cg.ax_heatmap.set_yticks([])
-    cg.ax_col_dendrogram.set_title("GEP correlations")
+    cg.ax_col_dendrogram.set_title("Program correlations")
     return cg.figure
 
 
@@ -495,23 +453,37 @@ def plot_features_upset(integration: Integration, figsize=[6, 4]):
 def plot_community_usage_heatmap(snsmap: SNS,
                                  colors: Colors,
                                  subset_metadata = None,
-                                 subset_datasets = None,
+                                 subset_datasets: Optional[Union[str, Collection[str]]] = None,
                                  subset_samples = None,
                                  title = None,
                                  cluster_geps = False,
                                  cluster_samples = True,
                                  show_sample_labels = True,
                                  prepend_dataset_colors = True):
+    
+
+    
+    if subset_datasets is None:
+        subset_datasets = snsmap.integration.datasets.keys()
+    elif isinstance(subset_datasets, str):
+        subset_datasets = [subset_datasets]
+    elif isinstance(subset_datasets, Iterable):
+        pass
+    else:
+        raise ValueError
+    
     df = snsmap.get_community_usage()
+    
     if subset_samples is not None:
         df = df.loc[subset_samples]
-    if subset_datasets is not None:
-        df = df.loc[subset_datasets]
-        
     
+    df = df.loc[subset_datasets]
+            
     metadata = snsmap.integration.get_metadata_df()
+    metadata = metadata[metadata.index.get_level_values(0).isin(subset_datasets)]
     if subset_metadata is not None:
         metadata = metadata.loc[:, subset_metadata]
+    metadata = metadata.dropna(axis=1, how="all")
 
     metadata_colors = {col: colors.get_metadata_colors(col) for col in metadata.columns}
     if prepend_dataset_colors:
@@ -527,7 +499,8 @@ def plot_community_usage_heatmap(snsmap: SNS,
                             col_cluster=cluster_samples,
                             show_sample_labels=show_sample_labels,
                             plot_col_dendrogram=True,
-                            ylabel="Community")
+                            ylabel="Community",
+                            cbar_label="Normalized Program Usage")
     return fig
 
 
@@ -554,7 +527,8 @@ def plot_community_usage_per_sample(snsmap: SNS,
         is_last_row = i // n_col == n_row - 1
         if not is_last_row:
             ax.set_xlabel("")
-
+    
+    return fig
 
 def plot_community_by_dataset_rank(snsmap: SNS, colors: Colors, figsize: Collection = None, highlight_central_gep: bool = True):
     """
@@ -616,11 +590,11 @@ def plot_community_by_dataset_rank(snsmap: SNS, colors: Colors, figsize: Collect
 
     # Add legend
     cbdrlegend = []
-    cbdrlegend.append(Line2D([0],[0], marker='s', color='black', label="1 GEP", markerfacecolor="black", markersize=8))
-    cbdrlegend.append(Line2D([0],[0], marker=2, color='black', label="2 GEPs", markerfacecolor="black", markersize=8))
-    cbdrlegend.append(Line2D([0],[0], marker=None, color='black', label="3+ GEPs", markerfacecolor="black", markersize=8))
+    cbdrlegend.append(Line2D([0],[0], marker='s', color='black', label="1 Program", markerfacecolor="black", markersize=8))
+    cbdrlegend.append(Line2D([0],[0], marker=2, color='black', label="2 Programs", markerfacecolor="black", markersize=8))
+    cbdrlegend.append(Line2D([0],[0], marker=None, color='black', label="3+ Programs", markerfacecolor="black", markersize=8))
     if highlight_central_gep:
-        cbdrlegend.append(Rectangle((0, 0), width = 0.8, height = 0.8, edgecolor="k", facecolor='none', label="Central GEP"))
+        cbdrlegend.append(Rectangle((0, 0), width = 0.8, height = 0.8, edgecolor="k", facecolor='none', label="Central Program"))
     axes[-1].legend(handles=cbdrlegend, loc='center', frameon=False)
     axes[-1].set_axis_off()
     return fig
@@ -654,24 +628,25 @@ def draw_circle_bar_plot(position, enrichments, colors, size, ax, scale_factor: 
                 ax.text(x+x_offset, y+y_offset, label, rotation=np.rad2deg(a), ha="left", va="center", rotation_mode='anchor', fontsize=label_font_size)
         previous = this
 
-def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size, linewidth=0.5, rings=[0.5,1]):
+def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size = 6, linewidth=0.8, rings=[0.2, 0.5, 1]):
     x, y = position
     for ring in rings:
         ax.add_patch(plt.Circle(position, np.sqrt(ring) * size, color="black", fill=False, linewidth=linewidth))
     ax.add_patch(Rectangle(position, size * 1.01, size * 1.01, color="#FFFFFF"))
+    ax.scatter(position[0], position[1], s=linewidth*2, color="black", marker=".")
     for ring in rings:
         value = ring/scale_factor
         ax.text(
             x + size * 0.05,
             y + np.sqrt(ring) * size,
-            f"{value:.3f}",
+            f"{value:.2f}",
             fontsize=label_font_size,
             verticalalignment="center")
 
 
-#######################
-#   GEP Network Plots #
-#######################
+###########################
+#  Program Network Plots  #
+###########################
 
 
 def plot_overrepresentation_gep_network(snsmap: SNS,
@@ -679,11 +654,12 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
                                         layer: str,
                                         subset_datasets: Optional[Union[str, Collection[str]]] = None,
                                         ax: Optional[Axes] = None,
-                                        pie_size: float = 0.1,
+                                        pie_size: float = 0.3,
                                         figsize: Collection = (9, 6),
                                         edge_weights: Optional[str] = None,
                                         edge_color: str = "#AAAAAA88",
                                         metric: str = "pearson_residual",
+                                        legend_pie_size: float = 0.1,
                                         show_legend: bool = True) -> Optional[Figure]:
     
     if show_legend:
@@ -696,7 +672,7 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
         ax_legend = ax
     ax_plot.set_aspect("equal")
     ax_plot.set_axis_off()
-    ax_plot.set_title("GEP Network")
+    ax_plot.set_title("Programs")
     ax_legend.set_xlim([-0.5, 0.5])
     ax_legend.set_aspect("equal")
     ax_legend.set_axis_off()
@@ -736,14 +712,14 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
             enrichments=pd.Series(max_or, index=gep_or.index.sort_values().unique()),
             colors=overrepresentation.index.map(colors.get_metadata_colors(layer)),
             scale_factor=scale_factor,
-            size=pie_size,
+            size=legend_pie_size,
             draw_labels=True,
             label_font_size=6, ax=ax_legend)
         draw_circle_bar_scale(
-            position=(0, -0.5),
+            position=(0, -0.75),
             scale_factor=scale_factor,
             size=pie_size,
-            label_font_size=4, ax=ax_legend)
+            label_font_size=5, ax=ax_legend)
         ax_legend.set_title(f"{layer}")
         ax_legend.text(0, -0.25, "overrepresentation", ha="center", va="center", )
     
@@ -777,7 +753,7 @@ def plot_metadata_correlation_gep_network(snsmap: SNS,
         ax_legend = ax
     ax_plot.set_aspect("equal")
     ax_plot.set_axis_off()
-    ax_plot.set_title(f"GEPs correlated with\n{layer}")
+    ax_plot.set_title(f"Programs correlated with\n{layer}")
     ax_legend.set_aspect("equal")
     ax_legend.set_axis_off()
     
@@ -801,9 +777,7 @@ def plot_metadata_correlation_gep_network(snsmap: SNS,
     nx.draw(snsmap.gep_graph, pos=snsmap.layout, node_color=node_colors, node_size=node_size, linewidths=0, width=width, edge_color=edge_color, with_labels=False, ax=ax_plot, font_size=20)
     
     if show_legend:
-        # Add legend
-        ax_legend.set_title(f"{method.capitalize()} correlation", fontsize=6)
-        plt.colorbar(color_map, ax=ax_legend, location="left", anchor=(0, 1), panchor=(1, 1), shrink=0.5, fraction=0.15)
+        plt.colorbar(color_map, ax=ax_legend, location="left", anchor=(0, 1), panchor=(1, 1), shrink=0.5, fraction=0.15, label=f"{method.capitalize()} correlation")
     
     # assert ax_plot.get_xlim() == ax_plot.get_ylim()
     # assert ax_plot.get_ylim() == ax_legend.get_ylim()
@@ -821,6 +795,7 @@ def plot_gep_network_datasets(snsmap: SNS, colors: Colors, figsize = (9,6), edge
         ax_legend = ax
     ax_plot.set_aspect("equal")
     ax_plot.set_axis_off()
+    ax_plot.set_title("Programs")
     ax_legend.set_xlim([-0.5, 0.5])
     ax_legend.set_axis_off()
     colors.plot_dataset_colors_legend(ax=ax_legend)
@@ -856,7 +831,6 @@ def plot_gep_network_datasets(snsmap: SNS, colors: Colors, figsize = (9,6), edge
             width=0.2,
             edge_color=edge_color,
             font_size=4, ax=ax_plot)
-    ax_plot.set_title("GEP Network")
     return fig
 
 
@@ -875,6 +849,7 @@ def plot_gep_network_communities(snsmap: SNS,
         ax_legend = ax
     ax_plot.set_aspect("equal")
     ax_plot.set_axis_off()
+    ax_plot.set_title("Programs")
     ax_legend.set_xlim([-0.5, 0.5])
     ax_legend.set_axis_off()
     colors.plot_community_colors_legend(ax=ax_legend)
@@ -914,7 +889,6 @@ def plot_gep_network_communities(snsmap: SNS,
             width=0.2,
             edge_color=edge_color,
             font_size=4, ax=ax_plot)
-    ax_plot.set_title("GEP Network")
     if ax is None:
         return fig
 
@@ -935,6 +909,7 @@ def plot_gep_network_nsamples(snsmap: SNS,
         ax_legend = ax
     ax_plot.set_aspect("equal")
     ax_plot.set_axis_off()
+    ax_plot.set_title("Programs")
     ax_legend.set_xlim([-0.5, 0.5])
     ax_legend.set_axis_off()
     colors.plot_dataset_colors_legend(ax=ax_legend)
@@ -978,13 +953,16 @@ def plot_gep_network_npatients(snsmap: SNS,
         ax_legend = ax
     ax_plot.set_aspect("equal")
     ax_plot.set_axis_off()
+    ax_plot.set_title("Programs")
     ax_legend.set_xlim([-0.5, 0.5])
     colors.plot_dataset_colors_legend(ax=ax_legend)
 
     usages = snsmap.integration.get_usages(discretize = True).fillna(0).astype(bool)
-    if snsmap.integration.sample_to_patient is None:
+    s2p = snsmap.integration.sample_to_patient
+    if s2p is None:
         raise ValueError("No samples have valid patient IDs. Make sure to set the patient_id_col property for each Dataset")
-    usages.index = usages.index.map(snsmap.integration.sample_to_patient)
+    usages = usages[usages.index.isin(s2p.index)]
+    usages.index = usages.index.map(s2p)
     usages = usages.groupby(axis=0, level=[0,1]).any()
         
     labels = usages[snsmap.geps_in_graph].sum().apply(lambda x: str(int(x))).to_dict()
@@ -1004,7 +982,7 @@ def plot_gep_network_npatients(snsmap: SNS,
 
 
 #################################
-#   GEP Community Network Plots #
+#   Community Network Plots #
 #################################
 
 
@@ -1021,7 +999,7 @@ def plot_summary_community_network(snsmap: SNS,
         ax_plot = ax
     ax_plot.set_aspect("equal")
     ax_plot.set_axis_off()
-    ax_plot.set_title("Community Network")
+    ax_plot.set_title("Communities")
     
     G = snsmap.comm_graph
     if G.edges:
@@ -1065,7 +1043,7 @@ def plot_metadata_correlation_community_network(snsmap: SNS,
         ax_legend = ax
     ax_plot.set_aspect("equal")
     ax_plot.set_axis_off()
-    ax_plot.set_title(f"GEP Communities correlated with\n{layer}")
+    ax_plot.set_title(f"Communities\n{layer}")
     ax_legend.set_aspect("equal")
     ax_legend.set_axis_off()
     
@@ -1089,8 +1067,7 @@ def plot_metadata_correlation_community_network(snsmap: SNS,
     nx.draw(snsmap.comm_graph, pos=snsmap.comm_layout, node_color=node_colors, node_size=sizes, linewidths=0, width=width, edge_color=edge_color, with_labels=True, ax=ax_plot, font_size=20)
     
     if show_legend:
-        ax_legend.set_title(f"{method.capitalize()} correlation", fontsize=6)
-        plt.colorbar(color_map, ax=ax_legend, location="left", anchor=(0, 1), panchor=(1, 1), shrink=0.5, fraction=0.15)
+        plt.colorbar(color_map, ax=ax_legend, location="left", anchor=(0, 1), panchor=(1, 1), shrink=0.5, fraction=0.15, label=f"{method.capitalize()} correlation")
         
     if ax is None:
         return fig
@@ -1101,7 +1078,7 @@ def plot_overrepresentation_community_network(snsmap: SNS,
                                         layer: str,
                                         subset_datasets: Optional[Union[str, Collection[str]]] = None,
                                         ax: Optional[Axes] = None,
-                                        pie_size: float = 0.1,
+                                        pie_size: float = 0.3,
                                         figsize: Collection = (6, 4),
                                         edge_color: str = "#AAAAAA88",
                                         metric: str = "pearson_residual",
@@ -1122,7 +1099,7 @@ def plot_overrepresentation_community_network(snsmap: SNS,
         ax_legend = ax
     ax_plot.set_aspect("equal")
     ax_plot.set_axis_off()
-    ax_plot.set_title("Community Network")
+    ax_plot.set_title("Communities")
     
     if snsmap.comm_graph.edges:
         width = np.array(list(nx.get_edge_attributes(snsmap.comm_graph, "n_edges").values()))
@@ -1159,10 +1136,10 @@ def plot_overrepresentation_community_network(snsmap: SNS,
             draw_labels=True,
             label_font_size=6, ax=ax_legend)
         draw_circle_bar_scale(
-            position=(0, -0.5),
+            position=(0, -0.75),
             scale_factor=scale_factor,
             size=pie_size,
-            label_font_size=4, ax=ax_legend)
+            label_font_size=5, ax=ax_legend)
         ax_legend.set_title(f"{layer}")
         ax_legend.text(0, 0 , "overrepresentation", ha="center", va="center", )
     
@@ -1174,7 +1151,7 @@ def plot_overrepresentation_community_network(snsmap: SNS,
 
 
 #################
-# GEP bar plots #
+# Program-level bar plots #
 #################
 
 
@@ -1207,7 +1184,7 @@ def plot_overrepresentation_gep_bar(snsmap: SNS,
         sharey='row', squeeze=False,
         gridspec_kw={"width_ratios": community_gep_counts},
         layout="tight")
-    fig.supxlabel("GEP")
+    fig.supxlabel("Program")
     fig.supylabel("Overrepresentation")
     fig.suptitle("Community")
     
@@ -1283,7 +1260,7 @@ def plot_metadata_correlation_gep_bar(snsmap: SNS,
         sharey='row', squeeze=False,
         gridspec_kw={"width_ratios": community_gep_counts},
         layout="tight")
-    fig.supxlabel("GEP")
+    fig.supxlabel("Program")
     fig.supylabel(method.capitalize() + " Correlation")
     fig.suptitle("Community")
     
@@ -1328,7 +1305,7 @@ def plot_metadata_correlation_gep_bar(snsmap: SNS,
     
 
 ###########################
-# GEP community bar plots #
+# Community bar plots #
 ###########################
 
 
@@ -1355,7 +1332,7 @@ def plot_overrepresentation_community_bar(snsmap: SNS,
     df.T.plot.bar(stacked=True, ax=ax_plot, width = 0.9, color=colors.get_metadata_colors(layer), legend=False)
     ax_plot.set_xticklabels(ax_plot.get_xticklabels(), rotation=0)
     ax_plot.set_ylabel("Median overrepresentation")
-    ax_plot.set_xlabel("GEP Community")
+    ax_plot.set_xlabel("Community")
     
     # Legend
     colors.plot_metadata_colors_legend(layer=layer, ax=ax_legend)
@@ -1386,7 +1363,7 @@ def plot_metadata_correlation_community_bar(snsmap: SNS,
     md_corr.plot.bar(ax=ax_plot, width = 0.9, color="#888888")
     ax_plot.set_xticklabels(ax_plot.get_xticklabels(), rotation=0)
     ax_plot.set_ylabel(f"Median {method.capitalize()} Correlation")
-    ax_plot.set_xlabel("GEP Community")
+    ax_plot.set_xlabel("Community")
     
     if ax is None:
         return fig
@@ -1403,7 +1380,7 @@ def plot_sample_entropy(snsmap: SNS,
                      subset_datasets: Optional[Union[str, Collection[str]]] = None,
                      figsize = None
                      ):    
-    metadata = snsmap.integration.get_metadata_df(prepend_dataset_column=True)[layer]
+    metadata = snsmap.integration.get_metadata_df(prepend_dataset_column=True, subset_datasets=subset_datasets)[layer]
     diversity = snsmap.get_sample_entropy()
     df = pd.concat([diversity.rename("entropy"), metadata], axis=1)
     
@@ -1428,6 +1405,6 @@ def plot_sample_entropy(snsmap: SNS,
         showcaps=False,
         ax=ax)
     ax.set_ybound(lower=0)
-    ax.set_title("Sample Entropy")
+    ax.set_title("Shannon Entropy")
     ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
     return fig

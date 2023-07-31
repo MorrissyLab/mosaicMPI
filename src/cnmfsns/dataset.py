@@ -21,15 +21,12 @@ class Dataset():
     
     def __init__(self,
                  adata: ad.AnnData,
-                 patient_id_col: Optional[str] = None,
                  force_migrate: bool = False
                  ):
         """Creates a :class:`~cnmfsns.dataset.Dataset` object from an `ad.AnnData` object.
 
         :param adata: AnnData object with data
         :type adata: ad.AnnData
-        :param patient_id_col: Name of metadata layer with patient ID information, defaults to None
-        :type patient_id_col: str, optional
         :param force_migrate: forces conversion of AnnData objects even when adata.X and adata.raw.X are not linearly scaled relative to each other, defaults to False
         :type force_migrate: bool, optional
         :raises RuntimeError: Backed-mode Anndata objects cannot be migrated
@@ -56,7 +53,7 @@ class Dataset():
             if adata.raw is None:
                 is_normalized=False
                 raw = adata.to_df()
-            else:
+            else:  # reconciles two matrices: X and raw.X
                 raw = pd.DataFrame(adata.raw.X, index=X.index, columns=X.columns)
                 corrdist = X.corrwith(raw, axis=1)
                 # checks that all samples are perfectly correlated between counts and normalized data
@@ -91,11 +88,6 @@ class Dataset():
             self.is_normalized = is_normalized
             self.cnmfsns_version = __version__
     
-        if patient_id_col is not None and patient_id_col not in self.adata.obs.columns:
-            avail_columns = ", ".join(self.adata.obs.columns)
-            raise ValueError(f"{patient_id_col} is not a valid column in the metadata matrix. Available columns are: {avail_columns}")
-        self.patient_id_col = patient_id_col
-    
     @classmethod
     def from_df(cls,
                   data: pd.DataFrame,
@@ -129,23 +121,22 @@ class Dataset():
         data = data.astype("float32")
         uns = {"history": {}, "odg":{}}
         adata = ad.AnnData(X=data, var=var, uns=uns)
-        dataset = cls(adata=adata, patient_id_col=patient_id_col)
+        dataset = cls(adata)
         if obs is not None:
             dataset.update_obs(obs=obs) 
+        dataset.patient_id_col = patient_id_col  # must be done after updating the obs frame since it will check for the columns existence in obs
+        dataset.is_normalized = is_normalized
         return dataset
     
     @classmethod
     def from_h5ad(cls,
                   h5ad_file: str,
-                  patient_id_col: Optional[str] = None,
                   force_migrate=False, backed=False
                   ):
         """Creates a :class:`~cnmfsns.dataset.Dataset` object from an AnnData-compatible .h5ad file.
 
         :param h5ad_file: Path to .h5ad file produced by scanpy, AnnData, or cNMF-SNS
         :type h5ad_file: str
-        :param patient_id_col: Name of metadata layer with patient ID information, defaults to None
-        :type patient_id_col: str, optional
         :param force_migrate: forces conversion of AnnData objects even when adata.X and adata.raw.X are not linearly scaled relative to each other, defaults to False
         :type force_migrate: bool, optional
         :param backed: Use backed mode to open h5ad file. This can save memory when the dataset is very large, but is not compatible with h5ad files produced outside of cNMF-SNS, defaults to False
@@ -154,7 +145,7 @@ class Dataset():
         :rtype: :class:`~cnmfsns.dataset.Dataset`
         """
         adata = ad.read_h5ad(h5ad_file, backed=backed)
-        dataset = cls(adata=adata, patient_id_col=patient_id_col, force_migrate=force_migrate)
+        dataset = cls(adata=adata, force_migrate=force_migrate)
         return dataset
     
     @property
@@ -181,6 +172,10 @@ class Dataset():
     
     @patient_id_col.setter
     def patient_id_col(self, value: str):
+        
+        if value is not None and value not in self.adata.obs.columns:
+            avail_columns = ", ".join(self.adata.obs.columns)
+            raise ValueError(f"{value} is not a valid column in the metadata matrix. Available columns are: {avail_columns}")
         self.adata.uns["patient_id_col"] = value
 
     @property
@@ -561,6 +556,15 @@ class Dataset():
         kvals.index = kvals.index.astype(int)
         self.adata.uns["kvals"] = kvals
         self.append_to_history("cNMF results added from output directory {cnmf_output_dir}/{cnmf_name}")
+
+    def remove_cnmf_results(self):
+        for result_type in ("cnmf_gep_score", "cnmf_gep_tpm", "cnmf_gep_raw"):
+            self.adata.varm.pop(result_type)
+        self.adata.obsm.pop("cnmf_usage")
+        self.adata.uns.pop("gene_list")
+        self.adata.uns.pop("kvals")
+        self.append_to_history("cNMF results removed.")
+
 
     def get_usages(self,
                    k: Union[int, Iterable] = None,

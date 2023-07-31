@@ -325,7 +325,8 @@ class Integration():
     def get_metadata_df(self,
                         include_categorical: bool = True,
                         include_numerical: bool = True,
-                        prepend_dataset_column: bool = False
+                        prepend_dataset_column: bool = False,
+                        subset_datasets: Optional[Union[str, Iterable[str]]] = None
                         ) -> pd.DataFrame:
         """Get sample/observation metadata for all datasets.
 
@@ -335,16 +336,49 @@ class Integration():
         :type include_numerical: bool, optional
         :param prepend_dataset_column: Prepend dataframe with dataset name column, defaults to False
         :type prepend_dataset_column: bool, optional
+        :param subset_datasets: dataset name or iterable of dataset names to subset the results, defaults to None
+        :type subset_datasets: str or Iterable[str], optional
         :return: observations × metadata matrix
         :rtype: pd.DataFrame
         """
+
+        if subset_datasets is None:
+            subset_datasets = self.datasets.keys()
+        elif isinstance(subset_datasets, str):
+            subset_datasets = [subset_datasets]
+        elif isinstance(subset_datasets, Iterable):
+            pass
+        else:
+            raise ValueError
+
+
         df = {}
-        for dataset_name, dataset in self.datasets.items():
-            df[dataset_name] = dataset.get_metadata_df(include_categorical=include_categorical,
+        for dataset_name in subset_datasets:
+            df[dataset_name] = self.datasets[dataset_name].get_metadata_df(include_categorical=include_categorical,
                                                        include_numerical=include_numerical)
         df = pd.concat(df, axis=0)
         if prepend_dataset_column:
             df.insert(0, "Dataset", df.index.get_level_values(0))
+        return df
+    
+    def get_features_overlap_table(self):
+
+        all_features = set()
+        for ds in self.datasets.values():
+            all_features |= set(ds.adata.var_names)
+        df = pd.DataFrame(False, index=sorted(list(all_features)), columns=self.datasets.keys())
+        for dsname, ds in self.datasets.items():
+            df.loc[ds.adata.var_names, dsname] = True
+        return df
+
+    def get_overdispersed_features_overlap_table(self):
+
+        all_features = set()
+        for ds in self.datasets.values():
+            all_features |= set(ds.adata.var_names)
+        df = pd.DataFrame(False, index=sorted(list(all_features)), columns=self.datasets.keys())
+        for dsname, ds in self.datasets.items():
+            df.loc[ds.overdispersed_genes, dsname] = True
         return df
     
     def get_category_overrepresentation(self,

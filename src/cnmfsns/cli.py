@@ -467,12 +467,11 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
     datasets = {}
     for dsname, dsparams in config.datasets.items():
         
-        dataset = Dataset.from_h5ad(
-            dsparams["filename"],
-            backed=False,
-            patient_id_col = (dsparams["patient_id_col"] if "patient_id_col" in dsparams else None),
-            force_migrate = False
-        )
+        dataset = Dataset.from_h5ad(dsparams["filename"], force_migrate = False)
+            
+        if "patient_id_col" in dsparams:
+            dataset.patient_id_col = dsparams["patient_id_col"]
+
         datasets[dsname] = dataset
         
     # creates integration object from config parameters
@@ -518,14 +517,22 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
     fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr_overlaid.png"), dpi=600)
 
     # UpSet plot of odgenes and all genes in each dataset
+
+    df = integration.get_overdispersed_features_overlap_table()
+    df.to_csv(os.path.join(output_dir, "integrate", "overdispersed_features.txt"), sep="\t")
+    
+    df = integration.get_features_overlap_table()
+    df.to_csv(os.path.join(output_dir, "integrate", "features.txt"), sep="\t")
+    
     if integration.n_datasets > 1:
+
         fig = plot_overdispersed_features_upset(integration)
-        fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_overdispersed_genes.pdf"))
-        fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_overdispersed_genes.pdf" + ".png"), dpi=600)
+        fig.savefig(os.path.join(output_dir, "integrate", "overdispersed_features_upsetplot.pdf"))
+        fig.savefig(os.path.join(output_dir, "integrate", "overdispersed_features_upsetplot.png"), dpi=600)
         
         fig = plot_features_upset(integration)
-        fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_all_genes.pdf"))
-        fig.savefig(os.path.join(output_dir, "integrate", "upsetplot_all_genes.pdf" + ".png"), dpi=600)
+        fig.savefig(os.path.join(output_dir, "integrate", "all_features_upsetplot.pdf"))
+        fig.savefig(os.path.join(output_dir, "integrate", "all_features_upsetplot.png"), dpi=600)
 
     nodetable = integration.get_node_table()
     nodetable.to_csv(os.path.join(output_dir, "integrate", "node_stats.txt"), sep="\t")
@@ -562,12 +569,9 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     # Create dataset objects from config parameters
     datasets = {}
     for dsname, dsparams in config.datasets.items():
-        ds_obj = Dataset.from_h5ad(
-            dsparams["filename"],
-            backed="r",
-            patient_id_col = (dsparams["patient_id_col"] if "patient_id_col" in dsparams else None),
-            force_migrate = False
-        )
+        ds_obj = Dataset.from_h5ad(dsparams["filename"], force_migrate = False)
+        if "patient_id_col" in dsparams:
+            dataset.patient_id_col = dsparams["patient_id_col"]
         datasets[dsname] = ds_obj
         
     # selected_k from config.toml file overrides defaults
@@ -614,8 +618,10 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
         shared_community_weight = config.sns["layouts"]["community_weighted_spring"]["within_community"],
         shared_dataset_weight = config.sns["layouts"]["community_weighted_spring"]["within_dataset"]
     )
-    snsmap.compute_community_network_layout()
     
+    # persist SNS object to file
+    snsmap.to_pkl(os.path.join(sns_output_dir, "sns.pkl"))
+
     # make figure legends for metadata
     colors = Colors.from_config(config)
     colors.add_missing_dataset_colors(datasets=integration)

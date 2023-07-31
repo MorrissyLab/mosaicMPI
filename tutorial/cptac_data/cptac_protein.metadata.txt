@@ -1,0 +1,111 @@
+Sample	patient_id	simple_category	detailed_category	purity_TSNet	multiomic	r_wang_cancer_cell_2017	d_methyl	d_methyl_mnp	is_gcimp	immune	mir	TMT
+C3L-00104	C3L-00104	P	P	0.73	nmf1	Proneural	dm2	GBM, RTK II	True	im2	mi5	TMT11
+C3L-00365	C3L-00365	P	P	0.82	nmf3	Classical	dm4	GBM, RTK II	False	im2	mi2	TMT2
+C3L-00674	C3L-00674	P	P	0.5	nmf1	Mesenchymal	dm5	GBM, MES	False	im1	mi4	TMT4
+C3L-00677	C3L-00677	P	P	0.68	nmf1	Proneural	dm5	GBM, MES	False	im4	mi1	TMT7
+C3L-01040	C3L-01040	P	P	0.54	nmf1	Classical	dm5	GBM, MES	False	im4	mi5	TMT11
+C3L-01043	C3L-01043	P	P	0.7	nmf2	Mesenchymal	dm1	GBM, MES	False	im1	mi4	TMT4
+C3L-01045	C3L-01045	P	P	0.79	nmf3	Mesenchymal	dm2	GBM, RTK II	True	im2	mi3	TMT7
+C3L-01046	C3L-01046	P	P	0.62	nmf2	Mesenchymal	low_qual	GBM, MES		im1	mi2	TMT7
+C3L-01048	C3L-01048	P	P	0.91	nmf3	Classical	dm2	GBM, RTK II	True	im4	mi2	TMT3
+C3L-01049	C3L-01049	P	P	0.82	nmf2	Mesenchymal	dm1	GBM, MES	False	im2	mi3	TMT6
+C3L-01061	C3L-01061	P	P	0.84	nmf3	Classical	dm2	GBM, RTK II	True	im4	mi2	TMT7
+C3L-01142	C3L-01142	P	P	0.54	nmf2	Mesenchymal	dm3	CONTR, INFLAM	False	im1	mi3	TMT1
+C3L-01146	C3L-01146	P	P	0.67	nmf2	Proneural				im1	mi2	TMT2
+C3L-01149	C3L-01149	P	P	0.8	nmf3	Proneural	dm5	GBM, RTK II	False	im4	mi1	TMT3
+C3L-01154	C3L-01154	P	P	0.87	nmf3	Classical	dm4	GBM, RTK II	False	im2	mi2	TMT4
+C3L-01155	C3L-01155	P	P	0.59	nmf1	Classical	dm2	GBM, RTK II	True	im2	mi2	TMT7
+C3L-01156	C3L-01156	P	P	0.61	nmf1	Classical	dm2	GBM, RTK II	True	im4	mi1	TMT4
+C3L-01157	C3L-01157	P	P	0.5	nmf1	Proneural	dm4	GBM, RTK II	False	im3	mi1	TMT9
+C3L-01327	C3L-01327	P	P	0.77	nmf3	Classical	dm2	GBM, RTK II	True	im4	mi2	TMT11
+C3L-01834	C3L-01834	P	P	0.45		Proneural	dm3	CONTR, HEMI	False	im1	mi1	TMT1
+C3L-01887	C3L-01887	P	P	0.48	nmf1	Classical	dm5	GBM, MES	False	im4	mi1	TMT8
+C3L-02041	C3L-02041	P	P	0.43	IDH mutant	IDH mutant	dm6	A IDH, HG	True	im3	mi5	TMT7
+C3L-02465	C3L-02465	P	P	0.48	nmf2	Mesenchymal	dm5	GBM, MES	False	im1	mi4	TMT6
+C3L-02504	C3L-02504	P	P	0.77	nmf3	Proneural	dm1	GBM, RTK I	False	im4	mi3	TMT9
+C3L-02542	C3L-02542	P	P	0.77	nmf3	Proneural	dm2	GBM, RTK I	True	im4	mi2	TMT1
+C3L-02642	C3L-02642	P	P	0.53	nmf1	Classical	dm5	GBM, MES	False	im4	mi5	TMT6
+C3L-02704	C3L-02704	P	P	0.64	nmf2	Mesenchymal	dm5	GBM, RTK II	False	im2	mi3	TMT8
+C3L-02705	C3L-02705	P	P	0.52	nmf2	Mesenchymal	dm5	GBM, MES	False	im1	mi4	TMT9
+C3L-02707	C3L-02707	P	P	0.6	nmf3	Classical	dm2	GBM, RTK II	True	im4	mi2	TMT5
+C3L-02708	C3L-02708	P	P	0.79	IDH mutant	IDH mutant	dm6	A IDH, HG	True	im3	mi1	TMT2
+C3L-02900	C3L-02900	P	P	0.74	IDH mutant	IDH mutant	dm6	A IDH	True	im3	mi5	TMT10
+C3L-02955	C3L-02955	P	P	0.35	nmf1	Mesenchymal	dm3	CONTR, REACT	False	im1	mi1	TMT5
+C3L-02970	C3L-02970	P	P	0.72	nmf3	Proneural	dm1	GBM, RTK II	False	im4	mi3	TMT4
+C3L-02984	C3L-02984	P	P	0.71	IDH mutant	IDH mutant	dm6	A IDH	True	im3	mi5	TMT1
+C3L-03260	C3L-03260	P	P	0.57	nmf1	Proneural	dm4	GBM, RTK I	False	im4	mi1	TMT3
+C3L-03266	C3L-03266	P	P	0.65	nmf3	Classical	dm4	GBM, RTK II	False	im2	mi2	TMT2
+C3L-03387	C3L-03387	P	P	0.47	nmf1	Classical	dm2	GBM, RTK II	True	im3	mi1	TMT3
+C3L-03390	C3L-03390	P	P	0.85	nmf3	Classical	dm4	GBM, RTK II	False	im4	mi2	TMT7
+C3L-03392	C3L-03392	P	P	0.54	nmf2	Mesenchymal	dm3	CONTR, INFLAM	False	im1	mi4	TMT5
+C3L-03400	C3L-03400	P	P	0.59	nmf2	Mesenchymal	dm3	GBM, MES	False	im1	mi4	TMT8
+C3L-03405	C3L-03405	P	P	0.65	nmf3	Proneural	dm2	GBM, RTK II	True	im4	mi3	TMT5
+C3L-03407	C3L-03407	P	P	0.52	nmf2	Mesenchymal	dm3	CONTR, INFLAM	False	im1	mi3	TMT3
+C3L-03681	C3L-03681	P	P	0.64	nmf2	Classical	dm3	GBM, MES	False	im2	mi5	TMT4
+C3L-03727	C3L-03727	P	P	0.76	nmf3	Mesenchymal	dm4	GBM, RTK II	False	im2	mi2	TMT10
+C3L-03728	C3L-03728	P	P	0.51	nmf2	Proneural	dm3	GBM, MES	False	im1	mi3	TMT4
+C3L-03744	C3L-03744	P	P	0.62	nmf2	Mesenchymal	dm5	GBM, MES	False	im2	mi2	TMT9
+C3L-03747	C3L-03747	P	P									TMT6
+C3L-03748	C3L-03748	P	P	0.77	nmf2	Mesenchymal	dm4	GBM, RTK II	False	im2	mi3	TMT2
+C3L-03968	C3L-03968	P	P	0.81	nmf3	Proneural	dm1	GBM, MID	False	im1	mi4	TMT9
+C3L-04084	C3L-04084	P	P	0.73	nmf3	Classical	dm2	GBM, RTK II	True	im4	mi2	TMT9
+C3N-00661	C3N-00661	P	P	0.61	nmf2	Mesenchymal	dm5	GBM, MES	False	im2	mi2	TMT9
+C3N-00662	C3N-00662	P	P	0.73	nmf3	Proneural	low_qual	GBM, MES		im4	mi2	TMT8
+C3N-00663	C3N-00663	P	P	0.66	IDH mutant	IDH mutant	dm6	A IDH	True	im1	mi5	TMT10
+C3N-00665	C3N-00665	P	P	0.63	nmf2	Mesenchymal	dm4	GBM, MES	False	im2	mi3	TMT10
+C3N-01192	C3N-01192	P	P	0.6	nmf2	Mesenchymal	dm3	GBM, MES	False	im2	mi2	TMT3
+C3N-01196	C3N-01196	P	P	0.85	nmf3	Classical	dm2	GBM, RTK II	True	im4	mi2	TMT8
+C3N-01334	C3N-01334	P	P	0.6	nmf1	Classical	dm4	GBM, MES	False	im1	mi3	TMT10
+C3N-01364	C3N-01364	P	P	0.73	nmf2	Mesenchymal	dm3	CONTR, REACT	False	im2	mi2	TMT2
+C3N-01366	C3N-01366	P	P	0.8	nmf2	Mesenchymal	dm1	GBM, RTK II	False	im2	mi3	TMT9
+C3N-01367	C3N-01367	P	P	0.61	nmf2	Mesenchymal	dm5	GBM, MES	False	im2	mi4	TMT3
+C3N-01368	C3N-01368	P	P	0.8	nmf3	Classical	low_qual	GBM, MES		im4	mi3	TMT10
+C3N-01369	C3N-01369	P	P	0.66	nmf2	Mesenchymal	dm3	CONTR, REACT	False	im1	mi1	TMT6
+C3N-01505	C3N-01505	P	P	0.64	nmf2	Mesenchymal	low_qual	GBM, MES		im1	mi2	TMT1
+C3N-01515	C3N-01515	P	P	0.6	nmf2	Mesenchymal	dm3	GBM, MES	False	im2	mi2	TMT11
+C3N-01517	C3N-01517	P	P	0.78	nmf3	Classical	dm2	GBM, RTK II	True	im2	mi2	TMT5
+C3N-01518	C3N-01518	P	P	0.72	nmf2	Mesenchymal	dm5	GBM, MES	False	im1	mi3	TMT8
+C3N-01798	C3N-01798	P	P	0.6	nmf1	Proneural	dm1	GBM, RTK II	False	im3	mi1	TMT2
+C3N-01814	C3N-01814	P	P	0.57	nmf1	Proneural	low_qual	GBM, MES		im4	mi1	TMT1
+C3N-01815	C3N-01815	P	P	0.59	nmf2	Mesenchymal	low_qual	GBM, MES		im1	mi4	TMT8
+C3N-01816	C3N-01816	P	P	0.86	nmf2	Mesenchymal	dm3	GBM, MES	False	im2	mi4	TMT6
+C3N-01818	C3N-01818	P	P	0.46	nmf1	Proneural	dm5	GBM, MES	False	im4	mi1	TMT4
+C3N-01851	C3N-01851	P	P	0.55	nmf2	Proneural	dm3	CONTR, REACT	False	im1	mi1	TMT6
+C3N-01852	C3N-01852	P	P	0.65	nmf3	Classical	dm2	GBM, RTK II	True	im4	mi2	TMT10
+C3N-01856	C3N-01856	P	P	0.68	nmf2	Mesenchymal	dm2	GBM, MES	True	im2		TMT8
+C3N-01857	C3N-01857	P	P	0.58	nmf1	Classical	dm4	GBM, RTK II	False	im4	mi1	TMT8
+C3N-02181	C3N-02181	P	P	0.56	nmf2	Mesenchymal	dm3	CONTR, REACT	False	im1	mi1	TMT5
+C3N-02183	C3N-02183	P	P	0.48	nmf2	Mesenchymal	dm3	CONTR, REACT	False	im1	mi1	TMT4
+C3N-02185	C3N-02185	P	P	0.65	nmf1	Proneural	dm4	GBM, MES	False	im2	mi1	TMT6
+C3N-02186	C3N-02186	P	P	0.53	nmf1	Proneural	dm1	GBM, RTK II	False	im4	mi1	TMT3
+C3N-02188	C3N-02188	P	P	0.69	nmf3	Mesenchymal	low_qual	GBM, MES		im2	mi3	TMT11
+C3N-02190	C3N-02190	P	P	0.62	nmf2	Mesenchymal	dm1	GBM, MES	False	im1	mi4	TMT11
+C3N-02255	C3N-02255	P	P	0.59	nmf1	Proneural	dm1	GBM, RTK I	False	im4	mi1	TMT7
+C3N-02256	C3N-02256	P	P	0.64	nmf1	Proneural	dm1	GBM, RTK I	False	im4	mi1	TMT1
+C3N-02769	C3N-02769	P	P	0.71	nmf2	Mesenchymal	dm2	GBM, RTK II	True	im2	mi1	TMT11
+C3N-02770	C3N-02770	P	P	0.63	nmf1	Proneural	dm1	GBM, RTK II	False	im4	mi1	TMT2
+C3N-02782	C3N-02782	P	P	0.84	nmf3	Classical	dm4	GBM, RTK II	False	im4	mi2	TMT3
+C3N-02783	C3N-02783	P	P	0.39	nmf1	Proneural	dm3	CONTR, REACT	False	im1	mi1	TMT2
+C3N-02784	C3N-02784	P	P	0.84	nmf2	Mesenchymal	dm3	GBM, MES	False	im2	mi4	TMT5
+C3N-02785	C3N-02785	P	P	0.59	nmf1	Proneural	dm1	GBM, RTK II	False	im2	mi1	TMT11
+C3N-02786	C3N-02786	P	P	0.66	nmf2	Mesenchymal	dm3	CONTR, REACT	False	im1	mi2	TMT11
+C3N-02788	C3N-02788	P	P	0.42	nmf1	Proneural	dm1	GBM, RTK II	False	im3	mi1	TMT9
+C3N-03070	C3N-03070	P	P	0.55	IDH mutant	IDH mutant	dm6	A IDH, HG	True	im3	mi5	TMT7
+C3N-03088	C3N-03088	P	P	0.4	nmf1	Proneural	dm3	CONTR, REACT	False	im1	mi1	TMT7
+C3N-03180	C3N-03180	P	P	0.46	nmf1	Mesenchymal				im1	mi1	TMT10
+C3N-03182	C3N-03182	P	P	0.9	nmf2	Mesenchymal	dm3	GBM, MES	False	im1	mi3	TMT5
+C3N-03183	C3N-03183	P	P	0.79	nmf2	Mesenchymal	dm5	GBM, MES	False	im1	mi3	TMT1
+C3N-03184	C3N-03184	P	P	0.83	nmf3	Classical	dm2	GBM, RTK II	True	im4	mi2	TMT10
+C3N-03186	C3N-03186	P	P	0.43	nmf1	Proneural	dm3	GBM, MES	False	im2	mi1	TMT5
+C3N-03188	C3N-03188	P	P	0.46	nmf1	Classical	dm5	GBM, MES	False	im4	mi1	TMT1
+C3N-03473	C3N-03473	P	P	0.8	nmf3	Proneural	dm1	GBM, RTK III	False	im4	mi4	TMT6
+GTEX-NPJ7-0011-R10A-SM-HAKXW	GTEX-NPJ7-0011-R10A-SM-HAKXW	N.Cx	N.Cx	0.01								TMT11
+GTEX-P44H-0011-R10A-SM-HAKXX	GTEX-P44H-0011-R10A-SM-HAKXX	N.Cx	N.Cx	0.01								TMT5
+GTEX-Q2AG-0011-R10A-SM-HAKXT	GTEX-Q2AG-0011-R10A-SM-HAKXT	N.Cx	N.Cx									TMT10
+GTEX-QVJO-0011-R10A-SM-HAKXV	GTEX-QVJO-0011-R10A-SM-HAKXV	N.Cx	N.Cx	0.01								TMT4
+GTEX-R55F-0011-R10A-SM-HAKXY	GTEX-R55F-0011-R10A-SM-HAKXY	N.Cx	N.Cx	0.01								TMT3
+GTEX-RN5K-0011-R10A-SM-HAKXU	GTEX-RN5K-0011-R10A-SM-HAKXU	N.Cx	N.Cx	0.03								TMT8
+GTEX-RU72-0011-R10A-SM-HAKXS	GTEX-RU72-0011-R10A-SM-HAKXS	N.Cx	N.Cx	0.01								TMT6
+GTEX-UTHO-0011-R10A-SM-HAKY2	GTEX-UTHO-0011-R10A-SM-HAKY2	N.Cx	N.Cx	0.01								TMT2
+GTEX-WVLH-0011-R10A-SM-HAKXZ	GTEX-WVLH-0011-R10A-SM-HAKXZ	N.Cx	N.Cx	0.01								TMT9
+GTEX-Y8DK-0011-R10A-SM-HAKY1	GTEX-Y8DK-0011-R10A-SM-HAKY1	N.Cx	N.Cx	0.01								TMT1

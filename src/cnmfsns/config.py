@@ -54,9 +54,7 @@ config_defaults = {
     "metadata_colors": {"missing_data": "#dddddd"},
     "metadata_colors_group": {}
 }
-dataset_defaults = {
-    "selected_k": [[1, 10, 1], [15, 500, 5]],
-    }
+dataset_defaults = {}
 
 def recursive_update(d, u):
     d = deepcopy(d)

@@ -5,7 +5,7 @@
 
 # cNMF-SNS: powerful factorization-based multi-omics integration toolkit
 
-![version badge](https://img.shields.io/badge/version-1.6.5-blue)
+![version badge](https://img.shields.io/badge/version-1.7.0-blue)
 [![PyPI Latest Release](https://img.shields.io/pypi/v/cnmfsns.svg)](https://pypi.org/project/cnmfsns/)
 [![Conda Latest Release](https://img.shields.io/conda/vn/conda-forge/cnmfsns)](https://anaconda.org/conda-forge/cnmfsns/)
 [![Documentation status](https://readthedocs.org/projects/cnmf-sns/badge/?version=latest&style=flat)]()
@@ -27,12 +27,13 @@ annotations to facilitate interpretation.
 
 Here are just a few of the things that cNMF-SNS does well:
 
-- Identifies interpretable, additive non-negative gene expression programs
+- Identifies interpretable, non-negative programs at multiple resolutions
 - Mosaic integration does not require subsetting features/genes to
   a shared or overdispersed subset
 - Ideal for incremental integration (adding datasets one at a time) since
-  deconvolution is performed independently on each dataset generating invariant GEPs
-- Integration does not require comparable data sparsity or sequencing depth (single-cell, microarray, bulk)
+  deconvolution is performed independently on each dataset
+- Integration performs well even when the datasets have mismatched features
+  (eg. Microarray, RNA-Seq, Proteomics) or sparsity (eg single-cell vs bulk RNA-Seq and ATAC-Seq)
 - Two interfaces: command-line interface for rapid data exploration and python
   interface for extensibility and flexibility
 
@@ -42,8 +43,9 @@ Here are just a few of the things that cNMF-SNS does well:
 
 Install the package with conda (in an isolated conda environment)
 ```bash
-conda env create cnmfsns -c conda-forge cnmfsns
+conda create -n cnmfsns -c conda-forge cnmfsns
 conda activate cnmfsns
+
 ```
 
 ### ✨ Latest version from GitHub
