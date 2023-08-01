@@ -16,7 +16,7 @@ import matplotlib as mpl
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
-from matplotlib.patches import Polygon, Rectangle, Patch
+from matplotlib.patches import Polygon, Rectangle, Patch, Arc
 import matplotlib.pyplot as plt
 import upsetplot
 from scipy.cluster.hierarchy import linkage, dendrogram
@@ -628,12 +628,17 @@ def draw_circle_bar_plot(position, enrichments, colors, size, ax, scale_factor: 
                 ax.text(x+x_offset, y+y_offset, label, rotation=np.rad2deg(a), ha="left", va="center", rotation_mode='anchor', fontsize=label_font_size)
         previous = this
 
-def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size = 6, linewidth=0.8, rings=[0.2, 0.5, 1]):
+def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size = 8, linewidth=0.8, rings=[0.2, 0.5, 1]):
     x, y = position
+    max_ring_radius = np.sqrt(np.max(rings)) * size
+    ax.add_line(Line2D([x, x], [y, y+max_ring_radius], color="k", linewidth=linewidth))
+    ax.add_line(Line2D([x, x - 0.5 * max_ring_radius],
+                       [y, y + max_ring_radius * np.cos(np.deg2rad(30))], color="k", linewidth=linewidth))
+
     for ring in rings:
-        ax.add_patch(plt.Circle(position, np.sqrt(ring) * size, color="black", fill=False, linewidth=linewidth))
-    ax.add_patch(Rectangle(position, size * 1.01, size * 1.01, color="#FFFFFF"))
-    ax.scatter(position[0], position[1], s=linewidth*2, color="black", marker=".")
+        arc_diameter = 2 * (np.sqrt(ring) * size)
+        ax.add_patch(Arc(position, width=arc_diameter, height=arc_diameter, angle=0, theta1 = 90, theta2 = 120, linewidth=linewidth))
+    # ax.scatter(position[0], position[1], s=linewidth*2, color="black", marker=".")  # dot at centre of arc
     for ring in rings:
         value = ring/scale_factor
         ax.text(
@@ -719,9 +724,9 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
             position=(0, -0.75),
             scale_factor=scale_factor,
             size=pie_size,
-            label_font_size=5, ax=ax_legend)
+            label_font_size=8, ax=ax_legend)
         ax_legend.set_title(f"{layer}")
-        ax_legend.text(0, -0.25, "overrepresentation", ha="center", va="center", )
+        ax_legend.text(0, -1, "overrepresentation", ha="center", va="top", fontsize=10, fontweight="regular")
     
     # assert ax_plot.get_xlim() == ax_plot.get_ylim()
     # assert ax_plot.get_ylim() == ax_legend.get_ylim()
@@ -1139,9 +1144,10 @@ def plot_overrepresentation_community_network(snsmap: SNS,
             position=(0, -0.75),
             scale_factor=scale_factor,
             size=pie_size,
-            label_font_size=5, ax=ax_legend)
+            label_font_size=8, ax=ax_legend)
         ax_legend.set_title(f"{layer}")
-        ax_legend.text(0, 0 , "overrepresentation", ha="center", va="center", )
+        ax_legend.text(0, -1, "overrepresentation", ha="center", va="top", fontsize=10, fontweight="regular")
+
     
     # assert ax_plot.get_xlim() == ax_plot.get_ylim()
     # assert ax_plot.get_ylim() == ax_legend.get_ylim()
