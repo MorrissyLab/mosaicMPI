@@ -345,8 +345,7 @@ def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 
                         "hue_order": ["Excluded", "Included"]
                     }
                     included_fraction = (corr > min_corr).sum() / corr.shape[0]
-                    ax.text(x=0.01, y=1.08, s=f"AUC = {included_fraction:.3f}", size=8, ha='left', va='bottom', transform=ax.transAxes, color="black")
-                    ax.text(x=0.01, y=1.01, s=f"range = {min_corr:.3f}-{max_corr:.3f}", size=8, ha='left', va='bottom', transform=ax.transAxes, color="red")
+                    ax.text(x=0.01, y=1.01, s=f"AUC = {included_fraction:.3f}\nrange = {min_corr:.3f}-{max_corr:.3f}", size=8, ha='left', va='bottom', transform=ax.transAxes, color="black")
                 else:
                     hist_kwargs = {"color": "gray"}
                 sns.histplot(x=corr, ax=ax,legend=False, bins=bins, linewidth=0, multiple="stack", **hist_kwargs)
@@ -397,8 +396,7 @@ def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5
                 # show min_corr as text in top left of plot and vertical line
                 min_corr = integration.pairwise_thresholds.loc[(dataset_row, dataset_col)]
                 included_fraction = (corr["corr"] > min_corr).sum() / corr.shape[0]  # could also show the quantile of the min_corr threshold
-                ax.text(x=0.01, y=1.01, s=f"AUC = {included_fraction:.3f}\nrange = {min_corr:.3f}-{max_corr:.3f}",
-                        size=8, ha='left', va='bottom', transform=ax.transAxes, color="black")
+                ax.text(x=0.01, y=1.01, s=f"AUC = {included_fraction:.3f}\nrange = {min_corr:.3f}-{max_corr:.3f}", size=8, ha='left', va='bottom', transform=ax.transAxes, color="black")
                 ax.axvline(min_corr, color="black")
                 ax.set_ylabel(dataset_row)
                 ax.set_xlabel(dataset_col)
@@ -414,7 +412,7 @@ def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5
 
     return fig
 
-def plot_overdispersed_features_upset(integration: Integration, figsize: Collection = (6, 4)) -> Figure:
+def plot_overdispersed_features_upset(integration: Integration, figsize: Collection = (6, 4), show_counts: bool = False) -> Figure:
     """Plot overlaps of overdispersed features between datasets
 
     :param integration: integration object
@@ -426,11 +424,11 @@ def plot_overdispersed_features_upset(integration: Integration, figsize: Collect
     """
     overdispersed_feature_lists = {dataset_name: dataset.overdispersed_genes for dataset_name, dataset in integration.datasets.items()}
     fig = Figure(figsize=figsize)
-    upsetplot.UpSet(upsetplot.from_contents(overdispersed_feature_lists)).plot(fig=fig)
+    upsetplot.UpSet(upsetplot.from_contents(overdispersed_feature_lists), show_counts=show_counts).plot(fig=fig)
     fig.suptitle("Overdispersed features")
     return fig
 
-def plot_features_upset(integration: Integration, figsize=[6, 4]):
+def plot_features_upset(integration: Integration, figsize=[6, 4], show_counts: bool = False):
     """Plot overlaps of features between datasets
 
     :param integration: integration object
@@ -442,7 +440,7 @@ def plot_features_upset(integration: Integration, figsize=[6, 4]):
     """
     feature_lists = {dataset_name: list(dataset.adata.var.index) for dataset_name, dataset in integration.datasets.items()}
     fig = Figure(figsize=figsize)
-    upsetplot.UpSet(upsetplot.from_contents(feature_lists)).plot(fig=fig)
+    upsetplot.UpSet(upsetplot.from_contents(feature_lists), show_counts=show_counts).plot(fig=fig)
     fig.suptitle("Features")
     return fig
 
@@ -663,7 +661,6 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
                                         figsize: Collection = (9, 6),
                                         edge_weights: Optional[str] = None,
                                         edge_color: str = "#AAAAAA88",
-                                        metric: str = "pearson_residual",
                                         legend_pie_size: float = 0.1,
                                         show_legend: bool = True) -> Optional[Figure]:
     
@@ -691,7 +688,6 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
     nx.draw_networkx_edges(snsmap.gep_graph, pos=snsmap.layout, edge_color=edge_color, ax=ax_plot, width=width)
     overrepresentation = snsmap.integration.get_category_overrepresentation(subset_datasets=subset_datasets, layer=layer)
     overrepresentation = overrepresentation.fillna(0)
-
     max_or = np.max(overrepresentation.values.flatten())
     if max_or == 0:
         scale_factor = 1
@@ -1320,10 +1316,11 @@ def plot_overrepresentation_community_bar(snsmap: SNS,
                                       layer: str,
                                       subset_datasets: Optional[Union[str, Collection[str]]] = None,
                                       figsize: Optional[Collection] = None,
+                                      truncate_negative = True,
                                       ax = None
                                       ) -> Figure:
     
-    df = snsmap.get_community_category_overrepresentation(subset_datasets=subset_datasets, layer=layer).fillna(0)
+    df = snsmap.get_community_category_overrepresentation(subset_datasets=subset_datasets, layer=layer, truncate_negative=truncate_negative).fillna(0)
     # if existing axes object is provided, plots with legend on that axes. Otherwise, creates a new figure with a separate plot and legend Axes.
     if ax is None:
         if figsize is None:
@@ -1369,6 +1366,36 @@ def plot_metadata_correlation_community_bar(snsmap: SNS,
     md_corr.plot.bar(ax=ax_plot, width = 0.9, color="#888888")
     ax_plot.set_xticklabels(ax_plot.get_xticklabels(), rotation=0)
     ax_plot.set_ylabel(f"Median {method.capitalize()} Correlation")
+    ax_plot.set_xlabel("Community")
+    
+    if ax is None:
+        return fig
+
+
+
+def plot_overrepresentation_community_heatmap(snsmap: SNS,
+                                      layer: str,
+                                      subset_datasets: Optional[Union[str, Collection[str]]] = None,
+                                      figsize: Optional[Collection] = None,
+                                      truncate_negative = False,
+                                      ax = None
+                                      ) -> Figure:
+    
+    df = snsmap.get_community_category_overrepresentation(subset_datasets=subset_datasets, layer=layer, truncate_negative=truncate_negative).fillna(0)
+    # if existing axes object is provided, plots with legend on that axes. Otherwise, creates a new figure with a separate plot and legend Axes.
+    if ax is None:
+        if figsize is None:
+            figsize = [0.2 * df.shape[1] + 4, 0.2 * df.shape[0] + 2]
+        fig, ax_plot = plt.subplots(figsize=figsize, layout="constrained")
+    else:
+        ax_plot = ax
+        
+    # Overrepresentation plot
+    sns.heatmap(data=df, ax=ax_plot, xticklabels = True, yticklabels=True, 
+                center = 0, cmap="RdBu_r")
+    
+    ax_plot.set_xticklabels(ax_plot.get_xticklabels(), rotation=0)
+    ax_plot.set_ylabel("Median overrepresentation")
     ax_plot.set_xlabel("Community")
     
     if ax is None:
