@@ -515,8 +515,7 @@ class Dataset():
         elif local_density_threshold in (ldt[1] for ldt in sensed_ldts):
             ldt_str, ldt = [(ldt_str, ldt) for ldt_str, ldt in sensed_ldts if ldt == local_density_threshold].pop()
         else:
-            logging.error(f"local_density_threshold of {local_density_threshold} does not match what is in the cNMF result directory: {sensed_ldts}")
-            sys.exit(1)
+            raise RuntimeError(f"local_density_threshold of {local_density_threshold} does not match what is in the cNMF result directory: {sensed_ldts}")
         self.adata.uns["ldt"] = ldt
         self.adata.uns["lns"] = local_neighborhood_size
             
