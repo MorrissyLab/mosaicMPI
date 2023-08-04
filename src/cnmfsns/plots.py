@@ -694,12 +694,11 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
     else:
         scale_factor = 1 / max_or
     
-    
+    color_list = overrepresentation.index.map(colors.get_metadata_colors(layer))
     for gep, gep_or in overrepresentation.items():
         node = "|".join((str(p) for p in gep))
 
         if node in snsmap.gep_graph and gep_or.any():
-            color_list = gep_or.index.map(colors.get_metadata_colors(layer))
             draw_circle_bar_plot(position=snsmap.layout[node],
                                  enrichments=gep_or,
                                  scale_factor=scale_factor,
@@ -710,8 +709,8 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
         # Add legends
         draw_circle_bar_plot(
             position=(0, 0.5),
-            enrichments=pd.Series(max_or, index=gep_or.index.sort_values().unique()),
-            colors=overrepresentation.index.map(colors.get_metadata_colors(layer)),
+            enrichments=pd.Series(max_or, index=overrepresentation.index),
+            colors=color_list,
             scale_factor=scale_factor,
             size=legend_pie_size,
             draw_labels=True,

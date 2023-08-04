@@ -168,7 +168,10 @@ class Dataset():
         :return: True if dataset contains normalized data, False if it is raw data.
         :rtype: bool
         """
-        return self.adata.uns["patient_id_col"]
+        if "patient_id_col" in self.adata.uns:
+            return self.adata.uns["patient_id_col"]
+        else:
+            return None
     
     @patient_id_col.setter
     def patient_id_col(self, value: str):
@@ -666,6 +669,7 @@ class Dataset():
         sample_to_class = self.get_metadata_df()[layer]
         usage.index = usage.index.map(sample_to_class)
         observed = usage.groupby(axis=0, level=0).sum()
+        observed = observed[observed.sum(axis=1) > 0]
 
         n_categories = observed.shape[0]
         if n_categories < 2:
