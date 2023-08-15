@@ -300,7 +300,7 @@ def plot_rank_reduction(integration: Integration, figsize=None):
     return fig
 
 
-def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 3.5], overlaid=False, bins=50, inside_padding = 0.02, selected_k_filter = True, max_k_filter = True) -> Figure:
+def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 3.5], overlaid=False, bins=50, inside_padding = 0.02, selected_k_filter = True, max_k_filter = True, sharey: bool = False) -> Figure:
     """Plot histograms of the pairwise correlation distribution for each dataset pair.
 
     :param integration: Integration object
@@ -313,6 +313,8 @@ def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 
     :type bins: int, optional
     :param inside_padding: Amount to shrink data within the axes, defaults to 0.02
     :type inside_padding: float, optional
+    :param sharey: set y-axis limits to a common range, defaults to False
+    :type sharey: bool, optional
     :return: figure
     :rtype: Figure
     """
@@ -320,7 +322,7 @@ def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 
     sps_width, sps_height = subplot_size
     n_datasets = integration.n_datasets
     fig, axes = plt.subplots(n_datasets, n_datasets,
-                             figsize=[sps_width * n_datasets, sps_height * n_datasets], sharex=True, sharey=True, squeeze=False, layout="tight")
+                             figsize=[sps_width * n_datasets, sps_height * n_datasets], sharex=sharex, sharey=sharey, squeeze=False, layout="tight")
     fig.supxlabel("Correlation")
     for row, dataset_row in enumerate(tril.index.levels[0]):
         for col, dataset_col in enumerate(tril.columns.levels[0]):
@@ -354,23 +356,30 @@ def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 
                 ax.set_xlabel(dataset_col)
                 ax.set_xlim(-1 - inside_padding, 1 + inside_padding)
 
-    ymax = max([ax.get_ylim()[1] for row in axes for ax in row])
     for row in axes:
         for ax in row:
-            ax.set_ylim((
-                - ymax * inside_padding,
-                ymax + ymax * inside_padding
-            ))
+            if sharey:
+                ymax = max([ax.get_ylim()[1] for row in axes for ax in row])
+                ax.set_ylim((
+                    - ymax * inside_padding,
+                    ymax + ymax * inside_padding
+                ))
+            else:
+                ymax = ax.get_ylim()[1]
+                ax.set_ylim((
+                    - ymax * inside_padding,
+                    ymax + ymax * inside_padding
+                ))
 
     return fig
 
-def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5], bins=50, inside_padding = 0.02, selected_k_filter = True, max_k_filter = True):
+def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5], bins=50, inside_padding = 0.02, selected_k_filter = True, max_k_filter = True, sharey: bool = False):
     tril = integration.get_corr_matrix_lowertriangle(selected_k_filter = selected_k_filter, max_k_filter = max_k_filter)
     n_datasets = integration.n_datasets
     sps_width, sps_height = subplot_size
     fig, axes = plt.subplots(n_datasets, n_datasets,
-                             figsize=[sps_width * n_datasets, sps_height * n_datasets],
-                             sharex=True, sharey=True, squeeze=False, layout="tight")
+                             figsize=[sps_width * n_datasets, sps_height * n_datasets], 
+                             sharex=sharex, sharey=sharey, squeeze=False, layout="tight")
     fig.supxlabel("Correlation")
     for row, dataset_row in enumerate(tril.index.levels[0]):
         for col, dataset_col in enumerate(tril.columns.levels[0]):
@@ -402,13 +411,20 @@ def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5
                 ax.set_xlabel(dataset_col)
                 ax.set_xlim(0 - inside_padding, 1 + inside_padding)
 
-    ymax = max([ax.get_ylim()[1] for row in axes for ax in row])
     for row in axes:
         for ax in row:
-            ax.set_ylim((
-                - ymax * inside_padding,
-                ymax + ymax * inside_padding
-            ))
+            if sharey:
+                ymax = max([ax.get_ylim()[1] for row in axes for ax in row])
+                ax.set_ylim((
+                    - ymax * inside_padding,
+                    ymax + ymax * inside_padding
+                ))
+            else:
+                ymax = ax.get_ylim()[1]
+                ax.set_ylim((
+                    - ymax * inside_padding,
+                    ymax + ymax * inside_padding
+                ))
 
     return fig
 
