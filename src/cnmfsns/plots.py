@@ -300,7 +300,7 @@ def plot_rank_reduction(integration: Integration, figsize=None):
     return fig
 
 
-def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 3.5], overlaid=False, bins=50, inside_padding = 0.02) -> Figure:
+def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 3.5], overlaid=False, bins=50, inside_padding = 0.02, selected_k_filter = True, max_k_filter = True) -> Figure:
     """Plot histograms of the pairwise correlation distribution for each dataset pair.
 
     :param integration: Integration object
@@ -316,7 +316,7 @@ def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 
     :return: figure
     :rtype: Figure
     """
-    tril = integration.get_corr_matrix_lowertriangle()
+    tril = integration.get_corr_matrix_lowertriangle(selected_k_filter=selected_k_filter, max_k_filter=max_k_filter)
     sps_width, sps_height = subplot_size
     n_datasets = integration.n_datasets
     fig, axes = plt.subplots(n_datasets, n_datasets,
@@ -364,8 +364,8 @@ def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 
 
     return fig
 
-def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5], bins=50, inside_padding = 0.02):
-    tril = integration.get_corr_matrix_lowertriangle(max_k_filter=True)
+def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5], bins=50, inside_padding = 0.02, selected_k_filter = True, max_k_filter = True):
+    tril = integration.get_corr_matrix_lowertriangle(selected_k_filter = selected_k_filter, max_k_filter = max_k_filter)
     n_datasets = integration.n_datasets
     sps_width, sps_height = subplot_size
     fig, axes = plt.subplots(n_datasets, n_datasets,
