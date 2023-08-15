@@ -45,17 +45,6 @@ Install the package with conda (in an isolated conda environment)
 ```bash
 conda create -n cnmfsns -c conda-forge cnmfsns
 conda activate cnmfsns
-
-```
-
-### ✨ Latest version from GitHub
-
-Before installing cNMF-SNS using pip, it is recommended to first set up a separate conda environment and have conda manage as many dependencies as possible.
-
-```bash
-conda create --name cnmfsns -c conda-forge python=3.10 anndata pandas numpy scipy matplotlib upsetplot httplib2 tomli tomli-w click pygraphviz python-igraph pyyaml scikit-learn fastcluster scanpy pyyaml
-conda activate cnmfsns
-pip install git+https://github.com/MorrissyLab/cNMF-SNS.git
 ```
 
 ## 📖 Documentation
@@ -63,9 +52,8 @@ pip install git+https://github.com/MorrissyLab/cNMF-SNS.git
 ### 🗐 Data guidelines
 
 cNMF-SNS can factorize a wide variety of datasets, but will work optimally in these conditions:
-  - Use untransformed (raw) data where possible.
-  - For single-cell or spatial RNA-Seq data, use feature counts, not TPM or other log-transformed values.
-
+  - Use untransformed (raw) data where possible, and avoid log-transformed data.
+  - For single-cell or spatial RNA-Seq data, the best data to use is feature counts, then TPM-normalized values, then RPKM/FPKM-normalized values.
 
 ### 📓 Python interface
 
