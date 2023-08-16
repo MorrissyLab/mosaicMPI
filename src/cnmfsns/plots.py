@@ -322,7 +322,7 @@ def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 
     sps_width, sps_height = subplot_size
     n_datasets = integration.n_datasets
     fig, axes = plt.subplots(n_datasets, n_datasets,
-                             figsize=[sps_width * n_datasets, sps_height * n_datasets], sharex=sharex, sharey=sharey, squeeze=False, layout="tight")
+                             figsize=[sps_width * n_datasets, sps_height * n_datasets], sharey=sharey, squeeze=False, layout="tight")
     fig.supxlabel("Correlation")
     for row, dataset_row in enumerate(tril.index.levels[0]):
         for col, dataset_col in enumerate(tril.columns.levels[0]):
@@ -379,7 +379,7 @@ def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5
     sps_width, sps_height = subplot_size
     fig, axes = plt.subplots(n_datasets, n_datasets,
                              figsize=[sps_width * n_datasets, sps_height * n_datasets], 
-                             sharex=sharex, sharey=sharey, squeeze=False, layout="tight")
+                             sharey=sharey, squeeze=False, layout="tight")
     fig.supxlabel("Correlation")
     for row, dataset_row in enumerate(tril.index.levels[0]):
         for col, dataset_col in enumerate(tril.columns.levels[0]):

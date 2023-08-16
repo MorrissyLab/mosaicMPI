@@ -241,13 +241,15 @@ class Integration():
                         k_subset: Union[Collection[int], Dict[str, Collection[int]]] = (2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60),
                         exclude_unshared_k_values: bool = False,
                         ) -> None:
-        """Select k-values for integration.
+        """
+        Select k-values for integration.
 
         :param k_subset: k-values to use for integration. Either a Collection of integers, or a dict specifying k-values separately for each dataset. Defaults
             to (2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60)
         :type k_subset: Union[Collection[int], Dict[str, Collection[int]]]
         :param exclude_unshared_k_values: in addition to the k_subset, also exclude k-values that are not shared with all datasets.
         : type exclude_unshared_k_values: bool
+
         """
         for dataset_name in self.datasets:
             if isinstance(k_subset, dict):
