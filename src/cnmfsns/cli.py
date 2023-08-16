@@ -528,11 +528,11 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
 
         fig = plot_overdispersed_features_upset(integration)
         fig.savefig(os.path.join(output_dir, "integrate", "overdispersed_features_upsetplot.pdf"))
-        fig.savefig(os.path.join(output_dir, "integrate", "overdispersed_features_upsetplot.png"), dpi=600)
+        fig.savefig(os.path.join(output_dir, "integrate", "overdispersed_features_upsetplot.png"), dpi=200)
         
         fig = plot_features_upset(integration)
         fig.savefig(os.path.join(output_dir, "integrate", "all_features_upsetplot.pdf"))
-        fig.savefig(os.path.join(output_dir, "integrate", "all_features_upsetplot.png"), dpi=600)
+        fig.savefig(os.path.join(output_dir, "integrate", "all_features_upsetplot.png"), dpi=200)
 
     nodetable = integration.get_node_table()
     nodetable.to_csv(os.path.join(output_dir, "integrate", "node_stats.txt"), sep="\t")
