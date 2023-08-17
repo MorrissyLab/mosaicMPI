@@ -350,11 +350,11 @@ class Dataset():
         self.adata.uns["odg"]["odg_default_dof"] = odg_default_dof
         self.append_to_history("Gene-level statistics and overdispersion modelling completed.")
         
-    def select_overdispersed_genes_from_genelist(self, genes: Collection, min_mean=0):
+    def select_overdispersed_genes_from_genelist(self, genes: Collection[str], min_mean=0):
         """Select overdispersed genes/features using a custom list. Genes/features not present in the dataset are automatically filtered out.
 
         :param genes: gene list
-        :type genes: Collection
+        :type genes: Collection[str]
         :param min_mean: minimum gene expression for genes to be counted as overdispersed, defaults to 0
         :type min_mean: int, optional
         """
@@ -654,7 +654,8 @@ class Dataset():
     
     def get_category_overrepresentation(self,
                                         layer: str,
-                                        truncate_negative: bool = True
+                                        truncate_negative: bool = True,
+                                        subset_categories: Collection[str] = None
                                         ) -> pd.DataFrame:
         """Calculate Pearson residual of chi-squared test, associating GEPs for each rank (k) to categories of samples/observations. By default, truncates negative values.
 
@@ -662,11 +663,15 @@ class Dataset():
         :type layer: str
         :param truncate_negative: Truncate negative residuals to 0, defaults to True
         :type truncate_negative: bool, optional
+        :param subset_categories: Provide a subset of categories for calculating overrepresentation
+        :type subset_categories: Collection[str]
         :return: category × GEP matrix of overrepresentation values
         :rtype: pd.DataFrame
         """
         usage = self.get_usages(normalize=True).copy()
         sample_to_class = self.get_metadata_df()[layer]
+        if subset_categories is not None:
+            sample_to_class[~sample_to_class.isin(subset_categories)] = np.NaN
         usage.index = usage.index.map(sample_to_class)
         observed = usage.groupby(axis=0, level=0).sum()
         observed = observed[observed.sum(axis=1) > 0]

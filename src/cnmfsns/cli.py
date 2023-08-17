@@ -640,7 +640,7 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     snsmap.write_communities_toml( os.path.join(sns_output_dir, "communities.toml"))
     pd.DataFrame.from_dict(data=snsmap.gep_communities, orient='index').to_csv(os.path.join(sns_output_dir, 'gep_communities.txt'), sep="\t", header=False)
     
-    central_gep_ids = snsmap.get_central_geps()
+    central_gep_ids = snsmap.get_representative_programs()
     central_geps = snsmap.integration.get_geps()[central_gep_ids.index]
     central_geps.columns = pd.MultiIndex.from_tuples([[community] + list(gep_id) for community, gep_id in zip(central_gep_ids, central_gep_ids.index)], names=["Community", "dataset", "k", "GEP"])
     central_geps.to_csv(os.path.join(sns_output_dir, "central_geps.txt"), sep="\t") # outputs the GEPs to text file

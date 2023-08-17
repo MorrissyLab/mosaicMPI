@@ -394,7 +394,9 @@ class Integration():
     def get_category_overrepresentation(self,
                                         layer: str,
                                         subset_datasets: Optional[Union[str, Iterable[str]]] = None,
-                                        truncate_negative: bool = True) -> pd.DataFrame:
+                                        truncate_negative: bool = True,
+                                        subset_categories: Collection[str] = None
+                                        ) -> pd.DataFrame:
         """
         Calculate Pearson residual of chi-squared test, associating GEPs for each rank (k) to categories of samples/observations. By default, truncates negative values.
 
@@ -404,6 +406,8 @@ class Integration():
         :type subset_datasets: str or Iterable[str], optional
         :param truncate_negative: Truncate negative residuals to 0, defaults to True
         :type truncate_negative: bool, optional
+        :param subset_categories: Provide a subset of categories for calculating overrepresentation
+        :type subset_categories: Collection[str]
         :return: category × GEP matrix of overrepresentation values
         :rtype: pd.DataFrame
         """
@@ -420,7 +424,9 @@ class Integration():
         combined = {}
         for dataset_name in subset_datasets:
             if layer in self.datasets[dataset_name].adata.obs:
-                combined[dataset_name] = self.datasets[dataset_name].get_category_overrepresentation(layer=layer, truncate_negative=truncate_negative)
+                combined[dataset_name] = self.datasets[dataset_name].get_category_overrepresentation(layer=layer,
+                                                                                                     truncate_negative=truncate_negative,
+                                                                                                     subset_categories=subset_categories)
         combined = pd.concat(combined, axis=1)
         return combined
     

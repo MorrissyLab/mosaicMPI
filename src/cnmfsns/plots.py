@@ -555,7 +555,7 @@ def plot_community_by_dataset_rank(snsmap: SNS, colors: Colors, figsize: Collect
         }
 
     if highlight_central_gep:
-        central_ranks = pd.DataFrame(snsmap.get_central_geps()).reset_index().set_index(["Community", "dataset"])["k"]
+        central_ranks = pd.DataFrame(snsmap.get_representative_programs()).reset_index().set_index(["Community", "dataset"])["k"]
 
     n_datasets = snsmap.integration.n_datasets
     if figsize is None:

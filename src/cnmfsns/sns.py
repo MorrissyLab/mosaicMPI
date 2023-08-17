@@ -144,6 +144,7 @@ class SNS():
                                                   layer: str,
                                                   subset_datasets: Optional[Union[str, Iterable]] = None,
                                                   truncate_negative: bool = True,
+                                                  subset_categories: Collection[str] = None
                                                   ) -> pd.DataFrame:
         """_summary_
 
@@ -153,10 +154,15 @@ class SNS():
         :type subset_datasets: str or Iterable[str], optional
         :param truncate_negative: Truncate negative residuals to 0, defaults to True
         :type truncate_negative: bool, optional
+        :param subset_categories: Provide a subset of categories for calculating overrepresentation
+        :type subset_categories: Collection[str]
         :return: category × GEP matrix of overrepresentation values
         :rtype: pd.DataFrame
         """
-        df = self.integration.get_category_overrepresentation(layer=layer, subset_datasets=subset_datasets, truncate_negative=truncate_negative)
+        df = self.integration.get_category_overrepresentation(layer=layer,
+                                                              subset_datasets=subset_datasets,
+                                                              truncate_negative=truncate_negative,
+                                                              subset_categories=subset_categories)
         mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
         df.columns = df.columns.map(mapper)
         df = df.groupby(axis=1, level=0).mean()
@@ -577,7 +583,7 @@ class SNS():
                                                   edge_attr=["n_edges", "weight"])
         self.comm_graph.add_nodes_from(self.communities.keys())
         
-    def get_central_geps(self,
+    def get_representative_programs(self,
                          correlation_axis: Literal["geps", "usage"] = "geps"
                          ):
         """Select GEPs based on correlation with the median of all GEPs in each community
@@ -783,3 +789,38 @@ class SNS():
         """
         with open(filename, "wb") as handle:
             pickle.dump(self, handle)
+
+    def transfer_labels(self,
+                          source: str,
+                          dest: str,
+                          layer: str,
+                          subset_categories: Collection[str]
+                          ) -> pd.DataFrame:
+        """_summary_
+
+        :param source: Source dataset for label transfer
+        :type source: str
+        :param dest: Target dataset for label transfer
+        :type dest: str
+        :param layer: name of categorical data layer
+        :type layer: str
+        :param subset_categories: Provide a subset of categories for calculating overrepresentation
+        :type subset_categories: Collection[str]
+        :return: _description_
+        :rtype: pd.DataFrame
+        """
+        rprogs = self.get_representative_programs()  # representative programs
+        source_progs = rprogs.xs(source)
+        source_or = self.integration.datasets[source].get_category_overrepresentation(layer=layer, subset_categories=subset_categories)[source_progs.index]
+        source_or.columns = source_or.columns.map(source_progs)  # community-level overrepresentation based on representative programs
+        dest_progs = rprogs.xs(dest)
+        dest_usage = self.integration.datasets[dest].get_usages(normalize=False)
+        dest_cu = dest_usage[dest_progs.index]
+        dest_cu.columns = dest_cu.columns.map(dest_progs) # community-level usage based on representative programs
+        intgc = dest_cu.columns.intersection(source_or.columns)  # integrative communities (i.e., shared communities)
+        
+        source_or = source_or[intgc].div(source_or[intgc].sum(axis=1), axis=0)
+        dest_cu = dest_cu[intgc].div(dest_cu[intgc].sum(axis=1), axis=0)
+
+        transfer_df = source_or @ dest_cu[intgc].T  # multiply usage by overrepresentation for integrative communities
+        return transfer_df
