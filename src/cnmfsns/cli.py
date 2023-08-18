@@ -619,7 +619,7 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
         shared_dataset_weight = config.sns["layouts"]["community_weighted_spring"]["within_dataset"]
     )
     community_layout_algorithm = config.sns["community_layout_algorithm"]
-    snsmap.compute_community_layout(
+    snsmap.compute_community_network_layout(
         algorithm=community_layout_algorithm,
         **config.sns["community_layouts"][community_layout_algorithm]
     )
