@@ -36,12 +36,20 @@ config_defaults = {
             }
         },
         "layout_algorithm": "community_weighted_spring",   # "neato", "spring", "community_weighted_spring"
+        "community_layout_algorithm": "spring",   # "neato", "spring", "community_weighted_spring"
         "layouts": {  # parameters for each layout algorithm
             "neato": {},
             "spring": {},
             "community_weighted_spring": {
                 "within_community": 100,
                 "within_dataset": 1
+            }
+        },
+        "community_layouts": {  # parameters for each layout algorithm
+            "centroid": {},
+            "neato": {},
+            "spring": {
+                "k": 8
             }
         },
         "node_size": 30,

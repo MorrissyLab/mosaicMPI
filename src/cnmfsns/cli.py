@@ -618,7 +618,12 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
         shared_community_weight = config.sns["layouts"]["community_weighted_spring"]["within_community"],
         shared_dataset_weight = config.sns["layouts"]["community_weighted_spring"]["within_dataset"]
     )
-    
+    community_layout_algorithm = config.sns["community_layout_algorithm"]
+    snsmap.compute_community_layout(
+        algorithm=community_layout_algorithm,
+        **config.sns["community_layouts"][community_layout_algorithm]
+    )
+
     # persist SNS object to file
     snsmap.to_pkl(os.path.join(sns_output_dir, "sns.pkl"))
 

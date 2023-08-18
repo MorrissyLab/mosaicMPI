@@ -9,6 +9,7 @@ import logging
 
 import numpy as np
 import pandas as pd
+from .nancorrmp import NaNCorrMp
 
 class Integration():
     
@@ -190,15 +191,9 @@ class Integration():
         :type cpus: int, optional
         """
         if method == "pearson":
-            try:
-                from nancorrmp.nancorrmp import NaNCorrMp
-            except ImportError:
-                logging.info(f"nancorrmp not installed. To improve computation time, install using `pip install nancorrmp`. Calculating Pearson correlation matrix using 1 CPU.")
-                corr = self.get_geps().corr(method)
-            else:
-                cpu_string = "all" if cpus == -1 else str(cpus)
-                logging.info(f"nancorrmp found. Calculating Pearson correlation matrix using {cpu_string} CPUs.")
-                corr = NaNCorrMp.calculate(self.get_geps(), n_jobs=cpus)
+            cpu_string = "all" if cpus == -1 else str(cpus)
+            logging.info(f"Calculating Pearson correlation matrix using {cpu_string} CPUs.")
+            corr = NaNCorrMp.calculate(self.get_geps(), n_jobs=cpus)
         elif method == "spearman":
             logging.info(f"Calculating Spearman correlation matrix using 1 CPU.")
             corr = self.get_geps().corr(method)
