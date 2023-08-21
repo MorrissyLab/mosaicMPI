@@ -12,17 +12,17 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../src/cnmfsns'))
+sys.path.insert(0, os.path.abspath('../../src/mosaicmpi'))
 
 
 # -- Project information -----------------------------------------------------
 
-project = 'cNMF-SNS'
+project = 'mosaicMPI'
 copyright = '2023, Theodore Verhey'
 author = 'Theodore Verhey'
 
 # The full version, including alpha/beta/rc tags
-release = '1.3.0'
+release = '1.9.0'
 
 
 # -- General configuration ---------------------------------------------------

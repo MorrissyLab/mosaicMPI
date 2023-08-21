@@ -38,7 +38,7 @@ class _OrderedGroup(click.Group):
 @click.version_option(version=__version__)
 def cli():
     """
-    cNMF-SNS is a tool for deconvolution and integration of multiple datasets based on consensus Non-Negative Matrix Factorization (cNMF).
+    mosaicMPI is a tool for deconvolution and integration of multiple datasets based on consensus Non-Negative Matrix Factorization (cNMF).
     """
 
 @click.command(name="txt-to-h5ad")
@@ -91,7 +91,7 @@ def cmd_txt_to_h5ad(data_file, is_normalized, metadata, output, transpose, spars
     help="Path to input .h5ad file.")
 def cmd_update_h5ad_metadata(input_h5ad, metadata):
     """
-    Update metadata in a .h5ad file at any point in the cNMF-SNS workflow. New metadata will overwrite (`adata.obs`).
+    Update metadata in a .h5ad file at any point in the mosaicMPI workflow. New metadata will overwrite (`adata.obs`).
     """
     utils.start_logging()
     dataset = Dataset.from_h5ad(input_h5ad)
@@ -144,10 +144,10 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof):
     Examples:
 
         # use default parameters, suitable for most datasets
-        cnmfsns model-odg -n test -i test.h5ad
+        mosaicmpi model-odg -n test -i test.h5ad
 
         # Explicitly use a linear model instead of a BSpline Generalized Additive Model
-        cnmfsns model-odg -n test -i test.h5ad --default_spline_degree 0 --default_dof 1
+        mosaicmpi model-odg -n test -i test.h5ad --default_spline_degree 0 --default_dof 1
     """
     cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
     utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
@@ -223,16 +223,16 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
     Examples:
 
         # default behaviour does this
-        cnmfsns set_parameters -n test -m default_minscore -p 1.0
+        mosaicmpi set_parameters -n test -m default_minscore -p 1.0
 
         # to reproduce cNMF default behaviour (Kotliar et al., 2019, eLife)
-        cnmfsns set_parameters -n test -m cnmf_topn -p 2000          
+        mosaicmpi set_parameters -n test -m cnmf_topn -p 2000          
 
         # select top 20% of genes when ranked by od-score
-        cnmfsns set_parameters -n test -m default_quantile -p 0.8
+        mosaicmpi set_parameters -n test -m default_quantile -p 0.8
 
         # input a gene list from text file
-        cnmfsns set_parameters -n test -m genes_file -p path/to/genesfile.txt
+        mosaicmpi set_parameters -n test -m genes_file -p path/to/genesfile.txt
     """
     os.makedirs(os.path.join(output_dir, name), exist_ok=True)
     utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
@@ -304,14 +304,14 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
 
 def cmd_factorize(name, output_dir, worker_index, total_workers, slurm_script):
     """
-    Performs factorization according to parameters specified using `cnmfsns set-parameters`.
+    Performs factorization according to parameters specified using `mosaicmpi set-parameters`.
     """
     cnmf_obj = cNMF(output_dir=output_dir, name=name)
     utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
     
     run_params = utils.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
     if run_params.shape[0] == 0:
-        logging.error("No factorization to do: either no values of k were selected using `cnmfsns set-parameters` or iterations were set to 0.")
+        logging.error("No factorization to do: either no values of k were selected using `mosaicmpi set-parameters` or iterations were set to 0.")
 
     if slurm_script is None:
         cnmf_obj.factorize(worker_i=worker_index, total_workers=total_workers)
@@ -411,7 +411,7 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
     else:
         subset_columns = None
     if not dataset.has_cnmf_results:
-        logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `cnmfsns postprocess` before creating annotated usage heatmaps.")
+        logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `mosaicmpi postprocess` before creating annotated usage heatmaps.")
         sys.exit(1)
 
     # create annotated plots for each k
@@ -426,7 +426,7 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
         fig.savefig(filename, transparent=False, bbox_inches = "tight")
 
 @click.command(name="integrate")
-@click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for cNMF-SNS results")
+@click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for mosaicMPI results")
 @click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), required=False, help="TOML config file")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results. Can be used to specify multiple datasets for integration instead of a TOML config file.")
 @click.option('--cpus', type=int, default=cpus_available, show_default=True, help="Number of CPUs to use for calculating correlation matrix")
@@ -540,13 +540,13 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
 @click.command(name="create-network")
 @click.option(
     '-o', '--output_dir', type=click.Path(file_okay=False, exists=True), required=True,
-    help="Output directory for cNMF-SNS results generated using `cnmfsns integrate`")
+    help="Output directory for mosaicMPI results generated using `mosaicmpi integrate`")
 @click.option(
     '-n', '--name', type=str, default=datetime.strftime(datetime.now(), "%Y-%m-%d_%H%M%S"),
     help="Name for this network. Output from this step will be in [output_dir]/sns_networks/[name]/...")
 @click.option(
     '-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), 
-    help="TOML config file. Defaults to file output from `cnmfsns integrate` step: [output_dir]/integrate/config.toml")
+    help="TOML config file. Defaults to file output from `mosaicmpi integrate` step: [output_dir]/integrate/config.toml")
 @click.option(
     '-m', '--communities_toml', type=click.Path(exists=True, dir_okay=False), 
     help="TOML file containing communities from a previous run. This file overrides community discovery according to parameters in the config TOML file.")

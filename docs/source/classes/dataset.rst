@@ -1,7 +1,7 @@
-:class:`cnmfsns.Dataset`
+:class:`mosaicmpi.Dataset`
 ************************
 
-.. autoclass:: cnmfsns.Dataset
+.. autoclass:: mosaicmpi.Dataset
     :members:
     :undoc-members:
     :show-inheritance:

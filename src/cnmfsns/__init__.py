@@ -1,7 +1,7 @@
 
 # detect version from package metadata
 import importlib.metadata
-__version__ = importlib.metadata.version('cnmfsns')
+__version__ = importlib.metadata.version('mosaicmpi')
 
 # get CPU affinity for MP-enabled tasks
 import os

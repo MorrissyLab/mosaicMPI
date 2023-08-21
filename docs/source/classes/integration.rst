@@ -1,7 +1,7 @@
-:class:`cnmfsns.Integration`
+:class:`mosaicmpi.Integration`
 ****************************
 
-.. autoclass:: cnmfsns.Integration
+.. autoclass:: mosaicmpi.Integration
     :members:
     :undoc-members:
     :show-inheritance:

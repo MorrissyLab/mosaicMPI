@@ -2,74 +2,74 @@
 Complete API Reference
 **********************
 
-cnmfsns.cli module
+mosaicmpi.cli module
 ------------------
 
-.. automodule:: cnmfsns.cli
+.. automodule:: mosaicmpi.cli
    :members:
    :undoc-members:
    :show-inheritance:
 
-cnmfsns.cnmf module
+mosaicmpi.cnmf module
 -------------------
 
-.. automodule:: cnmfsns.cnmf
+.. automodule:: mosaicmpi.cnmf
    :members:
    :undoc-members:
    :show-inheritance:
 
-cnmfsns.colors module
+mosaicmpi.colors module
 ---------------------
 
-.. automodule:: cnmfsns.colors
+.. automodule:: mosaicmpi.colors
    :members:
    :undoc-members:
    :show-inheritance:
 
-cnmfsns.config module
+mosaicmpi.config module
 ---------------------
 
-.. automodule:: cnmfsns.config
+.. automodule:: mosaicmpi.config
    :members:
    :undoc-members:
    :show-inheritance:
 
-cnmfsns.dataset module
+mosaicmpi.dataset module
 ----------------------
 
-.. automodule:: cnmfsns.dataset
+.. automodule:: mosaicmpi.dataset
    :members:
    :undoc-members:
    :show-inheritance:
 
-cnmfsns.integration module
+mosaicmpi.integration module
 --------------------------
 
-.. automodule:: cnmfsns.integration
+.. automodule:: mosaicmpi.integration
    :members:
    :undoc-members:
    :show-inheritance:
 
-cnmfsns.plots module
+mosaicmpi.plots module
 --------------------
 
-.. automodule:: cnmfsns.plots
+.. automodule:: mosaicmpi.plots
    :members:
    :undoc-members:
    :show-inheritance:
 
-cnmfsns.sns module
+mosaicmpi.sns module
 ------------------
 
-.. automodule:: cnmfsns.sns
+.. automodule:: mosaicmpi.sns
    :members:
    :undoc-members:
    :show-inheritance:
 
-cnmfsns.utils module
+mosaicmpi.utils module
 --------------------
 
-.. automodule:: cnmfsns.utils
+.. automodule:: mosaicmpi.utils
    :members:
    :undoc-members:
    :show-inheritance:
@@ -77,7 +77,7 @@ cnmfsns.utils module
 Module contents
 ---------------
 
-.. automodule:: cnmfsns
+.. automodule:: mosaicmpi
    :members:
    :undoc-members:
    :show-inheritance:

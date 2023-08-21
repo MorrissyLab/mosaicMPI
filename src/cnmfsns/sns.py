@@ -25,10 +25,10 @@ class SNS():
                  subset_nodes: Optional[Iterable[str]] = None,
                  communities: Optional[Dict[str, Collection[str]]] = None,
                  ):
-        """Create a Solution Network Space from an :class:`~cnmfsns.integration.Integration` object.
+        """Create a Solution Network Space from an :class:`~mosaicmpi.integration.Integration` object.
 
         :param integration: Integration of multiple datasets.
-        :type integration: :class:`~cnmfsns.integration.Integration`
+        :type integration: :class:`~mosaicmpi.integration.Integration`
         :param subset_nodes: Create an SNS from a subset of the larger GEP graph, defaults to None
         :type subset_nodes: Iterable[str], optional
         :param communities: Use pre-defined communities, defaults to None
@@ -48,7 +48,7 @@ class SNS():
         :param filename: Path to pickled SNS object.
         :type filename: str
         :return: SNS
-        :rtype: :class:`cnmfsns.sns.SNS`
+        :rtype: :class:`mosaicmpi.sns.SNS`
         """
         with open(filename, "rb") as handle:
             sns_object = pickle.load(handle)

@@ -1,6 +1,6 @@
 
 ======================
-cNMF-SNS documentation
+mosaicMPI documentation
 ======================
 
 
@@ -8,10 +8,10 @@ cNMF-SNS documentation
 
 
 **Useful links**:
-`Anaconda.org <https://anaconda.org/conda-forge/cnmfsns>`__ |
-`PyPI <https://pypi.org/project/cnmfsns/>`__ |
-`GitHub <https://github.com/MorrissyLab/cNMF-SNS>`__ |
-`Issues <https://github.com/MorrissyLab/cNMF-SNS/issues>`__ |
+`Anaconda.org <https://anaconda.org/conda-forge/mosaicmpi>`__ |
+`PyPI <https://pypi.org/project/mosaicmpi/>`__ |
+`GitHub <https://github.com/MorrissyLab/mosaicMPI>`__ |
+`Issues <https://github.com/MorrissyLab/mosaicMPI/issues>`__ |
 
 
 **Citation**:

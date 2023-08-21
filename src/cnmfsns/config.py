@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import tomli
 import tomli_w
 
-# Default parameters for the config files are used when missing as input to cnmfsns integrate
+# Default parameters for the config files are used when missing as input to mosaicmpi integrate
 
 config_defaults = {
     "colormaps": {

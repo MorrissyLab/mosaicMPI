@@ -23,7 +23,7 @@ class Dataset():
                  adata: ad.AnnData,
                  force_migrate: bool = False
                  ):
-        """Creates a :class:`~cnmfsns.dataset.Dataset` object from an `ad.AnnData` object.
+        """Creates a :class:`~mosaicmpi.dataset.Dataset` object from an `ad.AnnData` object.
 
         :param adata: AnnData object with data
         :type adata: ad.AnnData
@@ -32,7 +32,7 @@ class Dataset():
         :raises RuntimeError: Backed-mode Anndata objects cannot be migrated
         :raises ValueError: Error is raised when force is False and adata is non-linearly scaled.
         :return: Object with expression and metadata
-        :rtype: :class:`~cnmfsns.dataset.Dataset`
+        :rtype: :class:`~mosaicmpi.dataset.Dataset`
         """
 
         if adata.X is None:
@@ -40,10 +40,10 @@ class Dataset():
             raise ValueError()
         
         
-        if "cnmfsns_version" in adata.uns and adata.uns["cnmfsns_version"] is not None:
+        if "mosaicmpi_version" in adata.uns and adata.uns["mosaicmpi_version"] is not None:
             self.adata = adata
         else:
-            # check and update old or external h5ad files for cNMF-SNS compliance
+            # check and update old or external h5ad files for mosaicMPI compliance
     
             X = adata.to_df()
             
@@ -86,7 +86,7 @@ class Dataset():
             # update dataset object
             self.adata = new_adata
             self.is_normalized = is_normalized
-            self.cnmfsns_version = __version__
+            self.mosaicmpi_version = __version__
     
     @classmethod
     def from_df(cls,
@@ -97,7 +97,7 @@ class Dataset():
                   var: Optional[pd.DataFrame] = None,
                   patient_id_col: Optional[str] = None
                   ):
-        """Creates a :class:`~cnmfsns.dataset.Dataset` object from a pandas DataFrame.
+        """Creates a :class:`~mosaicmpi.dataset.Dataset` object from a pandas DataFrame.
 
         :param data: An observations × variables data
         :type data: pd.DataFrame
@@ -112,7 +112,7 @@ class Dataset():
         :param patient_id_col: Name of metadata layer with patient ID information, defaults to None
         :type patient_id_col: str, optional
         :return: Object with expression and metadata
-        :rtype: :class:`~cnmfsns.dataset.Dataset`
+        :rtype: :class:`~mosaicmpi.dataset.Dataset`
         """
         if var is not None:
             var = var.reindex(data.columns)
@@ -133,16 +133,16 @@ class Dataset():
                   h5ad_file: str,
                   force_migrate=False, backed=False
                   ):
-        """Creates a :class:`~cnmfsns.dataset.Dataset` object from an AnnData-compatible .h5ad file.
+        """Creates a :class:`~mosaicmpi.dataset.Dataset` object from an AnnData-compatible .h5ad file.
 
-        :param h5ad_file: Path to .h5ad file produced by scanpy, AnnData, or cNMF-SNS
+        :param h5ad_file: Path to .h5ad file produced by scanpy, AnnData, or mosaicMPI
         :type h5ad_file: str
         :param force_migrate: forces conversion of AnnData objects even when adata.X and adata.raw.X are not linearly scaled relative to each other, defaults to False
         :type force_migrate: bool, optional
-        :param backed: Use backed mode to open h5ad file. This can save memory when the dataset is very large, but is not compatible with h5ad files produced outside of cNMF-SNS, defaults to False
+        :param backed: Use backed mode to open h5ad file. This can save memory when the dataset is very large, but is not compatible with h5ad files produced outside of mosaicMPI, defaults to False
         :type backed: bool, optional
         :return: Object with expression and metadata
-        :rtype: :class:`~cnmfsns.dataset.Dataset`
+        :rtype: :class:`~mosaicmpi.dataset.Dataset`
         """
         adata = ad.read_h5ad(h5ad_file, backed=backed)
         dataset = cls(adata=adata, force_migrate=force_migrate)
@@ -182,14 +182,14 @@ class Dataset():
         self.adata.uns["patient_id_col"] = value
 
     @property
-    def cnmfsns_version(self):
-        """cNMF-SNS version used to create the dataset
+    def mosaicmpi_version(self):
+        """mosaicMPI version used to create the dataset
 
         :return: version
         :rtype: str
         """
-        if "cnmfsns_version" in self.adata.uns:
-            version = self.adata.uns["cnmfsns_version"]
+        if "mosaicmpi_version" in self.adata.uns:
+            version = self.adata.uns["mosaicmpi_version"]
         else:
             version = None
         return version
@@ -220,9 +220,9 @@ class Dataset():
         return self.adata.uns["gene_list"]
 
 
-    @cnmfsns_version.setter
-    def cnmfsns_version(self, value: bool):
-        self.adata.uns["cnmfsns_version"] = value
+    @mosaicmpi_version.setter
+    def mosaicmpi_version(self, value: bool):
+        self.adata.uns["mosaicmpi_version"] = value
 
         
     def update_obs(self, obs):
@@ -461,7 +461,7 @@ class Dataset():
         :param seed: Random seed for reproducibility, defaults to None
         :type seed: Optional[int], optional
         :return: cNMF object
-        :rtype: :class:`cnmfsns.cnmf.cNMF`
+        :rtype: :class:`mosaicmpi.cnmf.cNMF`
         """
         cnmf_obj = cnmf.cNMF(output_dir=cnmf_output_dir, name=cnmf_name)
         

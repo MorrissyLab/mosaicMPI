@@ -20,7 +20,7 @@ def start_logging(output_path=None):
             ]
         )
         
-    logging.info(f"cNMF-SNS version {__version__}")
+    logging.info(f"mosaicMPI version {__version__}")
     return
 
 def newline_wrap(string, length=40):

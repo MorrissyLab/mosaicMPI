@@ -8,11 +8,11 @@ name = "Test integration"
 ################################
 
 [datasets.UCC]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/gbm_ffpe_proteogenomics_1_kl/gbm_ffpe_proteogenomics_1_kl.h5ad"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/mosaicMPI/cnmf_results/gbm_ffpe_proteogenomics_1_kl/gbm_ffpe_proteogenomics_1_kl.h5ad"
 color = "gold"
 
 [datasets.Yonsei]
-filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/cNMF-SNS/cnmf_results/yonsei_1_kl/yonsei_1_kl.h5ad"
+filename = "/mnt/c/Users/verhe/MorrissyLab Dropbox/Proteomics/tmt_proteomics/mosaicMPI/cnmf_results/yonsei_1_kl/yonsei_1_kl.h5ad"
 
 ##########################
 # Metadata Color Schemes #
