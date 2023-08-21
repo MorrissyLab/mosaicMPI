@@ -4,3 +4,4 @@ channels:
 dependencies:
   - mosaicmpi
   - sphinx < 7
+  - sphinx-rtd-theme
