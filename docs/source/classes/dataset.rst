@@ -1,5 +1,5 @@
 :class:`mosaicmpi.Dataset`
-************************
+**************************
 
 .. autoclass:: mosaicmpi.Dataset
     :members:

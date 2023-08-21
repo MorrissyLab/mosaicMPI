@@ -3,7 +3,7 @@ Complete API Reference
 **********************
 
 mosaicmpi.cli module
-------------------
+--------------------
 
 .. automodule:: mosaicmpi.cli
    :members:
@@ -11,7 +11,7 @@ mosaicmpi.cli module
    :show-inheritance:
 
 mosaicmpi.cnmf module
--------------------
+---------------------
 
 .. automodule:: mosaicmpi.cnmf
    :members:
@@ -19,7 +19,7 @@ mosaicmpi.cnmf module
    :show-inheritance:
 
 mosaicmpi.colors module
----------------------
+-----------------------
 
 .. automodule:: mosaicmpi.colors
    :members:
@@ -27,7 +27,7 @@ mosaicmpi.colors module
    :show-inheritance:
 
 mosaicmpi.config module
----------------------
+-----------------------
 
 .. automodule:: mosaicmpi.config
    :members:
@@ -35,7 +35,7 @@ mosaicmpi.config module
    :show-inheritance:
 
 mosaicmpi.dataset module
-----------------------
+------------------------
 
 .. automodule:: mosaicmpi.dataset
    :members:
@@ -43,7 +43,7 @@ mosaicmpi.dataset module
    :show-inheritance:
 
 mosaicmpi.integration module
---------------------------
+----------------------------
 
 .. automodule:: mosaicmpi.integration
    :members:
@@ -51,7 +51,7 @@ mosaicmpi.integration module
    :show-inheritance:
 
 mosaicmpi.plots module
---------------------
+----------------------
 
 .. automodule:: mosaicmpi.plots
    :members:
@@ -59,7 +59,7 @@ mosaicmpi.plots module
    :show-inheritance:
 
 mosaicmpi.sns module
-------------------
+--------------------
 
 .. automodule:: mosaicmpi.sns
    :members:
@@ -67,7 +67,7 @@ mosaicmpi.sns module
    :show-inheritance:
 
 mosaicmpi.utils module
---------------------
+----------------------
 
 .. automodule:: mosaicmpi.utils
    :members:
