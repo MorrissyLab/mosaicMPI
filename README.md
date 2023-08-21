@@ -38,7 +38,7 @@ Here are just a few of the things that mosaicMPI does well:
 
 ## 🔧 Install
 
-### ☁️ Latest Release
+### ✨ Latest Release
 
 Install the package with conda (in an isolated conda environment):
 ```bash
