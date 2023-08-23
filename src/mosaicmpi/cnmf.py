@@ -208,68 +208,7 @@ class cNMF():
                 'k_selection_plot' :  os.path.join(self.output_dir, self.name, self.name+'.k_selection.png'),
                 'k_selection_stats' :  os.path.join(self.output_dir, self.name, self.name+'.k_selection_stats.df.npz'),
             }
-    
-    def get_norm_counts(self,
-                        counts: ad.AnnData,
-                        tpm: ad.AnnData,
-                         high_variance_genes_filter: Optional[np.array] = None,
-                         num_highvar_genes: Optional[int] = None
-                         ):
-        """
-        :param counts: Scanpy AnnData object (cells x genes) containing raw counts. Filtered such that no genes or cells with 0 counts.
-        :type counts: ad.AnnData
-        :param tpm: Scanpy AnnData object (cells x genes) containing tpm normalized data matching counts
-        :type tpm: ad.AnnData
-        :param high_variance_genes_filter: A pre-specified list of genes considered to be high-variance.
-            Only these genes will be used during factorization of the counts matrix.
-            Must match the .var index of counts and tpm.
-            If set to None, high-variance genes will be automatically computed, using the
-            parameters below.
-        :type high_variance_genes_filter: np.array, optional
-        :param num_highvar_genes: Instead of providing an array of high-variance genes, identify this many most overdispersed genes
-            for filtering, defaults to None
-        :type num_highvar_genes: int, optional
-        """
-
-        if high_variance_genes_filter is None:
-            ## Get list of high-var genes if one wasn't provided
-            if sp.issparse(tpm.X):
-                (gene_counts_stats, gene_fano_params) = get_highvar_genes_sparse(tpm.X, numgenes=num_highvar_genes)  
-            else:
-                (gene_counts_stats, gene_fano_params) = get_highvar_genes(np.array(tpm.X), numgenes=num_highvar_genes)
-                
-            high_variance_genes_filter = list(tpm.var.index[gene_counts_stats.high_var.values])
-                
-        ## Subset out high-variance genes
-        norm_counts = counts[:, high_variance_genes_filter]
-
-        ## Scale genes to unit variance
-        if sp.issparse(tpm.X):
-            sc.pp.scale(norm_counts, zero_center=False)
-            if np.isnan(norm_counts.X.data).sum() > 0:
-                print('Warning NaNs in normalized counts matrix')                       
-        else:
-            norm_counts.X /= norm_counts.X.std(axis=0, ddof=1)
-            if np.isnan(norm_counts.X).sum().sum() > 0:
-                print('Warning NaNs in normalized counts matrix')                    
         
-        ## Save a \n-delimited list of the high-variance genes used for factorization
-        open(self.paths['nmf_genes_list'], 'w').write('\n'.join(high_variance_genes_filter))
-
-        ## Check for any cells that have 0 counts of the overdispersed genes
-        zerocells = norm_counts.X.sum(axis=1)==0
-        if zerocells.sum()>0:
-            examples = norm_counts.obs.index[zerocells]
-            print('Warning: %d cells have zero counts of overdispersed genes. E.g. %s' % (zerocells.sum(), examples[0]))
-            print('Consensus step may not run when this is the case')
-        
-        return(norm_counts)
-
-    
-    def save_norm_counts(self, norm_counts):
-        self._initialize_dirs()
-        sc.write(self.paths['normalized_counts'], norm_counts)
-
         
     def get_nmf_iter_params(self, ks, n_iter = 100,
                                random_state_seed = None,
@@ -548,7 +487,8 @@ class cNMF():
         # with usages fixed and TPM as the input matrix
         tpm = sc.read(self.paths['tpm'])
         tpm_stats = utils.load_df_from_npz(self.paths['tpm_stats'])
-        spectra_tpm = self.refit_spectra(tpm.X, norm_usages.astype(tpm.X.dtype))
+        norm_usages = norm_usages.fillna(0)  # replaces NaN usages for samples that have 0 HVG counts
+        spectra_tpm = self.refit_spectra(tpm.X, norm_usages)
         spectra_tpm = pd.DataFrame(spectra_tpm, index=rf_usages.columns, columns=tpm.var.index)
         spectra_tpm = spectra_tpm.div(spectra_tpm.sum(axis=1), axis=0) * 1e6
         

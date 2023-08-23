@@ -12,6 +12,7 @@ import os
 from glob import glob
 
 import scipy as sp
+import scanpy as sc
 import anndata as ad
 import pandas as pd
 import numpy as np
@@ -302,7 +303,7 @@ class Dataset():
         
         genes_to_keep = (~genes_with_missingvalues) & (~zerovargenes)
         
-        self.adata = self.adata[:,genes_to_keep]
+        self.adata = self.adata[:,genes_to_keep].copy()
 
     def compute_gene_stats(self, odg_default_spline_degree: int = 3, odg_default_dof: int = 8):
         """
@@ -433,6 +434,7 @@ class Dataset():
         
         # make changes to Dataset object
         self.adata.var["selected"] = selected_genes
+        self.adata.obs["hvg_all_0"] = self.to_df(normalized=True).loc[:, selected_genes].sum(axis=1) == 0
         self.adata.uns["odg"]["overdispersion_metric"] = overdispersion_metric
         self.adata.uns["odg"]["min_mean"] = min_mean
         self.adata.uns["odg"]["min_score"] = min_score if min_score is not None else ""
@@ -474,10 +476,26 @@ class Dataset():
         input_tpm_stats = pd.DataFrame([gene_tpm_mean, gene_tpm_stddev], index = ['__mean', '__std']).T
         utils.save_df_to_npz(input_tpm_stats, cnmf_obj.paths['tpm_stats'])
         overdispersed_genes = self.adata.var["selected"][self.adata.var["selected"]].index
-        norm_counts = cnmf_obj.get_norm_counts(self.adata, tpm, high_variance_genes_filter=overdispersed_genes)
+
+        # Subset out high-variance genes
+        norm_counts = self.adata[:, overdispersed_genes]
+        ## Scale genes to unit variance
+        if sp.sparse.issparse(tpm.X):
+            sc.pp.scale(norm_counts, zero_center=False)
+            if np.isnan(norm_counts.X.data).sum() > 0:
+                raise ValueError('NaNs in normalized counts matrix')                       
+        else:
+            norm_counts.X /= norm_counts.X.std(axis=0, ddof=1)
+            if np.isnan(norm_counts.X).sum().sum() > 0:
+                raise ValueError('NaNs in normalized counts matrix')                    
+
+        ## Save a \n-delimited list of the high-variance genes used for factorization
+        open(cnmf_obj.paths['nmf_genes_list'], 'w').write('\n'.join(overdispersed_genes))
+
         if norm_counts.X.dtype != np.float64:
             norm_counts.X = norm_counts.X.astype(np.float64)
-        cnmf_obj.save_norm_counts(norm_counts)
+
+        sc.write(cnmf_obj.paths['normalized_counts'], norm_counts)
 
         # save parameters for factorization step
         cnmf_obj.save_nmf_iter_params(*cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss))
