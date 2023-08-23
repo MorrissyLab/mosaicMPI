@@ -37,10 +37,15 @@ Here are just a few of the things that mosaicMPI does well:
 
 ## 🔧 Install
 
-### ✨ Latest Release
+### 🧰 System Requirements
 
-Install the package with conda (in an isolated conda environment):
+- Compatible with and tested on OS X, Windows and Linux systems
+- Memory usage depends on size and number of datasets
+
+### ✨ Latest Release
+ an isolated conda environment):
 ```bash
+Install the package with conda (in
 conda create -n mosaicmpi -c conda-forge mosaicmpi
 conda activate mosaicmpi
 ```
@@ -55,12 +60,13 @@ mosaicMPI can factorize a wide variety of datasets, but will work optimally in t
 
 ### 📓 Python interface
 
-To get started, sample datasets and a Jupyter notebook tutorial is available [here](/tutorial/tutorial.ipynb).
+To get started, download the [sample datasets](/tutorial) and [Jupyter notebook tutorial](/tutorial/tutorial.ipynb).
 
 Detailed API reference can be found on [ReadTheDocs](https://mosaicmpi.readthedocs.io/).
 
-
 ### ⌨️ Command line interface
+
+Program discovery and integration can also be conducted on the command line using the command line interface (CLI), for common workflows.
 
 See the [command line interface documentation](/CLI.md).
 
