@@ -2,7 +2,7 @@
 from .dataset import Dataset
 from .integration import Integration
 from .colors import Colors
-from .sns import SNS
+from .sns import Network
 from . import utils
 
 
@@ -242,7 +242,7 @@ def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors, subset_metada
     if subset_samples is not None:
         df = df.loc[subset_samples]
     samples = df.index.to_series()
-    metadata = dataset.adata.obs.loc[samples]
+    metadata = dataset.get_metadata_df().loc[samples]
     if subset_metadata is not None:
         metadata = metadata.loc[:, subset_metadata]
     metadata_colors = {col: colors.get_metadata_colors(col) for col in metadata.columns}
@@ -464,7 +464,7 @@ def plot_features_upset(integration: Integration, figsize=[6, 4], show_counts: b
 # SNS-related plots #
 #####################
 
-def plot_community_usage_heatmap(snsmap: SNS,
+def plot_community_usage_heatmap(snsmap: Network,
                                  colors: Colors,
                                  subset_metadata = None,
                                  subset_datasets: Optional[Union[str, Collection[str]]] = None,
@@ -518,13 +518,13 @@ def plot_community_usage_heatmap(snsmap: SNS,
     return fig
 
 
-def plot_community_usage_per_sample(snsmap: SNS,
+def plot_community_usage_per_sample(snsmap: Network,
                                     colors: Colors,
                                     dataset_name: str,
                                     layer: str
                                     ) -> Figure:
     df = snsmap.get_community_usage().loc[dataset_name].copy()
-    df.index = df.index.map(snsmap.integration.datasets[dataset_name].adata.obs[layer])
+    df.index = df.index.map(snsmap.integration.datasets[dataset_name].get_metadata_df()[layer])
     df = df.dropna(axis=1, how="all")
 
     df = df.sort_index()
@@ -544,7 +544,7 @@ def plot_community_usage_per_sample(snsmap: SNS,
     
     return fig
 
-def plot_community_by_dataset_rank(snsmap: SNS, colors: Colors, figsize: Collection = None, highlight_central_gep: bool = True):
+def plot_community_by_dataset_rank(snsmap: Network, colors: Colors, figsize: Collection = None, highlight_central_gep: bool = True):
     """
     Plot communities by dataset and rank representation
     """
@@ -668,7 +668,7 @@ def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size = 8,
 ###########################
 
 
-def plot_overrepresentation_gep_network(snsmap: SNS,
+def plot_overrepresentation_gep_network(snsmap: Network,
                                         colors: Colors,
                                         layer: str,
                                         subset_datasets: Optional[Union[str, Collection[str]]] = None,
@@ -746,7 +746,7 @@ def plot_overrepresentation_gep_network(snsmap: SNS,
         return fig
 
 
-def plot_metadata_correlation_gep_network(snsmap: SNS,
+def plot_metadata_correlation_gep_network(snsmap: Network,
                                           colors: Colors,
                                           layer: str,
                                           subset_datasets: Optional[Union[str, Collection[str]]] = None,
@@ -802,7 +802,7 @@ def plot_metadata_correlation_gep_network(snsmap: SNS,
         return fig
 
 
-def plot_gep_network_datasets(snsmap: SNS, colors: Colors, figsize = (9,6), edge_color = "#AAAAAA88", node_size = 30, node_size_kval = False, labels = False, ax = None):
+def plot_gep_network_datasets(snsmap: Network, colors: Colors, figsize = (9,6), edge_color = "#AAAAAA88", node_size = 30, node_size_kval = False, labels = False, ax = None):
      
     if ax is None:
         fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [2, 1]}, layout="tight")
@@ -850,7 +850,7 @@ def plot_gep_network_datasets(snsmap: SNS, colors: Colors, figsize = (9,6), edge
     return fig
 
 
-def plot_gep_network_communities(snsmap: SNS,
+def plot_gep_network_communities(snsmap: Network,
                                  colors: Colors,
                                  figsize = (9,6),
                                  edge_color = "#AAAAAA88",
@@ -909,7 +909,7 @@ def plot_gep_network_communities(snsmap: SNS,
         return fig
 
 
-def plot_gep_network_nsamples(snsmap: SNS,
+def plot_gep_network_nsamples(snsmap: Network,
                              colors: Colors,
                              figsize: Collection = (9, 6),
                              discretize = False,
@@ -953,7 +953,7 @@ def plot_gep_network_nsamples(snsmap: SNS,
         return fig
 
 
-def plot_gep_network_npatients(snsmap: SNS,
+def plot_gep_network_npatients(snsmap: Network,
                                colors: Colors,
                                figsize: Collection = (9, 6),
                                edge_color = "#AAAAAA88",
@@ -1002,7 +1002,7 @@ def plot_gep_network_npatients(snsmap: SNS,
 #################################
 
 
-def plot_summary_community_network(snsmap: SNS,
+def plot_summary_community_network(snsmap: Network,
                                    colors: Colors,
                                    figsize = (4, 4),
                                    edge_color = "#AAAAAA88",
@@ -1036,7 +1036,7 @@ def plot_summary_community_network(snsmap: SNS,
         return fig
 
 
-def plot_metadata_correlation_community_network(snsmap: SNS,
+def plot_metadata_correlation_community_network(snsmap: Network,
                                       colors: Colors,
                                       layer: str,
                                       method: str = "pearson",
@@ -1089,7 +1089,7 @@ def plot_metadata_correlation_community_network(snsmap: SNS,
         return fig
 
 
-def plot_overrepresentation_community_network(snsmap: SNS,
+def plot_overrepresentation_community_network(snsmap: Network,
                                         colors: Colors,
                                         layer: str,
                                         subset_datasets: Optional[Union[str, Collection[str]]] = None,
@@ -1173,7 +1173,7 @@ def plot_overrepresentation_community_network(snsmap: SNS,
 
 
 # overrepresentation bar plots
-def plot_overrepresentation_gep_bar(snsmap: SNS,
+def plot_overrepresentation_gep_bar(snsmap: Network,
                                      colors: Colors,
                                      dataset_name: str,
                                      layers: Optional[Union[str, Collection[str]]] = None,
@@ -1246,7 +1246,7 @@ def plot_overrepresentation_gep_bar(snsmap: SNS,
     return fig
 
 
-def plot_metadata_correlation_gep_bar(snsmap: SNS,
+def plot_metadata_correlation_gep_bar(snsmap: Network,
                                       colors: Colors,
                                       dataset_name: str,
                                       layers: Optional[Union[str, Collection[str]]] = None,
@@ -1326,7 +1326,7 @@ def plot_metadata_correlation_gep_bar(snsmap: SNS,
 ###########################
 
 
-def plot_overrepresentation_community_bar(snsmap: SNS,
+def plot_overrepresentation_community_bar(snsmap: Network,
                                       colors: Colors,
                                       layer: str,
                                       subset_datasets: Optional[Union[str, Collection[str]]] = None,
@@ -1359,7 +1359,7 @@ def plot_overrepresentation_community_bar(snsmap: SNS,
         return fig
 
 
-def plot_metadata_correlation_community_bar(snsmap: SNS,
+def plot_metadata_correlation_community_bar(snsmap: Network,
                                       colors: Colors,
                                       layer: str,
                                       subset_datasets: Optional[Union[str, Collection[str]]] = None,
@@ -1388,7 +1388,7 @@ def plot_metadata_correlation_community_bar(snsmap: SNS,
 
 
 
-def plot_overrepresentation_community_heatmap(snsmap: SNS,
+def plot_overrepresentation_community_heatmap(snsmap: Network,
                                       layer: str,
                                       subset_datasets: Optional[Union[str, Collection[str]]] = None,
                                       figsize: Optional[Collection] = None,
@@ -1422,7 +1422,7 @@ def plot_overrepresentation_community_heatmap(snsmap: SNS,
 #################################
 
 
-def plot_sample_entropy(snsmap: SNS,
+def plot_sample_entropy(snsmap: Network,
                      colors: Colors,
                      layer: str = "Dataset",
                      subset_datasets: Optional[Union[str, Collection[str]]] = None,

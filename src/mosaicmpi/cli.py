@@ -3,7 +3,7 @@ from .dataset import Dataset
 from .integration import Integration
 from .config import Config
 from .colors import Colors
-from .sns import SNS
+from .sns import Network
 from .cnmf import cNMF
 from .plots import *
 from . import utils, __version__, cpus_available
@@ -600,7 +600,7 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     else:
         subset_nodes = config.sns["subset_nodes"]
         
-    snsmap = SNS(integration=integration, subset_nodes=subset_nodes)
+    snsmap = Network(integration=integration, subset_nodes=subset_nodes)
     
 
     if communities_toml is None:

@@ -3,7 +3,7 @@
 
 # mosaicMPI: mosaic multi-resolution program integration
 
-![version badge](https://img.shields.io/badge/version-1.9.3-blue)
+![version badge](https://img.shields.io/badge/version-1.9.4-blue)
 [![PyPI Latest Release](https://img.shields.io/pypi/v/mosaicmpi.svg)](https://pypi.org/project/mosaicmpi/)
 [![Conda Latest Release](https://img.shields.io/conda/vn/conda-forge/mosaicmpi)](https://anaconda.org/conda-forge/mosaicmpi/)
 [![Documentation status](https://readthedocs.org/projects/mosaicmpi/badge/?version=latest&style=flat)]()
@@ -60,7 +60,7 @@ mosaicMPI can factorize a wide variety of datasets, but will work optimally in t
 
 ### 📓 Python interface
 
-To get started, download the [sample datasets](/tutorial) and [Jupyter notebook tutorial](/tutorial/tutorial.ipynb).
+To get started, download the [sample datasets](/tutorial/cptac_data) and [Jupyter notebook tutorial](/tutorial/tutorial_1.ipynb).
 
 Detailed API reference can be found on [ReadTheDocs](https://mosaicmpi.readthedocs.io/).
 

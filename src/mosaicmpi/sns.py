@@ -19,7 +19,7 @@ import tomli_w
 import networkx as nx
 from scipy.stats import entropy
 
-class SNS():
+class Network():
     def __init__(self,
                  integration: Integration,
                  subset_nodes: Optional[Iterable[str]] = None,
@@ -42,7 +42,7 @@ class SNS():
             self.gep_graph = nx.subgraph(self.gep_graph, subset_nodes)
     
     @classmethod
-    def from_pkl(cls, filename) -> "SNS":
+    def from_pkl(cls, filename) -> "Network":
         """Read an SNS object from a pickled object.
 
         :param filename: Path to pickled SNS object.

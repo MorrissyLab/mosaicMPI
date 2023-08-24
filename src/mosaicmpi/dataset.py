@@ -434,7 +434,7 @@ class Dataset():
         
         # make changes to Dataset object
         self.adata.var["selected"] = selected_genes
-        self.adata.obs["hvg_all_0"] = self.to_df(normalized=True).loc[:, selected_genes].sum(axis=1) == 0
+        self.adata.obs["hvg_all_0"] = (self.to_df(normalized=True).loc[:, selected_genes].sum(axis=1) == 0).astype("str").astype("category")
         self.adata.uns["odg"]["overdispersion_metric"] = overdispersion_metric
         self.adata.uns["odg"]["min_mean"] = min_mean
         self.adata.uns["odg"]["min_score"] = min_score if min_score is not None else ""
@@ -687,13 +687,12 @@ class Dataset():
         :rtype: pd.DataFrame
         """
         usage = self.get_usages(normalize=True).copy()
-        sample_to_class = self.get_metadata_df()[layer]
+        sample_to_class = self.get_metadata_df()[layer].replace("nan", np.NaN)
         if subset_categories is not None:
             sample_to_class[~sample_to_class.isin(subset_categories)] = np.NaN
         usage.index = usage.index.map(sample_to_class)
         observed = usage.groupby(axis=0, level=0).sum()
         observed = observed[observed.sum(axis=1) > 0]
-
         n_categories = observed.shape[0]
         if n_categories < 2:
             logging.warning(f"Overrepresentation could not be calculated for layer '{layer}', as only {n_categories} categories were found in the data. "

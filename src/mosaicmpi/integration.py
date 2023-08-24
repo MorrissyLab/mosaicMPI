@@ -103,7 +103,7 @@ class Integration():
         mapping = {}
         for dataset_name, dataset in self.datasets.items():
             if dataset.patient_id_col is not None:
-                for sample_id, patient_id in dataset.adata.obs[dataset.patient_id_col].items():
+                for sample_id, patient_id in dataset.adata.obs[dataset.patient_id_col].replace("nan", np.NaN).items():
                     mapping[(dataset_name, sample_id)] = (dataset_name, patient_id)
         if mapping:
             return pd.Series(mapping)
