@@ -1,4 +1,4 @@
-![mosaicMPI logo](https://github.com/MorrissyLab/mosaicMPI/blob/main/_static/img/logo.png?raw=True)
+![mosaicMPI logo](https://github.com/MorrissyLab/mosaicMPI/blob/main/docs/_static/img/logo.svg?raw=True)
 -----------------
 
 # mosaicMPI: mosaic multi-resolution program integration
@@ -8,6 +8,7 @@
 [![Conda Latest Release](https://img.shields.io/conda/vn/conda-forge/mosaicmpi)](https://anaconda.org/conda-forge/mosaicmpi/)
 [![Documentation status](https://readthedocs.org/projects/mosaicmpi/badge/?version=latest&style=flat)]()
 [![Downloads](https://static.pepy.tech/badge/mosaicmpi)](https://pepy.tech/project/mosaicmpi)
+[![Stars](https://img.shields.io/github/stars/MorrissyLab/mosaicMPI?logo=GitHub&color=yellow)](https://github.com/MorrissyLab/mosaicMPI)
 [![License](https://img.shields.io/pypi/l/mosaicmpi.svg)](https://github.com/MorrissyLab/mosaicMPI/blob/main/LICENSE)
 [![DOI:10.1101/2023.08.18.553919](http://img.shields.io/badge/DOI-10.1101/2023.08.18.553919-B31B1B.svg)](https://doi.org/10.1101/2023.08.18.553919)
 

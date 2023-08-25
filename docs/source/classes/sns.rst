@@ -1,5 +1,5 @@
 :class:`mosaicmpi.Network`
-**********************
+**************************
 
 .. autoclass:: mosaicmpi.Network
     :members:

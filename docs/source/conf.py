@@ -48,15 +48,15 @@ exclude_patterns = []
 
 # -- Options for HTML output ----------------------------------------------
 
-
+html_static_path = ["../../_static"]
 html_theme = "sphinx_book_theme"
 # html_theme = 'sphinx_rtd_theme'
 html_theme_options = dict(
     use_repository_button=True,
-    repository_url="https://github.com/scverse/anndata",
+    repository_url="https://github.com/MorrissyLab/mosaicMPI",
     repository_branch="main",
 )
-html_logo = "_static/img/anndata_schema.svg"
+html_logo = "_static/img/logo.svg"
 issues_github_path = "MorrissyLab/mosaicMPI"
 html_show_sphinx = False
 
