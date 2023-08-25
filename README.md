@@ -1,4 +1,4 @@
-![mosaicMPI logo](https://github.com/MorrissyLab/mosaicMPI/blob/main/logo.png?raw=True)
+![mosaicMPI logo](https://github.com/MorrissyLab/mosaicMPI/blob/main/_static/img/logo.png?raw=True)
 -----------------
 
 # mosaicMPI: mosaic multi-resolution program integration

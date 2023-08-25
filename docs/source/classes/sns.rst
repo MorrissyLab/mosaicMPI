@@ -1,7 +1,7 @@
-:class:`mosaicmpi.SNS`
+:class:`mosaicmpi.Network`
 **********************
 
-.. autoclass:: mosaicmpi.SNS
+.. autoclass:: mosaicmpi.Network
     :members:
     :undoc-members:
     :show-inheritance:
