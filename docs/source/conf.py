@@ -12,6 +12,7 @@
 #
 import os
 import sys
+from importlib import metadata
 sys.path.insert(0, os.path.abspath('../../src/mosaicmpi'))
 
 
@@ -23,6 +24,7 @@ author = 'Theodore Verhey'
 
 # The full version, including alpha/beta/rc tags
 release = '1.9.0'
+release = version = metadata.version("mosaicmpi")
 
 
 # -- General configuration ---------------------------------------------------
