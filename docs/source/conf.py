@@ -56,7 +56,7 @@ html_theme_options = dict(
     repository_url="https://github.com/MorrissyLab/mosaicMPI",
     repository_branch="main",
 )
-html_logo = "_static/img/logo.svg"
+html_logo = "_static/img/logo_only.svg"
 issues_github_path = "MorrissyLab/mosaicMPI"
 html_show_sphinx = False
 
