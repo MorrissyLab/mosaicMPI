@@ -1,4 +1,4 @@
-# Command Line Interface for mosaicMPI
+# Command-line interface and workflow
 
 Each step of a workflow can be run as a subcommand within mosaicMPI. You can see which subcommands are available using:
 
@@ -132,7 +132,7 @@ A [TOML](https://toml.io/en/) configuration file is the most flexible way to con
 mosaicmpi integrate -c config.toml -o output_directory
 ```
 
-Alternatively, you can can also initialize a mosaicMPI integration by providing a set of h5ad files from [`mosaicmpi postprocess`](#6.-postprocessing) to integrate:
+Alternatively, you can can also initialize a mosaicMPI integration by providing a set of h5ad files from `mosaicmpi postprocess` to integrate:
 
 ```bash
 mosaicmpi integrate -i file1.h5ad -i file2.h5ad -i file3.h5ad -o output_directory

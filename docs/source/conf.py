@@ -33,11 +33,16 @@ release = version = metadata.version("mosaicmpi")
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    'myst_parser',
+    "nbsphinx",
     "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
     "sphinx.ext.intersphinx",
     "sphinx.ext.coverage",
     "sphinx_copybutton"
     ]
+
+source_suffix = ['.rst', '.md']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -48,11 +53,21 @@ templates_path = ['_templates']
 exclude_patterns = []
 
 
+qualname_overrides = {
+    "mosaicmpi.sns.Network": "mosaicmpi.Network",
+    "mosaicmpi.integration.Integration": "mosaicmpi.integration.Integration",
+    "mosaicmpi.dataset.Dataset": "mosaicmpi.Dataset"
+}
+
+
+# nbsphinx
+
+nbsphinx_execute = 'never'
+
 # -- Options for HTML output ----------------------------------------------
 
 html_static_path = ["_static"]
 html_theme = "sphinx_book_theme"
-# html_theme = 'sphinx_rtd_theme'
 html_theme_options = dict(
     use_repository_button=True,
     repository_url="https://github.com/MorrissyLab/mosaicMPI",
@@ -62,7 +77,8 @@ html_logo = "_static/img/logo_only.svg"
 issues_github_path = "MorrissyLab/mosaicMPI"
 html_show_sphinx = False
 
+# autosummary
 
-# autosummary_generate = True
+autosummary_generate = True
 autoclass_content = 'both'
 autodoc_member_order = 'bysource'
