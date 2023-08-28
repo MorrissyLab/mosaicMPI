@@ -47,8 +47,8 @@ class Network():
 
         :param filename: Path to pickled SNS object.
         :type filename: str
-        :return: SNS
-        :rtype: :class:`mosaicmpi.sns.SNS`
+        :return: Network
+        :rtype: :class:`mosaicmpi.network.Network`
         """
         with open(filename, "rb") as handle:
             sns_object = pickle.load(handle)
@@ -56,7 +56,7 @@ class Network():
     
     @property
     def n_communities(self) -> int:
-        """Get the number of communities in the SNS.
+        """Get the number of communities in the Network.
 
         :return: Number of communities
         :rtype: int

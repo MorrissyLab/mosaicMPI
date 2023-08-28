@@ -13,7 +13,7 @@ else:
 from .dataset import Dataset
 from .config import Config
 from .integration import Integration
-from .sns import Network
+from .network import Network
 from .colors import Colors
 from .plots import *
 from .utils import start_logging

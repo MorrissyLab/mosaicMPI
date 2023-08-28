@@ -3,7 +3,7 @@ from .dataset import Dataset
 from .integration import Integration
 from .config import Config
 from .colors import Colors
-from .sns import Network
+from .network import Network
 from .cnmf import cNMF
 from .plots import *
 from . import utils, __version__, cpus_available

@@ -9,11 +9,5 @@
 Home <self>
 tutorials
 api
-```
-
-
-```{eval-rst}
-:ref:genindex
-:ref:modindex
-:ref:search
+modindex
 ```

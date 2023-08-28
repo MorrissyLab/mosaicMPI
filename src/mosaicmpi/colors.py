@@ -2,7 +2,7 @@
 from .dataset import Dataset
 from .integration import Integration
 from .config import Config
-from .sns import Network
+from .network import Network
 from . import utils
 
 import logging
@@ -73,7 +73,7 @@ class Colors():
         return colors
     
     @classmethod
-    def from_sns(cls, 
+    def from_network(cls, 
                  snsmap: Network,
                  pastel_factor=0.3,
                  colorblind_type=None):

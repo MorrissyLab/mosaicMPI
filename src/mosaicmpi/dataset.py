@@ -24,10 +24,10 @@ class Dataset():
                  adata: ad.AnnData,
                  force_migrate: bool = False
                  ):
-        """Creates a :class:`~mosaicmpi.dataset.Dataset` object from an `ad.AnnData` object.
+        """Creates a :class:`~mosaicmpi.dataset.Dataset` object from an :class:`anndata.AnnData` object.
 
         :param adata: AnnData object with data
-        :type adata: ad.AnnData
+        :type adata: :class:`anndata.AnnData`
         :param force_migrate: forces conversion of AnnData objects even when adata.X and adata.raw.X are not linearly scaled relative to each other, defaults to False
         :type force_migrate: bool, optional
         :raises RuntimeError: Backed-mode Anndata objects cannot be migrated
@@ -149,6 +149,24 @@ class Dataset():
         dataset = cls(adata=adata, force_migrate=force_migrate)
         return dataset
     
+    @classmethod
+    def from_anndata(cls,
+                  adata: ad.AnnData,
+                  force_migrate=False
+                  ):
+        """Creates a :class:`~mosaicmpi.dataset.Dataset` object from an :class:`anndata.AnnData` object.
+
+        :param adata: AnnData object with data
+        :type adata: :class:`anndata.AnnData`
+        :param force_migrate: forces conversion of AnnData objects even when adata.X and adata.raw.X are not linearly scaled relative to each other, defaults to False
+        :type force_migrate: bool, optional
+        :return: Object with expression and metadata
+        :rtype: :class:`~mosaicmpi.dataset.Dataset`
+        """
+        dataset = cls(adata=adata, force_migrate=force_migrate)
+        return dataset
+
+
     @property
     def is_normalized(self):
         """Outputs the normalization status of the dataset.

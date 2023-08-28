@@ -2,7 +2,7 @@
 from .dataset import Dataset
 from .integration import Integration
 from .colors import Colors
-from .sns import Network
+from .network import Network
 from . import utils
 
 

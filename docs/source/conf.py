@@ -52,17 +52,32 @@ templates_path = ['_templates']
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
 
-
-qualname_overrides = {
-    "mosaicmpi.sns.Network": "mosaicmpi.Network",
-    "mosaicmpi.integration.Integration": "mosaicmpi.integration.Integration",
-    "mosaicmpi.dataset.Dataset": "mosaicmpi.Dataset"
-}
-
-
 # nbsphinx
 
 nbsphinx_execute = 'never'
+
+# intersphinx
+
+intersphinx_mapping = dict(
+    h5py=("https://docs.h5py.org/en/latest/", None),
+    hdf5plugin=("https://hdf5plugin.readthedocs.io/en/latest/", None),
+    loompy=("https://linnarssonlab.org/loompy/", None),
+    numpy=("https://numpy.org/doc/stable/", None),
+    pandas=("https://pandas.pydata.org/pandas-docs/stable/", None),
+    python=("https://docs.python.org/3", None),
+    scipy=("https://docs.scipy.org/doc/scipy/", None),
+    sklearn=("https://scikit-learn.org/stable/", None),
+    zarr=("https://zarr.readthedocs.io/en/stable/", None),
+    xarray=("https://xarray.pydata.org/en/stable/", None),
+    anndata=("https://anndata.readthedocs.io/en/stable/", None)
+)
+qualname_overrides = {
+    "h5py._hl.group.Group": "h5py.Group",
+    "h5py._hl.files.File": "h5py.File",
+    "h5py._hl.dataset.Dataset": "h5py.Dataset",
+    "anndata._core.anndata.AnnData": "anndata.AnnData",
+}
+
 
 # -- Options for HTML output ----------------------------------------------
 
