@@ -3,8 +3,8 @@ channels:
   - defaults
 dependencies:
   - mosaicmpi
-  - sphinx
-  - sphinx-rtd-theme
+  - sphinx < 7
+  - sphinx-book-theme
   - sphinx-copybutton
   - nbsphinx
   - myst-parser

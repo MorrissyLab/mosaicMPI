@@ -25,7 +25,7 @@ class Network():
                  subset_nodes: Optional[Iterable[str]] = None,
                  communities: Optional[Dict[str, Collection[str]]] = None,
                  ):
-        """Create a Solution Network Space from an :class:`~mosaicmpi.integration.Integration` object.
+        """Create a program network from an :class:`~mosaicmpi.integration.Integration` object.
 
         :param integration: Integration of multiple datasets.
         :type integration: :class:`~mosaicmpi.integration.Integration`

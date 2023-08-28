@@ -23,8 +23,7 @@ copyright = '2023, Theodore Verhey'
 author = 'Theodore Verhey'
 
 # The full version, including alpha/beta/rc tags
-release = '1.9.0'
-release = version = metadata.version("mosaicmpi")
+release = metadata.version("mosaicmpi")
 
 
 # -- General configuration ---------------------------------------------------

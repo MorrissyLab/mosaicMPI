@@ -36,7 +36,7 @@ To identify program anchors, create an Integration object from one or more datas
 
 ## Visualizing MosaicMPI integrations
 
-Class to enable consistent color palettes identifying metadata, communities, and datasets.
+Class to enable consistent color palettes for metadata categories, program communities, and datasets.
 
 ```{eval-rst}
 .. autosummary::
@@ -46,21 +46,32 @@ Class to enable consistent color palettes identifying metadata, communities, and
 ```
 
 Visually-distinct colors can be auto-generated from Dataset, Integration, or Network objects:
+
 ```{eval-rst}
 .. autosummary::
-   :toctree: generated/
    
    mosaicmpi.Colors.from_dataset
    mosaicmpi.Colors.from_integration
    mosaicmpi.Colors.from_network
 ```
 
-
 Functions to create plots from Dataset, Integration, and Network objects are in the plots module:
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated/
+   :recursive:
 
    mosaicmpi.plots
+```
+
+
+## Complete API Reference
+
+```{eval-rst}
+.. autosummary::
+   :toctree: api/
+   :recursive:
+
+   mosaicmpi
 ```

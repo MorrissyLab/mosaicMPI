@@ -74,13 +74,13 @@ class Colors():
     
     @classmethod
     def from_network(cls, 
-                 snsmap: Network,
+                 network: Network,
                  pastel_factor=0.3,
                  colorblind_type=None):
         colors = cls()
-        colors.add_missing_dataset_colors(datasets=snsmap.integration, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
-        colors.add_missing_metadata_colors(datasets=snsmap.integration, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
-        colors.add_missing_community_colors(snsmap=snsmap, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
+        colors.add_missing_dataset_colors(datasets=network.integration, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
+        colors.add_missing_metadata_colors(datasets=network.integration, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
+        colors.add_missing_community_colors(network=network, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
         return colors
 
     @property
@@ -118,10 +118,10 @@ class Colors():
                 self.dataset_colors[name] = color
                 
     def reset_community_colors(self,
-                                     snsmap,
+                                     network,
                                      pastel_factor=0.3,
                                      colorblind_type=None) -> None:
-        communities = snsmap.communities.keys()
+        communities = network.communities.keys()
         logging.info(f"Choosing distinct community colors")
         new_colors = distinctipy.get_colors(len(communities),
                                                 pastel_factor=pastel_factor,
@@ -131,11 +131,11 @@ class Colors():
             self.community_colors[name] = color
     
     def add_missing_community_colors(self,
-                                     snsmap,
+                                     network,
                                      pastel_factor=0.3,
                                      overwrite_existing = True,
                                      colorblind_type=None) -> None:
-        communities = snsmap.communities.keys()
+        communities = network.communities.keys()
         # check provided community colors
         invalid_colors = [name for name, color in self.community_colors.items()
                           if not mpl_colors.is_color_like(color)]

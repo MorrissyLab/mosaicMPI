@@ -600,38 +600,38 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     else:
         subset_nodes = config.sns["subset_nodes"]
         
-    snsmap = Network(integration=integration, subset_nodes=subset_nodes)
+    network = Network(integration=integration, subset_nodes=subset_nodes)
     
 
     if communities_toml is None:
         community_algorithm = config.sns["community_algorithm"]
-        snsmap.community_search(algorithm=community_algorithm,
+        network.community_search(algorithm=community_algorithm,
                                 resolution=config.sns["communities"][community_algorithm]["resolution"])
     else:
-        snsmap.read_communities_from_toml(communities_toml)
-    nx.write_graphml(snsmap.gep_graph, os.path.join(sns_output_dir, "gep_graph.graphml"))
+        network.read_communities_from_toml(communities_toml)
+    nx.write_graphml(network.gep_graph, os.path.join(sns_output_dir, "gep_graph.graphml"))
 
 
 
-    snsmap.compute_layout(
+    network.compute_layout(
         algorithm=config.sns["layout_algorithm"],
         shared_community_weight = config.sns["layouts"]["community_weighted_spring"]["within_community"],
         shared_dataset_weight = config.sns["layouts"]["community_weighted_spring"]["within_dataset"]
     )
     community_layout_algorithm = config.sns["community_layout_algorithm"]
-    snsmap.compute_community_network_layout(
+    network.compute_community_network_layout(
         algorithm=community_layout_algorithm,
         **config.sns["community_layouts"][community_layout_algorithm]
     )
 
     # persist SNS object to file
-    snsmap.to_pkl(os.path.join(sns_output_dir, "sns.pkl"))
+    network.to_pkl(os.path.join(sns_output_dir, "sns.pkl"))
 
     # make figure legends for metadata
     colors = Colors.from_config(config)
     colors.add_missing_dataset_colors(datasets=integration)
     colors.add_missing_metadata_colors(datasets=integration)
-    colors.add_missing_community_colors(snsmap=snsmap)
+    colors.add_missing_community_colors(network=network)
     colors.to_toml(os.path.join(sns_output_dir, "colors.toml"))
     
     fig = colors.plot_metadata_colors_legend()
@@ -642,56 +642,56 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     fig.savefig(os.path.join(sns_output_dir, "dataset_colors_legend.pdf"))
     plt.close(fig)
     
-    snsmap.write_communities_toml( os.path.join(sns_output_dir, "communities.toml"))
-    pd.DataFrame.from_dict(data=snsmap.gep_communities, orient='index').to_csv(os.path.join(sns_output_dir, 'gep_communities.txt'), sep="\t", header=False)
+    network.write_communities_toml( os.path.join(sns_output_dir, "communities.toml"))
+    pd.DataFrame.from_dict(data=network.gep_communities, orient='index').to_csv(os.path.join(sns_output_dir, 'gep_communities.txt'), sep="\t", header=False)
     
-    central_gep_ids = snsmap.get_representative_programs()
-    central_geps = snsmap.integration.get_geps()[central_gep_ids.index]
+    central_gep_ids = network.get_representative_programs()
+    central_geps = network.integration.get_geps()[central_gep_ids.index]
     central_geps.columns = pd.MultiIndex.from_tuples([[community] + list(gep_id) for community, gep_id in zip(central_gep_ids, central_gep_ids.index)], names=["Community", "dataset", "k", "GEP"])
     central_geps.to_csv(os.path.join(sns_output_dir, "central_geps.txt"), sep="\t") # outputs the GEPs to text file
 
     logging.info("Creating SNS plots...")
 
     # plot membership of datasets and ranks for each community
-    fig = plot_community_by_dataset_rank(snsmap, colors)
+    fig = plot_community_by_dataset_rank(network, colors)
     fig.savefig(os.path.join(sns_output_dir, "communities_by_dataset_rank.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "communities_by_dataset_rank.png"), dpi=600)
     plt.close(fig)
     
     # summary community network
-    fig = plot_summary_community_network(snsmap, colors)
+    fig = plot_summary_community_network(network, colors)
     fig.savefig(os.path.join(sns_output_dir, "community_summary_network.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "community_summary_network.png"), dpi=600)
     plt.close(fig)
 
 
     # Plot network colored by dataset
-    fig = plot_gep_network_datasets(snsmap, colors)
+    fig = plot_gep_network_datasets(network, colors)
     fig.savefig(os.path.join(sns_output_dir, "gep_network_datasets.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "gep_network_datasets.png"), dpi=600)
     plt.close(fig)
     
     # Plot network colored by dataset and size by rank
-    fig = plot_gep_network_datasets(snsmap, colors, node_size_kval=True)
+    fig = plot_gep_network_datasets(network, colors, node_size_kval=True)
     fig.savefig(os.path.join(sns_output_dir, "gep_network_rank.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "gep_network_rank.png"), dpi=600)
     plt.close(fig)
     
     # Plot network colored by community
-    fig = plot_gep_network_communities(snsmap, colors)
+    fig = plot_gep_network_communities(network, colors)
     fig.savefig(os.path.join(sns_output_dir, "gep_network_communities.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "gep_network_communities.png"), dpi=600)
     plt.close(fig)
     
     # Cumulative proportion of samples contributing to each GEP
-    fig = plot_gep_network_nsamples(snsmap, colors)
+    fig = plot_gep_network_nsamples(network, colors)
     fig.savefig(os.path.join(sns_output_dir, "gep_network_n_samples.pdf"))
     fig.savefig(os.path.join(sns_output_dir, "gep_network_n_samples.png"), dpi=600)
     plt.close(fig)
     
     # Cumulative proportion of patients contributing to each GEP
-    if snsmap.integration.sample_to_patient is not None:
-        fig = plot_gep_network_npatients(snsmap, colors)
+    if network.integration.sample_to_patient is not None:
+        fig = plot_gep_network_npatients(network, colors)
         fig.savefig(os.path.join(sns_output_dir, "gep_network_n_patients.pdf"))
         fig.savefig(os.path.join(sns_output_dir, "gep_network_n_patients.png"), dpi=600)
         plt.close(fig)
@@ -700,9 +700,9 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     logging.info("Creating community usage heatmap...")
 
     # integrated community usage
-    ic_usage = snsmap.get_community_usage()
+    ic_usage = network.get_community_usage()
     ic_usage.to_csv(os.path.join(sns_output_dir, "integrated_community_usage.txt"), sep="\t")
-    fig = plot_community_usage_heatmap(snsmap, colors)
+    fig = plot_community_usage_heatmap(network, colors)
     fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage.pdf"))
     plt.close(fig)
    
@@ -713,14 +713,14 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
-            df = snsmap.get_community_category_overrepresentation(layer=layer, subset_datasets=dataset_name, truncate_negative=False)
+            df = network.get_community_category_overrepresentation(layer=layer, subset_datasets=dataset_name, truncate_negative=False)
             df.to_csv(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation", dataset_name, layer + ".txt"), sep='\t')
             
     # Community-level, numerical metadata, correlation
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
-            df = snsmap.get_community_metadata_correlation(layer=layer, subset_datasets=dataset_name, method="pearson")
+            df = network.get_community_metadata_correlation(layer=layer, subset_datasets=dataset_name, method="pearson")
             df.to_csv(os.path.join(sns_output_dir, "annotated_communities", "correlation", dataset_name, layer + ".txt"), sep='\t')
 
     logging.info("Creating community-level bar plots")
@@ -729,7 +729,7 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
-            fig = plot_overrepresentation_community_bar(snsmap, colors, layer=layer, subset_datasets=dataset_name)
+            fig = plot_overrepresentation_community_bar(network, colors, layer=layer, subset_datasets=dataset_name)
             os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar"), exist_ok=True)
             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, layer + ".pdf"))
             plt.close(fig)
@@ -738,7 +738,7 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
-            fig = plot_metadata_correlation_community_bar(snsmap, colors, layer=layer, subset_datasets=dataset_name)
+            fig = plot_metadata_correlation_community_bar(network, colors, layer=layer, subset_datasets=dataset_name)
             os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar"), exist_ok=True)
             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar", dataset_name, layer + ".pdf"))
             plt.close(fig)
@@ -750,7 +750,7 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
-            fig = plot_overrepresentation_community_network(snsmap, colors, layer=layer, subset_datasets=dataset_name)   
+            fig = plot_overrepresentation_community_network(network, colors, layer=layer, subset_datasets=dataset_name)   
             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, layer + ".pdf"))
             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, layer + ".png"), dpi=600)
             plt.close(fig)
@@ -759,7 +759,7 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
-            fig = plot_metadata_correlation_community_network(snsmap, colors, layer=layer, subset_datasets=dataset_name)   
+            fig = plot_metadata_correlation_community_network(network, colors, layer=layer, subset_datasets=dataset_name)   
             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name, layer + ".pdf"))
             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name, layer + ".png"), dpi=600)
             plt.close(fig)    
@@ -784,14 +784,14 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
 
     # GEP-level, categorical data, overrepresentation bar plots
     for dataset_name in integration.datasets:
-        fig = plot_overrepresentation_gep_bar(snsmap, colors, dataset_name=dataset_name)
+        fig = plot_overrepresentation_gep_bar(network, colors, dataset_name=dataset_name)
         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar"), exist_ok=True)
         fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar", dataset_name + ".pdf"))
         plt.close(fig)
         
     # GEP-level, numerical metadata, correlation bar plots
     for dataset_name in integration.datasets:
-        fig = plot_metadata_correlation_gep_bar(snsmap, colors, dataset_name=dataset_name)
+        fig = plot_metadata_correlation_gep_bar(network, colors, dataset_name=dataset_name)
         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation_bar"), exist_ok=True)
         fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_bar", dataset_name + ".pdf"))
         plt.close(fig)
@@ -802,7 +802,7 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
-            fig = plot_overrepresentation_gep_network(snsmap, colors, layer=layer, subset_datasets=dataset_name)   
+            fig = plot_overrepresentation_gep_network(network, colors, layer=layer, subset_datasets=dataset_name)   
             fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, layer + ".pdf"))
             fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, layer + ".png"), dpi=600)
             plt.close(fig)
@@ -811,7 +811,7 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
-            fig = plot_metadata_correlation_gep_network(snsmap, colors, layer=layer, subset_datasets=dataset_name)   
+            fig = plot_metadata_correlation_gep_network(network, colors, layer=layer, subset_datasets=dataset_name)   
             fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name, layer + ".pdf"))
             fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name, layer + ".png"), dpi=600)
             plt.close(fig)       
