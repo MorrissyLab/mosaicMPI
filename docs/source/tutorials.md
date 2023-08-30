@@ -8,5 +8,6 @@ For a quick introduction to `MosaicMPI`, check out `Getting Started with MosaicM
 :maxdepth: 1
 
 tutorials/getting-started.ipynb
-tutorials/cli-workflow.ipynb
+tutorials/cli-workflow.md
+tutoirals/configtoml.md
 ```
