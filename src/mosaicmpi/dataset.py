@@ -701,7 +701,7 @@ class Dataset():
         :type truncate_negative: bool, optional
         :param subset_categories: Provide a subset of categories for calculating overrepresentation
         :type subset_categories: Collection[str]
-        :return: category × GEP matrix of overrepresentation values
+        :return: category × program matrix of overrepresentation values
         :rtype: pd.DataFrame
         """
         usage = self.get_usages(normalize=True).copy()
