@@ -10,16 +10,10 @@ import tomli_w
 # Default parameters for the config files are used when missing as input to mosaicmpi integrate
 
 config_defaults = {
-    "colormaps": {
-        "diverging": "RdBu_r",
-        "sequential": "YlOrRd"
-    },
     "integrate": {
         "corr_method": "pearson",
         "max_median_corr": 0,
         "negative_corr_quantile": 0.95,
-        },
-    "sns": {
         "subset_nodes": "none",
         "edge_color": "#bbbbbb20",
         "edge_weight": "none",
@@ -57,12 +51,11 @@ config_defaults = {
         "pie_size_gep": 50,
         "pie_size_community": 50,
         "plot_size_community": [4, 4],
+        "write_integration_pkl": True
         },
-    "datasets": {},
-    "metadata_colors": {"missing_data": "#dddddd"},
-    "metadata_colors_group": {}
+    "datasets": {}
 }
-dataset_defaults = {}
+dataset_defaults = {"k_subset": list(range(2, 10)) + list(range(10, 65, 5))}
 
 def recursive_update(d, u):
     d = deepcopy(d)

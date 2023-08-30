@@ -151,7 +151,7 @@ class Integration():
             
         return tril
     
-    def get_geps(self, type="cnmf_gep_score") -> pd.DataFrame:
+    def get_programs(self, type="cnmf_gep_score") -> pd.DataFrame:
         """
         Get GEPs.
 
@@ -160,7 +160,7 @@ class Integration():
         :return: features × GEP matrix
         :rtype: pd.DataFrame
         """
-        gep_matrix = {dataset_name: dataset.get_geps(type=type) for dataset_name, dataset in self.datasets.items()}
+        gep_matrix = {dataset_name: dataset.get_programs(type=type) for dataset_name, dataset in self.datasets.items()}
         gep_matrix = pd.concat(gep_matrix, axis=1).sort_index(axis=0).sort_index(axis=1)
         return gep_matrix
 
@@ -193,10 +193,10 @@ class Integration():
         if method == "pearson":
             cpu_string = "all" if cpus == -1 else str(cpus)
             logging.info(f"Calculating Pearson correlation matrix using {cpu_string} CPUs.")
-            corr = NaNCorrMp.calculate(self.get_geps(), n_jobs=cpus)
+            corr = NaNCorrMp.calculate(self.get_programs(), n_jobs=cpus)
         elif method == "spearman":
             logging.info(f"Calculating Spearman correlation matrix using 1 CPU.")
-            corr = self.get_geps().corr(method)
+            corr = self.get_programs().corr(method)
         else:
             raise ValueError(f"{method} is not a valid correlation method")        
         

@@ -1,6 +1,6 @@
 
 from .integration import Integration
-from .utils import node_to_gep
+from .utils import node_to_program
 
 
 from collections.abc import Collection, Iterable
@@ -13,6 +13,7 @@ import networkx as nx
 import matplotlib as mpl
 import igraph
 import pickle
+import gzip
 import distinctipy
 import tomli
 import tomli_w
@@ -29,31 +30,58 @@ class Network():
 
         :param integration: Integration of multiple datasets.
         :type integration: :class:`~mosaicmpi.integration.Integration`
-        :param subset_nodes: Create an SNS from a subset of the larger GEP graph, defaults to None
+        :param subset_nodes: Create an SNS from a subset of the larger program graph, defaults to None
         :type subset_nodes: Iterable[str], optional
         :param communities: Use pre-defined communities, defaults to None
         :type communities: Dict[str, Collection[str]], optional
         """
         self.integration = integration
         self.subset_nodes = subset_nodes
-        self.create_gep_network()
+        self.create_program_network()
         self.communities = communities
         if subset_nodes is not None:
-            self.gep_graph = nx.subgraph(self.gep_graph, subset_nodes)
+            self.program_graph = nx.subgraph(self.program_graph, subset_nodes)
     
+    # Reading and writing from .pkl and pkl.gz files
+
     @classmethod
     def from_pkl(cls, filename) -> "Network":
-        """Read an SNS object from a pickled object.
+        """Read an Network object from a file.
 
-        :param filename: Path to pickled SNS object.
+        :param filename: path to .pkl or .pkl.gz file
         :type filename: str
         :return: Network
         :rtype: :class:`mosaicmpi.network.Network`
         """
-        with open(filename, "rb") as handle:
-            sns_object = pickle.load(handle)
-        return sns_object
-    
+        if filename.endswith(".pkl.gz"):
+            with gzip.open(filename, "rb") as handle:
+                network = pickle.load(handle)
+        elif filename.endswith(".pkl"):
+            with open(filename, "rb") as handle:
+                network = pickle.load(handle)
+        else:
+            ext = "." + filename.rpartition(".")[2]
+            raise ValueError(f"Filename endswith an invalid extension: {ext}")
+        return network
+            
+    def to_pkl(self,
+               filename: str):
+        """
+        Persists the SNS object using python's pickle format with optional gzip compression
+        :param filename: path to .pkl or .pkl.gz file
+        :type filename: str
+        """
+        if filename.endswith(".pkl.gz"):
+            with gzip.open(filename, "wb") as handle:
+                pickle.dump(self, handle)
+        elif filename.endswith(".pkl"):
+            with open(filename, "wb") as handle:
+                pickle.dump(self, handle)
+        else:
+            ext = "." + filename.rpartition(".")[2]
+            raise ValueError(f"Filename endswith an invalid extension: {ext}")
+
+
     @property
     def n_communities(self) -> int:
         """Get the number of communities in the Network.
@@ -67,20 +95,20 @@ class Network():
             return len(self.communities)
 
     @property
-    def geps_in_graph(self):
+    def programs_in_graph(self):
         """
-        Get the nodes in the GEP graph as (dataset, k, gep) tuples.
+        Get the nodes in the program graph as (dataset, k, program) tuples.
         This is helpful for indexing usage matrices etc., whereas the
-        nodes from Dataset.gep_graph.nodes will be given as pipe-delimited
+        nodes from Dataset.program_graph.nodes will be given as pipe-delimited
         strings.
 
-        :return: list of GEPs
+        :return: list of programs
         :rtype: list of tuples
         """
         nodes = []
-        for node in self.gep_graph.nodes:
-            dataset_name, k_str, gep_str = node.split("|")
-            nodes.append((dataset_name, int(k_str), int(gep_str)))
+        for node in self.program_graph.nodes:
+            dataset_name, k_str, program_str = node.split("|")
+            nodes.append((dataset_name, int(k_str), int(program_str)))
         return nodes
     
     def get_community_usage(self,
@@ -88,11 +116,11 @@ class Network():
                             normalize: bool = True,
                             discretize: bool = False):
         """
-        Get median usage of each community of GEPs for each samples. 
+        Get median usage of each community of programs for each samples. 
 
         :param subset_datasets: dataset name or iterable of dataset names to subset the results, defaults to None
         :type subset_datasets: str or Iterable[str], optional
-        :param normalize: Normalize the community usage matrix such that for each value of k, usage of all communities of GEPs sums to 1. Defaults to False
+        :param normalize: Normalize the community usage matrix such that for each value of k, usage of all communities of programs sums to 1. Defaults to False
         :type normalize: bool, optional
         :param discretize: Discretizes the community usage matrix such that for each value of k, each sample has usage of only 1 community (the one with the maximum usage). Defaults to False
         :type discretize: bool, optional
@@ -110,14 +138,14 @@ class Network():
         for dataset_name in subset_datasets:
             data = []
             for community, nodes in self.communities.items():
-                geps = []
+                programs = []
                 for node in nodes:
-                    gep = node.split("|")
-                    if gep[0] == dataset_name:
-                        geps.append((gep[0], int(gep[1]), int(gep[2])))
-                gep_comm = usage[geps]
-                gep_comm = gep_comm / gep_comm.median()
-                data.append(gep_comm.median(axis=1).rename((community, dataset_name)))
+                    program = node.split("|")
+                    if program[0] == dataset_name:
+                        programs.append((program[0], int(program[1]), int(program[2])))
+                program_comm = usage[programs]
+                program_comm = program_comm / program_comm.median()
+                data.append(program_comm.median(axis=1).rename((community, dataset_name)))
             data = pd.concat(data, axis=1).droplevel(axis=1, level=1).dropna(how="all")
             data.columns.rename("Community", inplace=True)
             ic_usage.append(data.sort_index(axis=0))
@@ -156,14 +184,14 @@ class Network():
         :type truncate_negative: bool, optional
         :param subset_categories: Provide a subset of categories for calculating overrepresentation
         :type subset_categories: Collection[str]
-        :return: category × GEP matrix of overrepresentation values
+        :return: category × program matrix of overrepresentation values
         :rtype: pd.DataFrame
         """
         df = self.integration.get_category_overrepresentation(layer=layer,
                                                               subset_datasets=subset_datasets,
                                                               truncate_negative=truncate_negative,
                                                               subset_categories=subset_categories)
-        mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
+        mapper = {tuple([program.split("|")[0], int(program.split("|")[1]), int(program.split("|")[2])]): comm for program, comm in self.program_communities.items()}
         df.columns = df.columns.map(mapper)
         df = df.groupby(axis=1, level=0).mean()
         df = df.reindex(self.ordered_community_names, axis=1)
@@ -174,7 +202,7 @@ class Network():
                                            subset_datasets: Optional[Union[str, Iterable]] = None,
                                            method: str = "pearson"
                                            ) -> pd.Series:
-        """Calculate Pearson correlation of GEP usage to numerical metadata across samples/observations.
+        """Calculate Pearson correlation of program usage to numerical metadata across samples/observations.
 
         :param layer: name of numerical data layer
         :type layer: str
@@ -182,21 +210,21 @@ class Network():
         :type subset_datasets: Optional[Union[str, Iterable]], optional
         :param method: Correlation method: "pearson", "spearman", or "kendall". Defaults to "pearson"
         :type method: str, optional
-        :return: median correlation of GEP communities to metadata
+        :return: median correlation of program communities to metadata
         :rtype: pd.Series
         """
 
         ser = self.integration.get_metadata_correlation(layer=layer, subset_datasets=subset_datasets, method=method)
-        mapper = {tuple([gep.split("|")[0], int(gep.split("|")[1]), int(gep.split("|")[2])]): comm for gep, comm in self.gep_communities.items()}
+        mapper = {tuple([program.split("|")[0], int(program.split("|")[1]), int(program.split("|")[2])]): comm for program, comm in self.program_communities.items()}
         ser.index = ser.index.map(mapper)
         ser = ser.groupby(axis=0, level=0).mean()
         ser = ser.reindex(self.ordered_community_names)
         return ser
 
     
-    def create_gep_network(self):
+    def create_program_network(self):
         """
-        Creates a GEP graph based on pairwise correlation thresholds and selected ranks.
+        Creates a program graph based on pairwise correlation thresholds and selected ranks.
         """
         # get matrix of edges after filtering
         subset = self.integration.get_corr_matrix_lowertriangle(selected_k_filter=True)
@@ -208,10 +236,10 @@ class Network():
             subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col] = subset.loc[subset.index.get_level_values(0) == dataset_row, subset.columns.get_level_values(0) == dataset_col].mask(filtered_chunk)
             subset_quantile.loc[subset_quantile.index.get_level_values(0) == dataset_row, subset_quantile.columns.get_level_values(0) == dataset_col] = subset_quantile.loc[subset_quantile.index.get_level_values(0) == dataset_row, subset_quantile.columns.get_level_values(0) == dataset_col].mask(filtered_chunk)
 
-        subset.index = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset.index])
-        subset.columns = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset.columns])
-        subset_quantile.index = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset_quantile.index])
-        subset_quantile.columns = pd.Index(["|".join((gep[0], str(gep[1]), str(gep[2]))) for gep in subset_quantile.columns])
+        subset.index = pd.Index(["|".join((program[0], str(program[1]), str(program[2]))) for program in subset.index])
+        subset.columns = pd.Index(["|".join((program[0], str(program[1]), str(program[2]))) for program in subset.columns])
+        subset_quantile.index = pd.Index(["|".join((program[0], str(program[1]), str(program[2]))) for program in subset_quantile.index])
+        subset_quantile.columns = pd.Index(["|".join((program[0], str(program[1]), str(program[2]))) for program in subset_quantile.columns])
         # Build graph
         links = subset.stack().reset_index()
         links.columns = ['node1', 'node2', 'corr']
@@ -226,9 +254,8 @@ class Network():
                 links_ds_pair = links.loc[ds_pair_indices]
                 links.loc[ds_pair_indices, "postfilter_quantile"] = links_ds_pair["corr"].rank() / links_ds_pair["corr"].count()
         G = nx.from_pandas_edgelist(links, 'node1', 'node2', ["corr", "prefilter_quantile", "postfilter_quantile"])
-
         G.add_nodes_from(subset.index.to_list()) # ensures that nodes are not excluded because they are not connected
-        self.gep_graph = G
+        self.program_graph = G
 
     def community_search(self,
                            algorithm="greedy_modularity",
@@ -236,7 +263,7 @@ class Network():
                            k: Optional[int] = None,
                            edge_weight: Optional[str] = None
                            ):
-        """Identifies communities from the GEP graph.
+        """Identifies communities from the program graph.
 
         :param algorithm: Valid algorithms include: "greedy_modularity", "leiden", "asyn_lpa", "girvan_newman". Defaults to "greedy_modularity"
         :type algorithm: str, optional
@@ -249,7 +276,7 @@ class Network():
         :type edge_weight: str, optional
         """
         
-        G = self.gep_graph
+        G = self.program_graph
             
         # Check parameters
         logging.info(f"Community search: algorithm = {algorithm}, resolution = {resolution}")
@@ -292,7 +319,7 @@ class Network():
         communities = {str(k): v for k, v in communities.items()}
 
         self.communities = communities
-        self.gep_communities = {gep: community for community, geps in communities.items() for gep in geps}
+        self.program_communities = {program: community for community, programs in communities.items() for program in programs}
 
         # also create a community network with default parameters, so that self.comm_graph is available if needed. However, self.create_community_network can be called again
         self.create_community_network()
@@ -306,7 +333,7 @@ class Network():
         communities = {str(k): v for k, v in communities.items()}
         
         self.communities = communities
-        self.gep_communities = {gep: community for community, geps in communities.items() for gep in geps}
+        self.program_communities = {program: community for community, programs in communities.items() for program in programs}
 
         # also create a community network with default parameters, so that self.comm_graph is available if needed. However, self.create_community_network can be called again
         self.create_community_network()
@@ -353,9 +380,9 @@ class Network():
             pruned = renumbered
         
         self.communities = pruned
-        self.gep_communities = {gep: community for community, geps in self.communities.items() for gep in geps}
+        self.program_communities = {program: community for community, programs in self.communities.items() for program in programs}
         self.create_community_network()
-        self.gep_graph = self.gep_graph.subgraph([node for nodes in self.communities.values() for node in nodes])  # removes nodes not in a pruned community
+        self.program_graph = self.program_graph.subgraph([node for nodes in self.communities.values() for node in nodes])  # removes nodes not in a pruned community
 
 
     @property
@@ -369,25 +396,25 @@ class Network():
         return community_names
     
     def add_community_weights_to_graph(self, base_weight = 1.0, shared_community_weight = 500, shared_dataset_weight = 1.05):
-        """Add attributes to the GEP graph for generating the community-weighted network. If an edge connects two GEPs 
+        """Add attributes to the program graph for generating the community-weighted network. If an edge connects two programs 
 
         :param base_weight: Starting weight for all edges, defaults to 1.0
         :type base_weight: float, optional
-        :param shared_community_weight: Multiplier if edges connect GEPs in the same community, defaults to 500
+        :param shared_community_weight: Multiplier if edges connect programs in the same community, defaults to 500
         :type shared_community_weight: float, optional
-        :param shared_dataset_weight: Multiplier if edges connect GEPs in the same dataset, defaults to 1.05
+        :param shared_dataset_weight: Multiplier if edges connect programs in the same dataset, defaults to 1.05
         :type shared_dataset_weight: float, optional
         """
         edge_attr = {}
-        for edge in self.gep_graph.edges:
+        for edge in self.program_graph.edges:
             weight = base_weight
-            if edge[0] in self.gep_communities and edge[1] in self.gep_communities:  # nodes might not have communities due to pruning, and so will be treated as if they are in different communities for layout purposes
-                if self.gep_communities[edge[0]] == self.gep_communities[edge[1]]:
+            if edge[0] in self.program_communities and edge[1] in self.program_communities:  # nodes might not have communities due to pruning, and so will be treated as if they are in different communities for layout purposes
+                if self.program_communities[edge[0]] == self.program_communities[edge[1]]:
                     weight *= shared_community_weight
             if edge[0].split("|")[0] == edge[1].split("|")[0]:
                 weight *= shared_dataset_weight
             edge_attr[edge] = weight
-        nx.set_edge_attributes(self.gep_graph, edge_attr, name="community_weight")
+        nx.set_edge_attributes(self.program_graph, edge_attr, name="community_weight")
 
     def write_communities_toml(self, filename: str):
         """Write communities to TOML file.
@@ -395,17 +422,17 @@ class Network():
         :param filename: path to TOML file
         :type filename: str
         """
-        toml_conformed = {str(community): sorted(geps, key=lambda x: int(x.split("|")[1])) for community, geps in self.communities.items()}
+        toml_conformed = {str(community): sorted(programs, key=lambda x: int(x.split("|")[1])) for community, programs in self.communities.items()}
         with open(filename, "wb") as fh:
             tomli_w.dump(toml_conformed, fh)
 
-    def write_gep_network_graphml(self, filename: str):
-        """Output the GEP network in graphml format.
+    def write_program_network_graphml(self, filename: str):
+        """Output the program network in graphml format.
 
         :param filename: path to .graphml file
         :type filename: str
         """
-        nx.write_graphml(self.gep_graph, filename)
+        nx.write_graphml(self.program_graph, filename)
     
     def write_community_network_graphml(self, filename):
         """Output the community network in graphml format.
@@ -429,42 +456,42 @@ class Network():
         :type algorithm: str, optional
         :param base_weight: Starting weight for all edges (applies to community_weighted_spring algorithm only), defaults to 1.0
         :type base_weight: float, optional
-        :param shared_community_weight: Multiplier if edges connect GEPs in the same community (applies to community_weighted_spring algorithm only), defaults to 500
+        :param shared_community_weight: Multiplier if edges connect programs in the same community (applies to community_weighted_spring algorithm only), defaults to 500
         :type shared_community_weight: float, optional
-        :param shared_dataset_weight: Multiplier if edges connect GEPs in the same dataset (applies to community_weighted_spring algorithm only), defaults to 1.05
+        :param shared_dataset_weight: Multiplier if edges connect programs in the same dataset (applies to community_weighted_spring algorithm only), defaults to 1.05
         :type shared_dataset_weight: float, optional
-        :param community_layout_algorithm: Algorithm for layout of community network. Choose from "centroid" (centroid of all community GEPs based on the GEP graph),
+        :param community_layout_algorithm: Algorithm for layout of community network. Choose from "centroid" (centroid of all community programs based on the program graph),
             "spring", and "neato" (from pyGraphViz, minimizes edge and node overlap). Defaults to "spring"
         :type community_layout_algorithm: str, optional
         """
         if algorithm == "neato":
-            layout = nx.nx_agraph.graphviz_layout(self.gep_graph, prog="neato", args='-Goverlap=true', **kwargs)
+            layout = nx.nx_agraph.graphviz_layout(self.program_graph, prog="neato", args='-Goverlap=true', **kwargs)
         elif algorithm == "spring":
-            layout = nx.spring_layout(self.gep_graph, **kwargs)
+            layout = nx.spring_layout(self.program_graph, **kwargs)
             layout = {node: list(coords) for node, coords in layout.items()}
         elif algorithm == "community_weighted_spring":
             self.add_community_weights_to_graph(base_weight = base_weight,
                                                 shared_community_weight=shared_community_weight,
                                                 shared_dataset_weight=shared_dataset_weight)
-            layout = nx.spring_layout(self.gep_graph, weight="community_weight", **kwargs)
+            layout = nx.spring_layout(self.program_graph, weight="community_weight", **kwargs)
             layout = {node: list(coords) for node, coords in layout.items()}
         elif algorithm == "umap":
             import umap
             from sklearn.preprocessing import StandardScaler, RobustScaler
 
-            geps = {}
+            programs = {}
             for dataset_name, dataset in self.integration.datasets.items():
                 selected_k = self.integration.k_table[(dataset_name, "selected_k")]
                 selected_k = selected_k[selected_k].index.to_list()
-                df = dataset.get_geps(k=selected_k)
-                geps[dataset_name] = df.loc[:, ]
+                df = dataset.get_programs(k=selected_k)
+                programs[dataset_name] = df.loc[:, ]
 
-            geps = pd.concat(geps, axis=1).sort_index(axis=1)
+            programs = pd.concat(programs, axis=1).sort_index(axis=1)
             # Standardize features for dimensionality reduction
-            table = geps.dropna().T
+            table = programs.dropna().T
             x = RobustScaler().fit_transform(table.values)
             embedding = umap.UMAP(n_neighbors=25, min_dist=0.01, **kwargs).fit_transform(x)
-            layout = {"|".join((gep[0], str(gep[1]), str(gep[2]))): list(emb.astype(float)) for gep, emb in zip(table.index, embedding)}
+            layout = {"|".join((program[0], str(program[1]), str(program[2]))): list(emb.astype(float)) for program, emb in zip(table.index, embedding)}
         else:
             raise ValueError(f"{algorithm} is not a valid layout algorithm ")
             
@@ -488,7 +515,7 @@ class Network():
     def compute_community_network_layout(self, algorithm: str = "spring", weight="weight", **kwargs):
         """_summary_
 
-        :param algorithm: Algorithm for layout of community network. Choose from "centroid" (centroid of all community GEPs based on the GEP graph),
+        :param algorithm: Algorithm for layout of community network. Choose from "centroid" (centroid of all community programs based on the program graph),
             "spring", and "neato" (from pyGraphViz, minimizes edge and node overlap). Defaults to "spring", defaults to "spring"
         :type algorithm: str, optional
         :param weight: Edge weights. Options include: "weight" (sqrt(n_edges)), "n_edges" (number of edges), or a custom string which represents edge attributes in self.comm_graph. Defaults to "weight"
@@ -572,7 +599,7 @@ class Network():
         for c1, n1 in self.communities.items():
             for c2, n2 in self.communities.items():
                 if c1 != c2:  # no self-loops
-                    n_edges = len(list(nx.edge_boundary(self.gep_graph, n1, n2)))
+                    n_edges = len(list(nx.edge_boundary(self.program_graph, n1, n2)))
                     weight = np.sqrt(n_edges)
                     edge_list.append((c1, c2, n_edges, weight))
 
@@ -584,27 +611,27 @@ class Network():
         self.comm_graph.add_nodes_from(self.communities.keys())
         
     def get_representative_programs(self,
-                         correlation_axis: Literal["geps", "usage"] = "geps"
+                         correlation_axis: Literal["programs", "usage"] = "programs"
                          ):
-        """Select GEPs based on correlation with the median of all GEPs in each community
+        """Select programs based on correlation with the median of all programs in each community
         
-        :param correlation_axis: axis on which to compute correlations between GEPs whether correlating the GEPs or the usages, defaults to "geps"
+        :param correlation_axis: axis on which to compute correlations between programs whether correlating the programs or the usages, defaults to "programs"
         :type correlation_axis: int or dict
-        :return: Communities, indexed by the most central GEP for each dataset
+        :return: Communities, indexed by the most central program for each dataset
         :rtype: pd.Series
         """
-        selected_geps = {}
+        selected_programs = {}
 
-        if correlation_axis == "geps":
+        if correlation_axis == "programs":
             cg = self.consensus()
-            geps_df = self.integration.get_geps()
+            programs_df = self.integration.get_programs()
             for community, nodes in self.communities.items():
                 for dataset_name in self.integration.datasets:
-                    geps = [node_to_gep(node) for node in nodes]
-                    geps = [gep for gep in geps if gep[0] == dataset_name]
-                    if geps:
-                        top_gep = geps_df[geps].corrwith(cg[(community, dataset_name)]).idxmax()
-                        selected_geps[top_gep] = community
+                    programs = [node_to_program(node) for node in nodes]
+                    programs = [program for program in programs if program[0] == dataset_name]
+                    if programs:
+                        top_program = programs_df[programs].corrwith(cg[(community, dataset_name)]).idxmax()
+                        selected_programs[top_program] = community
             
 
         elif correlation_axis == "usage":
@@ -612,79 +639,79 @@ class Network():
             usages = self.integration.get_usages(normalize=True)
             for community, nodes in self.communities.items():
                 for dataset_name in self.integration.datasets:
-                    geps = [node_to_gep(node) for node in nodes]
-                    geps = [gep for gep in geps if gep[0] == dataset_name]
-                    if geps:
-                        top_gep = usages.loc[dataset_name, geps].corrwith(cu.loc[dataset_name, community]).idxmax()
-                        selected_geps[top_gep] = community
+                    programs = [node_to_program(node) for node in nodes]
+                    programs = [program for program in programs if program[0] == dataset_name]
+                    if programs:
+                        top_program = usages.loc[dataset_name, programs].corrwith(cu.loc[dataset_name, community]).idxmax()
+                        selected_programs[top_program] = community
 
-        selected_geps = pd.Series(selected_geps, name="Community")
-        selected_geps.index.rename(("dataset", "k", "GEP"), inplace=True)
-        selected_geps = selected_geps.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
+        selected_programs = pd.Series(selected_programs, name="Community")
+        selected_programs.index.rename(("dataset", "k", "program"), inplace=True)
+        selected_programs = selected_programs.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
 
-        return selected_geps
+        return selected_programs
 
-    def get_selected_rank_geps(self,
+    def get_selected_rank_programs(self,
                             k: Union[int, Dict[str, int]]):
-        """Select GEPs based on rank. k may be either a single value for all datasets
+        """Select programs based on rank. k may be either a single value for all datasets
         as an integer, or as a dict with separate values for each dataset.
 
         :param k: a rank or dict with dataset keys and rank values, defaults to None
         :type k: int or dict
-        :return: Communities, indexed by the lowest rank GEP(s) for each dataset
+        :return: Communities, indexed by the lowest rank program(s) for each dataset
         :rtype: pd.Series
         """
-        geps = pd.Series(self.gep_communities, name="Community")
-        geps.index = pd.MultiIndex.from_tuples((node_to_gep(node) for node in geps.index), names=["dataset", "k", "GEP"])
-        geps = geps.sort_index()
+        programs = pd.Series(self.program_communities, name="Community")
+        programs.index = pd.MultiIndex.from_tuples((node_to_program(node) for node in programs.index), names=["dataset", "k", "program"])
+        programs = programs.sort_index()
         if isinstance(k, int):
-            selected_geps = geps.xs(k, level=1, drop_level=False)
+            selected_programs = programs.xs(k, level=1, drop_level=False)
         elif isinstance(k, dict):
-            selected_geps = []
+            selected_programs = []
             for dataset_name, ds_k in k.items():
-                selected_geps.append(geps.xs(dataset_name, drop_level=False).xs(ds_k, level=1, drop_level=False))
-            selected_geps = pd.concat(selected_geps)
-        selected_geps = selected_geps.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
-        return selected_geps
+                selected_programs.append(programs.xs(dataset_name, drop_level=False).xs(ds_k, level=1, drop_level=False))
+            selected_programs = pd.concat(selected_programs)
+        selected_programs = selected_programs.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
+        return selected_programs
 
 
-    def get_lowest_rank_geps(self,
+    def get_lowest_rank_programs(self,
                                 min_k: Optional[Union[int, Dict[str, int]]] = None,
                             ) -> pd.Series:
-        """Identify the GEPS that are the lowest rank for each dataset. A minimum rank to be considered may be supplied,
+        """Identify the programS that are the lowest rank for each dataset. A minimum rank to be considered may be supplied,
         either for all datasets as an integer, or as a dict with separate thresholds for each dataset.
 
-        :param min_k: a minimum rank to consider for the minimal-rank GEPs, defaults to None
+        :param min_k: a minimum rank to consider for the minimal-rank programs, defaults to None
         :type min_k: int or dict, optional
-        :return: Communities, indexed by the lowest rank GEP(s) for each dataset
+        :return: Communities, indexed by the lowest rank program(s) for each dataset
         :rtype: pd.Series
         """
-        geps = pd.Series(self.gep_communities, name="Community")
-        geps.index = pd.MultiIndex.from_tuples((node_to_gep(node) for node in geps.index), names=["dataset", "k", "GEP"])
-        geps = geps.sort_index()
+        programs = pd.Series(self.program_communities, name="Community")
+        programs.index = pd.MultiIndex.from_tuples((node_to_program(node) for node in programs.index), names=["dataset", "k", "program"])
+        programs = programs.sort_index()
         if isinstance(min_k, int):
-            geps = geps[geps.index.get_level_values(1) >= min_k]
+            programs = programs[programs.index.get_level_values(1) >= min_k]
         elif isinstance(min_k, dict):
             
             keep = []
-            for gep in geps.index:
-                if not gep[0] in min_k:
+            for program in programs.index:
+                if not program[0] in min_k:
                     keep.append(True)
-                elif gep[1] >= min_k[gep[0]]:
+                elif program[1] >= min_k[program[0]]:
                     keep.append(True)
                 else:
                     keep.append(False)
-            geps = geps[keep]
+            programs = programs[keep]
 
-        selected_geps = []
-        for community, cgeps in geps.groupby(geps):
-            for dataset_name, cdgeps in cgeps.groupby(axis=0, level=0):
-                min_rank = cdgeps.index.get_level_values(1).min()
-                min_rank_geps = cdgeps[cdgeps.index.get_level_values(1) == min_rank]
-                selected_geps.append(min_rank_geps)
-        selected_geps = pd.concat(selected_geps)
-        selected_geps = selected_geps.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
-        return selected_geps
+        selected_programs = []
+        for community, cprograms in programs.groupby(programs):
+            for dataset_name, cdprograms in cprograms.groupby(axis=0, level=0):
+                min_rank = cdprograms.index.get_level_values(1).min()
+                min_rank_programs = cdprograms[cdprograms.index.get_level_values(1) == min_rank]
+                selected_programs.append(min_rank_programs)
+        selected_programs = pd.concat(selected_programs)
+        selected_programs = selected_programs.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
+        return selected_programs
 
     def count_intracommunity_edges(self):
         """Counts edges within each community that are within and between datasets.
@@ -694,7 +721,7 @@ class Network():
         """
         edgedata = {}
         for cname, cmembers in self.communities.items():
-            community_graph = self.gep_graph.subgraph(cmembers)
+            community_graph = self.program_graph.subgraph(cmembers)
             stats = {}
             for edge in community_graph.edges:
                 datasets = tuple(sorted((edge[0].split("|")[0], edge[1].split("|")[0])))
@@ -730,7 +757,7 @@ class Network():
         selected_edges = []
         for cname, cmembers in self.communities.items():
             # get correlation values
-            community_idx = pd.MultiIndex.from_tuples([node_to_gep(node) for node in cmembers])
+            community_idx = pd.MultiIndex.from_tuples([node_to_program(node) for node in cmembers])
             ds1_idx = community_idx[community_idx.get_level_values(0) == ds1]
             if ds1_rank is not None:
                 ds1_idx = ds1_idx[ds1_idx.get_level_values(1) == ds1_rank]
@@ -743,7 +770,7 @@ class Network():
             maxcorr = maxcorr.melt(ignore_index=False).dropna()
             maxcorr["Community"] = cname 
             maxcorr = maxcorr.reset_index().set_index("Community").drop(columns="value")
-            maxcorr.columns = pd.MultiIndex.from_product([(ds1, ds2), ("dataset", "k", "GEP")])
+            maxcorr.columns = pd.MultiIndex.from_product([(ds1, ds2), ("dataset", "k", "program")])
             selected_edges.append(maxcorr)
         selected_edges = pd.concat(selected_edges)
         return selected_edges
@@ -753,42 +780,32 @@ class Network():
                   method: str = "median",
                   min_k: int = 2
                   ) -> pd.DataFrame:
-        """Generate a 'consensus' GEP for each community and dataset by taking the median of all constituent GEPs, separately for each dataset.
+        """Generate a 'consensus' program for each community and dataset by taking the median of all constituent programs, separately for each dataset.
 
         :param method: Choose from: "mean", "median". Defaults to "median"
         :type method: str, optional
-        :param min_k: Minimum k value to filter GEPs prior to consensus, defaults to 2
+        :param min_k: Minimum k value to filter programs prior to consensus, defaults to 2
         :type min_k: int, optional
         :return: Communities-Datasets × variables consensus matrix
         :rtype: pd.DataFrame
         """
-        gep_to_community = {node_to_gep(node): community for node, community in self.gep_communities.items()}
-        geps = self.integration.get_geps()
-        geps = geps.loc[:, geps.columns.get_level_values(1).astype(int) >= min_k]
-        geps.columns = pd.MultiIndex.from_arrays([geps.columns.map(gep_to_community),
-                                geps.columns.get_level_values(0)
+        program_to_community = {node_to_program(node): community for node, community in self.program_communities.items()}
+        programs = self.integration.get_programs()
+        programs = programs.loc[:, programs.columns.get_level_values(1).astype(int) >= min_k]
+        programs.columns = pd.MultiIndex.from_arrays([programs.columns.map(program_to_community),
+                                programs.columns.get_level_values(0)
                                 ], names = ("Community", "Dataset"))
-        geps = geps.loc[:, ~geps.columns.to_frame().isnull().any(axis=1)]  # Remove GEPs not in any community
-        # aggregate GEPs to community
+        programs = programs.loc[:, ~programs.columns.to_frame().isnull().any(axis=1)]  # Remove programs not in any community
+        # aggregate programs to community
         if method == "median":
-            community_scores = geps.groupby(axis=1, level=[0,1]).median()
+            community_scores = programs.groupby(axis=1, level=[0,1]).median()
         elif method == "mean":
-            community_scores = geps.groupby(axis=1, level=[0,1]).mean()
+            community_scores = programs.groupby(axis=1, level=[0,1]).mean()
         else:
             raise NotImplementedError
         community_scores = community_scores.loc[:, self.ordered_community_names]  # sort community names
         return community_scores
-        
-    def to_pkl(self,
-               filename: str):
-        """
-        Persists the SNS object using python's pickle format.
 
-        :param filename: path to .pkl file
-        :type filename: str
-        """
-        with open(filename, "wb") as handle:
-            pickle.dump(self, handle)
 
     def transfer_labels(self,
                           source: str,

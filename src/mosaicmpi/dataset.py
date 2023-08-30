@@ -100,7 +100,7 @@ class Dataset():
                   ):
         """Creates a :class:`~mosaicmpi.dataset.Dataset` object from a pandas DataFrame.
 
-        :param data: An observations × variables data
+        :param data: An observations × features data
         :type data: pd.DataFrame
         :param is_normalized: Specify if data is already normalized or whether not. Raw data will be TPM normalized prior to overdispersed gene selection, whereas already normalized data will not.
         :type is_normalized: bool
@@ -108,7 +108,7 @@ class Dataset():
         :type sparsify: bool, optional
         :param obs: An observations × metadata matrix, defaults to None
         :type obs: `pd.DataFrame`, optional
-        :param var: A variables × metadata matrix, defaults to None
+        :param var: A features × metadata matrix, defaults to None
         :type var: `pd.DataFrame`, optional
         :param patient_id_col: Name of metadata layer with patient ID information, defaults to None
         :type patient_id_col: str, optional
@@ -292,7 +292,7 @@ class Dataset():
 
         :param normalized: Set true for TPM normalized output, defaults to False
         :type normalized: bool, optional
-        :return: observations × variables data matrix
+        :return: observations × features data matrix
         :rtype: pd.DataFrame
         """
         df = self.adata.to_df()
@@ -304,21 +304,21 @@ class Dataset():
         """Removes genes with missing values or zero variance from the data matrix.
         """
         df = self.to_df(normalized=False)
-        # Check for variables with missing values
+        # Check for features with missing values
         genes_with_missingvalues = df.isnull().any()
         
-        if genes_with_missingvalues.any():
-            n_missing = genes_with_missingvalues.sum()
-            logging.warning(f"{n_missing} of {self.adata.n_vars} variables are missing values (`adata.X`).")
-            logging.warning(f"Subsetting variables to those with no missing values.")
-                
+        n_missing = genes_with_missingvalues.sum()
+        logging.info(f"{n_missing} of {self.adata.n_vars} features are missing values.")
+        if n_missing:
+            logging.warning(f"Subsetting features to those with no missing values.")
         # Check for genes with zero variance
         zerovargenes = (df.var() == 0)
-        if zerovargenes.any():
-            n_zerovar = zerovargenes.sum()
-            logging.warning(f"{n_zerovar} of {self.adata.n_vars} variables have a variance of zero in counts data (`adata.raw.X`).")
-            logging.warning(f"Subsetting variables to those with nonzero variance.")
+        n_zerovar = zerovargenes.sum()
+        logging.info(f"{n_zerovar} of {self.adata.n_vars} features have a variance of zero.")
+        if n_zerovar:
+            logging.warning(f"Subsetting features to those with nonzero variance.")
         
+
         genes_to_keep = (~genes_with_missingvalues) & (~zerovargenes)
         
         self.adata = self.adata[:,genes_to_keep].copy()
@@ -639,7 +639,7 @@ class Dataset():
         df = df.sort_index(axis=0).sort_index(axis=1)   
         return df
     
-    def get_geps(self,
+    def get_programs(self,
                  k: Union[int, Iterable] = None,
                  type="cnmf_gep_score"
                  ) -> pd.DataFrame:
@@ -713,9 +713,10 @@ class Dataset():
         observed = observed[observed.sum(axis=1) > 0]
         n_categories = observed.shape[0]
         if n_categories < 2:
-            logging.warning(f"Overrepresentation could not be calculated for layer '{layer}', as only {n_categories} categories were found in the data. "
-                            f"Note that empty values in the metadata are not considered a category. "
-                            f"Overrepresentation cannot be calculated with fewer than 2 categories for each layer. ")
+            if layer != "hvg_all_0":
+                logging.warning(f"Overrepresentation could not be calculated for layer '{layer}', as only {n_categories} categories were found in the data. "
+                                f"Note that empty values in the metadata are not considered a category. "
+                                f"Overrepresentation cannot be calculated with fewer than 2 categories for each layer. ")
             return pd.DataFrame(np.NaN, index = observed.index, columns=observed.columns)
         expected = []
         for k, obs_k in observed.groupby(axis=1, level=1):

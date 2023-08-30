@@ -10,6 +10,8 @@ if hasattr(os, "sched_getaffinity"):
 else:
     cpus_available = os.cpu_count()
 
+logging_started = False
+
 from .dataset import Dataset
 from .config import Config
 from .integration import Integration

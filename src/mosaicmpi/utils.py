@@ -1,9 +1,19 @@
 import logging
 import numpy as np
 import pandas as pd
-from . import __version__
+from matplotlib.text import Text
+from typing import Tuple, Union
+from . import __version__, logging_started
+
 
 def start_logging(output_path=None):
+    """
+    Starts logging to the console. If output_path is specified, logging messages are also appended to a log file.
+
+    :param output_path: path to log file, defaults to None
+    :type output_path: str, optional
+    """
+
     if output_path is None:
         logging.basicConfig(
             format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO,
@@ -19,56 +29,52 @@ def start_logging(output_path=None):
                 logging.StreamHandler()
             ]
         )
-        
-    logging.info(f"mosaicMPI version {__version__}")
-    return
+    global logging_started
+    if not logging_started:
+        logging.info(f"mosaicMPI version {__version__}")
+    logging_started = True
 
 def newline_wrap(string, length=40):
+    """Adds \\n characters to a string at a specified length. Helps to control the width of :class:`Text` objects in plots.
+
+    :param string: input string
+    :type string: str
+    :param length: number of characters per line, defaults to 40
+    :type length: int, optional
+    :return: wrapped string
+    :rtype: str
+    """
     return '\n'.join(string[i:i + length] for i in range(0, len(string), length))
 
-
-def fetch_hgnc_protein_coding_genes():
-    import httplib2 as http
-    import json
-    from urllib.parse import urlparse
-
-    headers = {
-    'Accept': 'application/json',
-    }
-
-    uri = 'http://rest.genenames.org'
-    path = '/search/locus_type/%22gene with protein product22'
-    target = urlparse(uri+path)
-    method = 'GET'
-    body = ''
-
-    h = http.Http()
-
-    response, content = h.request(
-    target.geturl(),
-    method,
-    body,
-    headers)
-
-    if response['status'] == '200':
-        # assume that content is a json reply
-        # parse content with the json module 
-        data = json.loads(content)
-        # print('Symbol:' + data['response']['docs'][0]['symbol'])
-
-    else:
-        raise ValueError('Fetching HGNC Protein coding genes failed: ' + response['status'])
-
-    protein_coding_genes = {entry["symbol"] for entry in data["response"]["docs"]}
-    return protein_coding_genes
-
 def save_df_to_text(obj, filename):
+    """Save DataFrame to tab-separated text file.
+
+    :param obj: dataframe or array object
+    :type obj: Union[pd.DataFrame, np.array]
+    :param filename: path to .txt file
+    :type filename: str
+    """
     obj.to_csv(filename, sep='\t')
 
-def save_df_to_npz(obj, filename):
+def save_df_to_npz(obj: Union[pd.DataFrame, np.array], filename: str):
+    """Save DataFrame to compressed npz file. Compatible with MultiIndex.
+
+    :param obj: dataframe or array object
+    :type obj: Union[pd.DataFrame, np.array]
+    :param filename: path to .npz file
+    :type filename: str
+    """
     np.savez_compressed(filename, data=obj.values, index=obj.index.values, columns=obj.columns.values)
 
-def load_df_from_npz(filename, multiindex=False):
+def load_df_from_npz(filename: str) -> pd.DataFrame:
+    """
+    Load DataFrame from compressed npz file. Compatible with MultiIndex.
+
+    :param filename: path to .npz file
+    :type filename: str
+    :return: Dataframe
+    :rtype: pd.DataFrame
+    """
     with np.load(filename, allow_pickle=True) as f:
         if any([isinstance(c, tuple) for c in (f["index"])]):
             index = pd.MultiIndex.from_tuples(f["index"])
@@ -81,12 +87,27 @@ def load_df_from_npz(filename, multiindex=False):
         obj = pd.DataFrame(f["data"], index=index, columns=columns)
     return obj
 
-def node_to_gep(node_str):
-    node_str = node_str.split("|")
-    gep = (node_str[0], int(node_str[1]), int(node_str[2]))
-    return gep
+def node_to_program(node_str) -> Tuple[str, int, int]:
+    """Converts nodes like "CPTAC|3|5" into program IDs like ("CPTAC", 3, 5).
 
-def gep_to_node(gep):
-    node = "|".join((str(p) for p in gep))
+    :param node_str: Node ID from program-level graph.
+    :type node_str: str
+    :return: Program ID for indexing dataframes
+    :rtype: Tuple[str, int, int]
+    """
+    
+    node_str = node_str.split("|")
+    program = (node_str[0], int(node_str[1]), int(node_str[2]))
+    return program
+
+def program_to_node(program: Tuple[str, int, int]) -> str:
+    """Converts program IDs like ("CPTAC", 3, 5) into node IDs like "CPTAC|3|5".
+
+    :param program: Program ID from dataframe indices
+    :type program: Tuple[str, int, int]
+    :return: Node ID for program-level graph.
+    :rtype: str
+    """
+    node = "|".join((str(p) for p in program))
     return node
     

@@ -236,7 +236,7 @@ def annotated_heatmap(
     plt.colorbar(im_heatmap, ax=ax, location="top", label=cbar_label)
     return fig
 
-def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors, subset_metadata = None, subset_samples = None, title = None, cluster_geps = False, cluster_samples = True, show_sample_labels = True):
+def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors, subset_metadata = None, subset_samples = None, title = None, cluster_programs = False, cluster_samples = True, show_sample_labels = True):
     assert dataset.has_cnmf_results
     df = dataset.get_usages(k=k)
     if subset_samples is not None:
@@ -251,7 +251,7 @@ def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors, subset_metada
                             metadata_colors=metadata_colors, 
                             missing_data_color=colors.missing_data_color, 
                             title=title,
-                            row_cluster=cluster_geps,
+                            row_cluster=cluster_programs,
                             col_cluster=cluster_samples,
                             show_sample_labels=show_sample_labels,
                             plot_col_dendrogram=True,
@@ -264,7 +264,7 @@ def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors, subset_metada
 # Integration-related plots #
 #############################
 
-def plot_gep_correlation_matrix(integration: Integration, colors, figsize=(20,20), cmap="RdBu_r", hide_gep_labels=False):
+def plot_program_correlation_matrix(integration: Integration, colors, figsize=(20,20), cmap="RdBu_r", hide_program_labels=False):
     ds_color_track = integration.corr_matrix.index.get_level_values(0).map(colors.dataset_colors)
     ds_color_track = [mpl.colors.to_rgb(c) for c in ds_color_track]
     cg = sns.clustermap(integration.corr_matrix, figsize=figsize,
@@ -272,7 +272,7 @@ def plot_gep_correlation_matrix(integration: Integration, colors, figsize=(20,20
                         row_colors=ds_color_track, col_colors=ds_color_track)
     cg.ax_heatmap.set_ylabel("")
     cg.ax_heatmap.set_xlabel("")
-    if hide_gep_labels:
+    if hide_program_labels:
         cg.ax_heatmap.set_xticks([])
         cg.ax_heatmap.set_yticks([])
     cg.ax_col_dendrogram.set_title("Program correlations")
@@ -298,7 +298,6 @@ def plot_rank_reduction(integration: Integration, figsize=None):
         ax.get_legend().remove()
         plt.tight_layout()
     return fig
-
 
 def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 3.5], overlaid=False, bins=50, inside_padding = 0.02, selected_k_filter = True, max_k_filter = True, sharey: bool = False) -> Figure:
     """Plot histograms of the pairwise correlation distribution for each dataset pair.
@@ -470,7 +469,7 @@ def plot_community_usage_heatmap(network: Network,
                                  subset_datasets: Optional[Union[str, Collection[str]]] = None,
                                  subset_samples = None,
                                  title = None,
-                                 cluster_geps = False,
+                                 cluster_programs = False,
                                  cluster_samples = True,
                                  show_sample_labels = True,
                                  prepend_dataset_colors = True):
@@ -509,7 +508,7 @@ def plot_community_usage_heatmap(network: Network,
                             metadata_colors=metadata_colors, 
                             missing_data_color=colors.missing_data_color, 
                             title=title,
-                            row_cluster=cluster_geps,
+                            row_cluster=cluster_programs,
                             col_cluster=cluster_samples,
                             show_sample_labels=show_sample_labels,
                             plot_col_dendrogram=True,
@@ -544,7 +543,7 @@ def plot_community_usage_per_sample(network: Network,
     
     return fig
 
-def plot_community_by_dataset_rank(network: Network, colors: Colors, figsize: Collection = None, highlight_central_gep: bool = True):
+def plot_community_by_dataset_rank(network: Network, colors: Colors, figsize: Collection = None, highlight_central_program: bool = True):
     """
     Plot communities by dataset and rank representation
     """
@@ -554,7 +553,7 @@ def plot_community_by_dataset_rank(network: Network, colors: Colors, figsize: Co
         2: (2, 30)     # 2 factors: marker #2 (up tick), size 30
         }
 
-    if highlight_central_gep:
+    if highlight_central_program:
         central_ranks = pd.DataFrame(network.get_representative_programs()).reset_index().set_index(["Community", "dataset"])["k"]
 
     n_datasets = network.integration.n_datasets
@@ -588,7 +587,7 @@ def plot_community_by_dataset_rank(network: Network, colors: Colors, figsize: Co
                         scatter_y.append(y)
                 ax.scatter(scatter_x, scatter_y, color=colors.dataset_colors[dataset], marker=style[0], s=style[1])
             
-            if highlight_central_gep and (community, dataset) in central_ranks:
+            if highlight_central_program and (community, dataset) in central_ranks:
                 x = network.integration.selected_k[dataset].index(central_ranks[(community, dataset)])
                 ax.add_patch(Rectangle((x - 0.4, y-0.4), width = 0.8, height = 0.8, edgecolor="k", facecolor='none'))
 
@@ -607,7 +606,7 @@ def plot_community_by_dataset_rank(network: Network, colors: Colors, figsize: Co
     cbdrlegend.append(Line2D([0],[0], marker='s', color='black', label="1 Program", markerfacecolor="black", markersize=8))
     cbdrlegend.append(Line2D([0],[0], marker=2, color='black', label="2 Programs", markerfacecolor="black", markersize=8))
     cbdrlegend.append(Line2D([0],[0], marker=None, color='black', label="3+ Programs", markerfacecolor="black", markersize=8))
-    if highlight_central_gep:
+    if highlight_central_program:
         cbdrlegend.append(Rectangle((0, 0), width = 0.8, height = 0.8, edgecolor="k", facecolor='none', label="Central Program"))
     axes[-1].legend(handles=cbdrlegend, loc='center', frameon=False)
     axes[-1].set_axis_off()
@@ -668,7 +667,7 @@ def draw_circle_bar_scale(position, size, ax, scale_factor, label_font_size = 8,
 ###########################
 
 
-def plot_overrepresentation_gep_network(network: Network,
+def plot_overrepresentation_program_network(network: Network,
                                         colors: Colors,
                                         layer: str,
                                         subset_datasets: Optional[Union[str, Collection[str]]] = None,
@@ -695,13 +694,14 @@ def plot_overrepresentation_gep_network(network: Network,
     ax_legend.set_aspect("equal")
     ax_legend.set_axis_off()
     
-    if edge_weights is None or not network.gep_graph.edges:
+    if edge_weights is None or not network.program_graph.edges:
         width = 0.2
     else:
-        width = np.array(list(nx.get_edge_attributes(network.gep_graph, edge_weights).values()))
-        width = width / np.max(width)
+        width = np.array(list(nx.get_edge_attributes(network.program_graph, edge_weights).values()))
+        if width.sum() > 0:
+            width = 20 * width / np.max(width)
 
-    nx.draw_networkx_edges(network.gep_graph, pos=network.layout, edge_color=edge_color, ax=ax_plot, width=width)
+    nx.draw_networkx_edges(network.program_graph, pos=network.layout, edge_color=edge_color, ax=ax_plot, width=width)
     overrepresentation = network.integration.get_category_overrepresentation(subset_datasets=subset_datasets, layer=layer)
     overrepresentation = overrepresentation.fillna(0)
     max_or = np.max(overrepresentation.values.flatten())
@@ -711,12 +711,12 @@ def plot_overrepresentation_gep_network(network: Network,
         scale_factor = 1 / max_or
     
     color_list = overrepresentation.index.map(colors.get_metadata_colors(layer))
-    for gep, gep_or in overrepresentation.items():
-        node = "|".join((str(p) for p in gep))
+    for program, program_or in overrepresentation.items():
+        node = "|".join((str(p) for p in program))
 
-        if node in network.gep_graph and gep_or.any():
+        if node in network.program_graph and program_or.any():
             draw_circle_bar_plot(position=network.layout[node],
-                                 enrichments=gep_or,
+                                 enrichments=program_or,
                                  scale_factor=scale_factor,
                                  colors=color_list,
                                  size=pie_size, ax=ax_plot)
@@ -746,7 +746,7 @@ def plot_overrepresentation_gep_network(network: Network,
         return fig
 
 
-def plot_metadata_correlation_gep_network(network: Network,
+def plot_metadata_correlation_program_network(network: Network,
                                           colors: Colors,
                                           layer: str,
                                           subset_datasets: Optional[Union[str, Collection[str]]] = None,
@@ -773,24 +773,25 @@ def plot_metadata_correlation_gep_network(network: Network,
     ax_legend.set_aspect("equal")
     ax_legend.set_axis_off()
     
-    if edge_weights is None or not network.gep_graph.edges:
+    if edge_weights is None or not network.program_graph.edges:
         width = 0.2
     else:
-        width = np.array(list(nx.get_edge_attributes(network.gep_graph, edge_weights).values()))
-        width = width / np.max(width)
+        width = np.array(list(nx.get_edge_attributes(network.program_graph, edge_weights).values()))
+        if width.sum() > 0:
+            width = 20 * width / np.max(width)
 
-    nx.draw_networkx_edges(network.gep_graph, pos=network.layout, edge_color=edge_color, ax=ax_plot, width=width)
+    nx.draw_networkx_edges(network.program_graph, pos=network.layout, edge_color=edge_color, ax=ax_plot, width=width)
     md_corr = network.integration.get_metadata_correlation(subset_datasets=subset_datasets, layer=layer, method=method)
 
     color_map = mpl.cm.ScalarMappable(norm=mpl.colors.Normalize(-1, 1), cmap=cmap)
     node_colors = []
-    for node in network.gep_graph:
-        gep = utils.node_to_gep(node)
-        if gep in md_corr.index:
-            node_colors.append(color_map.to_rgba(md_corr[gep]))
+    for node in network.program_graph:
+        program = utils.node_to_program(node)
+        if program in md_corr.index:
+            node_colors.append(color_map.to_rgba(md_corr[program]))
         else:
             node_colors.append(mpl.colors.to_rgba(colors.missing_data_color))
-    nx.draw(network.gep_graph, pos=network.layout, node_color=node_colors, node_size=node_size, linewidths=0, width=width, edge_color=edge_color, with_labels=False, ax=ax_plot, font_size=20)
+    nx.draw(network.program_graph, pos=network.layout, node_color=node_colors, node_size=node_size, linewidths=0, width=width, edge_color=edge_color, with_labels=False, ax=ax_plot, font_size=20)
     
     if show_legend:
         plt.colorbar(color_map, ax=ax_legend, location="left", anchor=(0, 1), panchor=(1, 1), shrink=0.5, fraction=0.15, label=f"{method.capitalize()} correlation")
@@ -802,7 +803,7 @@ def plot_metadata_correlation_gep_network(network: Network,
         return fig
 
 
-def plot_gep_network_datasets(network: Network, colors: Colors, figsize = (9,6), edge_color = "#AAAAAA88", node_size = 30, node_size_kval = False, labels = False, ax = None):
+def plot_program_network_datasets(network: Network, colors: Colors, figsize = (9,6), edge_color = "#AAAAAA88", node_size = 30, node_size_kval = False, labels = False, ax = None):
      
     if ax is None:
         fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [2, 1]}, layout="tight")
@@ -817,12 +818,12 @@ def plot_gep_network_datasets(network: Network, colors: Colors, figsize = (9,6),
     colors.plot_dataset_colors_legend(ax=ax_legend)
     
     node_colors = []
-    for node in network.gep_graph:
+    for node in network.program_graph:
         node_colors.append(colors.dataset_colors[node.split("|")[0]])
 
     # Labels without dataset names
     node_labels = {}
-    for node in network.gep_graph:
+    for node in network.program_graph:
         node_labels[node] = node.partition("|")[2]
 
     # Node sizes inversely proportional to k
@@ -831,13 +832,13 @@ def plot_gep_network_datasets(network: Network, colors: Colors, figsize = (9,6),
         selected_k_anyds = network.integration.k_table.loc[:, (slice(None), "selected_k")].any(axis=1)
         median_rank = min(selected_k_anyds[selected_k_anyds].index)
 
-        for node in network.gep_graph:
+        for node in network.program_graph:
             sizes[node] = node_size / (int(node.split("|")[1]) + 0.5 - median_rank)
-        node_sizes = [(sizes[n] if n in sizes else 0) for n in network.gep_graph]
+        node_sizes = [(sizes[n] if n in sizes else 0) for n in network.program_graph]
     else:
         node_sizes = node_size
     # Plot nodes colored by dataset
-    nx.draw(network.gep_graph,
+    nx.draw(network.program_graph,
             pos=network.layout,
             with_labels=labels,
             node_color=node_colors,
@@ -850,7 +851,7 @@ def plot_gep_network_datasets(network: Network, colors: Colors, figsize = (9,6),
     return fig
 
 
-def plot_gep_network_communities(network: Network,
+def plot_program_network_communities(network: Network,
                                  colors: Colors,
                                  figsize = (9,6),
                                  edge_color = "#AAAAAA88",
@@ -871,16 +872,16 @@ def plot_gep_network_communities(network: Network,
     colors.plot_community_colors_legend(ax=ax_legend)
     
     node_colors = []
-    for node in network.gep_graph:
-        if node in network.gep_communities:
-            node_colors.append(colors.community_colors[network.gep_communities[node]])
+    for node in network.program_graph:
+        if node in network.program_communities:
+            node_colors.append(colors.community_colors[network.program_communities[node]])
         else:
             # if node has been pruned
             node_colors.append("#00000000")
 
     # Labels without dataset names
     labels = {}
-    for node in network.gep_graph:
+    for node in network.program_graph:
         labels[node] = node.partition("|")[2]
 
     # Node sizes inversely proportional to k
@@ -889,13 +890,13 @@ def plot_gep_network_communities(network: Network,
         selected_k_anyds = network.integration.k_table.loc[:, (slice(None), "selected_k")].any(axis=1)
         median_rank = min(selected_k_anyds[selected_k_anyds].index)
 
-        for node in network.gep_graph:
+        for node in network.program_graph:
             sizes[node] = node_size / (int(node.split("|")[1]) + 0.5 - median_rank)
-        node_sizes = [(sizes[n] if n in sizes else 0) for n in network.gep_graph]
+        node_sizes = [(sizes[n] if n in sizes else 0) for n in network.program_graph]
     else:
         node_sizes = node_size
     # Plot nodes colored by dataset
-    nx.draw(network.gep_graph,
+    nx.draw(network.program_graph,
             pos=network.layout,
             with_labels=False,
             node_color=node_colors,
@@ -909,7 +910,7 @@ def plot_gep_network_communities(network: Network,
         return fig
 
 
-def plot_gep_network_nsamples(network: Network,
+def plot_program_network_nsamples(network: Network,
                              colors: Colors,
                              figsize: Collection = (9, 6),
                              discretize = False,
@@ -935,25 +936,25 @@ def plot_gep_network_nsamples(network: Network,
 
 
     if discretize:
-        labels = usages[network.geps_in_graph].sum().apply(lambda x: str(int(x))).to_dict()
+        labels = usages[network.programs_in_graph].sum().apply(lambda x: str(int(x))).to_dict()
     else:
-        labels = usages[network.geps_in_graph].sum().apply(lambda x: f"{x:.1f}").to_dict()
+        labels = usages[network.programs_in_graph].sum().apply(lambda x: f"{x:.1f}").to_dict()
     labels = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in labels.items()}
     
-    scale_factor = node_size / usages[network.geps_in_graph].sum().max()
-    sizes = (usages[network.geps_in_graph].sum() * scale_factor).to_dict()
+    scale_factor = node_size / usages[network.programs_in_graph].sum().max()
+    sizes = (usages[network.programs_in_graph].sum() * scale_factor).to_dict()
     sizes = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in sizes.items()}
     
-    colors = [colors.dataset_colors[node.partition("|")[0]] for node in network.gep_graph]
+    colors = [colors.dataset_colors[node.partition("|")[0]] for node in network.program_graph]
 
-    node_sizes = [(sizes[n] if n in sizes else 0) for n in network.gep_graph]
-    nx.draw(network.gep_graph, network.layout,
+    node_sizes = [(sizes[n] if n in sizes else 0) for n in network.program_graph]
+    nx.draw(network.program_graph, network.layout,
     with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color=edge_color, font_size=font_size, ax=ax_plot)
     if ax is None:
         return fig
 
 
-def plot_gep_network_npatients(network: Network,
+def plot_program_network_npatients(network: Network,
                                colors: Colors,
                                figsize: Collection = (9, 6),
                                edge_color = "#AAAAAA88",
@@ -981,17 +982,17 @@ def plot_gep_network_npatients(network: Network,
     usages.index = usages.index.map(s2p)
     usages = usages.groupby(axis=0, level=[0,1]).any()
         
-    labels = usages[network.geps_in_graph].sum().apply(lambda x: str(int(x))).to_dict()
+    labels = usages[network.programs_in_graph].sum().apply(lambda x: str(int(x))).to_dict()
     labels = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in labels.items()}
     
-    scale_factor = node_size / usages[network.geps_in_graph].sum().max()
-    sizes = (usages[network.geps_in_graph].sum() * scale_factor).to_dict()
+    scale_factor = node_size / usages[network.programs_in_graph].sum().max()
+    sizes = (usages[network.programs_in_graph].sum() * scale_factor).to_dict()
     sizes = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in sizes.items()}
     
-    colors = [colors.dataset_colors[node.partition("|")[0]] for node in network.gep_graph]
+    colors = [colors.dataset_colors[node.partition("|")[0]] for node in network.program_graph]
 
-    node_sizes = [(sizes[n] if n in sizes else 0) for n in network.gep_graph]
-    nx.draw(network.gep_graph, network.layout,
+    node_sizes = [(sizes[n] if n in sizes else 0) for n in network.program_graph]
+    nx.draw(network.program_graph, network.layout,
     with_labels=True, labels=labels, node_color=colors, node_size=node_sizes, linewidths=0, width=0.2, edge_color=edge_color, font_size=font_size, ax=ax_plot)
     if ax is None:
         return fig
@@ -1002,7 +1003,7 @@ def plot_gep_network_npatients(network: Network,
 #################################
 
 
-def plot_summary_community_network(network: Network,
+def plot_community_network_summary(network: Network,
                                    colors: Colors,
                                    figsize = (4, 4),
                                    edge_color = "#AAAAAA88",
@@ -1020,7 +1021,8 @@ def plot_summary_community_network(network: Network,
     G = network.comm_graph
     if G.edges:
         width = np.array(list(nx.get_edge_attributes(G, "n_edges").values()))
-        width = 20 * width / np.max(width)
+        if width.sum() > 0:
+            width = 20 * width / np.max(width)
     else:
         width = None
     sizes = np.array([len(network.communities[node]) for node in G.nodes])
@@ -1065,7 +1067,8 @@ def plot_metadata_correlation_community_network(network: Network,
     
     if network.comm_graph.edges:
         width = np.array(list(nx.get_edge_attributes(network.comm_graph, "n_edges").values()))
-        width = 20 * width / np.max(width)
+        if width.sum() > 0:
+            width = 20 * width / np.max(width)
     else:
         width = None
     sizes = np.array([len(network.communities[node]) for node in network.comm_graph.nodes])
@@ -1119,7 +1122,8 @@ def plot_overrepresentation_community_network(network: Network,
     
     if network.comm_graph.edges:
         width = np.array(list(nx.get_edge_attributes(network.comm_graph, "n_edges").values()))
-        width = 20 * width / np.max(width)
+        if width.sum() > 0:
+            width = 20 * width / np.max(width)
     else:
         width = None
 
@@ -1173,7 +1177,7 @@ def plot_overrepresentation_community_network(network: Network,
 
 
 # overrepresentation bar plots
-def plot_overrepresentation_gep_bar(network: Network,
+def plot_overrepresentation_program_bar(network: Network,
                                      colors: Colors,
                                      dataset_name: str,
                                      layers: Optional[Union[str, Collection[str]]] = None,
@@ -1189,17 +1193,17 @@ def plot_overrepresentation_gep_bar(network: Network,
         metadata_layers = layers
 
     # number of bars in each community for this dataset
-    community_gep_counts = [len([node for node in network.communities[c] if node.split("|")[0] == dataset_name]) for c in network.ordered_community_names]
+    community_program_counts = [len([node for node in network.communities[c] if node.split("|")[0] == dataset_name]) for c in network.ordered_community_names]
     
     if figsize is None:
-        figsize = (network.n_communities + 0.05 * sum(community_gep_counts),
+        figsize = (network.n_communities + 0.05 * sum(community_program_counts),
                    (len(metadata_layers) + 1)* 2)
     
     fig, axes = plt.subplots(
         len(metadata_layers) + 1, network.n_communities,
         figsize = figsize,
         sharey='row', squeeze=False,
-        gridspec_kw={"width_ratios": community_gep_counts},
+        gridspec_kw={"width_ratios": community_program_counts},
         layout="tight")
     fig.supxlabel("Program")
     fig.supylabel("Overrepresentation")
@@ -1210,14 +1214,14 @@ def plot_overrepresentation_gep_bar(network: Network,
     for col, community in enumerate(network.ordered_community_names):
         ax = axes[0, col]
         ax.set_title(community)
-        geps = []
+        programs = []
         for node in network.communities[community]:
-            dataset_str, k_str, gep_str = node.split("|")
+            dataset_str, k_str, program_str = node.split("|")
             if dataset_str == dataset_name:
-                geps.append((int(k_str), int(gep_str)))
-        if geps:
-            geps = sorted(geps)
-            kvals = pd.Series([k for k, gep in geps], index=geps)
+                programs.append((int(k_str), int(program_str)))
+        if programs:
+            programs = sorted(programs)
+            kvals = pd.Series([k for k, program in programs], index=programs)
             kvals.plot.bar(width=0.9, ax=ax, legend=None, color="#666666")
         ax.set_xlabel("")
         ax.set_xticks([])
@@ -1228,14 +1232,14 @@ def plot_overrepresentation_gep_bar(network: Network,
         overrepresentation = dataset.get_category_overrepresentation(layer=layer)
         for col, community in enumerate(network.ordered_community_names):
             ax = axes[row, col]
-            geps = []
+            programs = []
             for node in network.communities[community]:
-                dataset_str, k_str, gep_str = node.split("|")
+                dataset_str, k_str, program_str = node.split("|")
                 if dataset_str == dataset_name:
-                    geps.append((int(k_str), int(gep_str)))
-            geps = sorted(geps)
-            if geps:
-                overrepresentation[geps].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=colors.get_metadata_colors(layer))
+                    programs.append((int(k_str), int(program_str)))
+            programs = sorted(programs)
+            if programs:
+                overrepresentation[programs].T.plot.bar(stacked=True, width=0.9, ax=ax, legend=None, color=colors.get_metadata_colors(layer))
             ax.set_xlabel("")
             ax.set_xticks([])
             if col == 0:
@@ -1246,7 +1250,7 @@ def plot_overrepresentation_gep_bar(network: Network,
     return fig
 
 
-def plot_metadata_correlation_gep_bar(network: Network,
+def plot_metadata_correlation_program_bar(network: Network,
                                       colors: Colors,
                                       dataset_name: str,
                                       layers: Optional[Union[str, Collection[str]]] = None,
@@ -1265,17 +1269,17 @@ def plot_metadata_correlation_gep_bar(network: Network,
         metadata_layers = layers
 
     # number of bars in each community for this dataset
-    community_gep_counts = [len([node for node in network.communities[c] if node.split("|")[0] == dataset_name]) for c in network.ordered_community_names]
+    community_program_counts = [len([node for node in network.communities[c] if node.split("|")[0] == dataset_name]) for c in network.ordered_community_names]
     
     if figsize is None:
-        figsize = (network.n_communities + 0.05 * sum(community_gep_counts),
+        figsize = (network.n_communities + 0.05 * sum(community_program_counts),
                    (len(metadata_layers) + 1)* 2)
     
     fig, axes = plt.subplots(
         len(metadata_layers) + 1, network.n_communities,
         figsize = figsize,
         sharey='row', squeeze=False,
-        gridspec_kw={"width_ratios": community_gep_counts},
+        gridspec_kw={"width_ratios": community_program_counts},
         layout="tight")
     fig.supxlabel("Program")
     fig.supylabel(method.capitalize() + " Correlation")
@@ -1285,14 +1289,14 @@ def plot_metadata_correlation_gep_bar(network: Network,
     axes[0, 0].set_ylabel("rank (k)")
     for col, community in enumerate(network.ordered_community_names):
         ax = axes[0, col]
-        geps = []
+        programs = []
         for node in network.communities[community]:
-            dataset_str, k_str, gep_str = node.split("|")
+            dataset_str, k_str, program_str = node.split("|")
             if dataset_str == dataset_name:
-                geps.append((int(k_str), int(gep_str)))
-        if geps:
-            geps = sorted(geps)
-            kvals = pd.Series([k for k, gep in geps], index=geps)
+                programs.append((int(k_str), int(program_str)))
+        if programs:
+            programs = sorted(programs)
+            kvals = pd.Series([k for k, program in programs], index=programs)
             kvals.plot.bar(width=0.9, ax=ax, legend=None, color="#666666")
         ax.set_xlabel("")
         ax.set_xticks([])
@@ -1303,14 +1307,14 @@ def plot_metadata_correlation_gep_bar(network: Network,
         md_corr = dataset.get_metadata_correlation(layer=layer, method=method)
         for col, community in enumerate(network.ordered_community_names):
             ax = axes[row, col]
-            geps = []
+            programs = []
             for node in network.communities[community]:
-                dataset_str, k_str, gep_str = node.split("|")
+                dataset_str, k_str, program_str = node.split("|")
                 if dataset_str == dataset_name:
-                    geps.append((int(k_str), int(gep_str)))
-            geps = sorted(geps)
-            if geps:
-                md_corr[geps].T.plot.bar(width=0.9, ax=ax, legend=None, color="#444444")
+                    programs.append((int(k_str), int(program_str)))
+            programs = sorted(programs)
+            if programs:
+                md_corr[programs].T.plot.bar(width=0.9, ax=ax, legend=None, color="#444444")
             ax.set_xlabel("")
             ax.set_xticks([])
             if col == 0:

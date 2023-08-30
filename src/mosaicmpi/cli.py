@@ -109,6 +109,9 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
     "-o", "--output", type=click.Path(dir_okay=False, exists=False), required=False,
     help="Output .h5ad file. If not specified, no output file will be written.")
 def cmd_check_h5ad(input, output):
+    """
+    Removes unfactorizable genes from a .h5ad file.
+    """
     utils.start_logging()
     dataset = Dataset.from_h5ad(input)
     dataset.remove_unfactorizable_genes()
@@ -328,20 +331,20 @@ def cmd_factorize(name, output_dir, worker_index, total_workers, slurm_script):
 @click.option('--cpus', type=int, default=1, show_default=True, help="Number of CPUs to use. Note that multi-CPU runs can use large amounts of memory and stall silently.")
 @click.option(
     '--local_density_threshold', type=float, default=2.0, show_default=True,
-    help="Threshold for the local density filtering prior to GEP consensus. Acceptable thresholds are > 0 and <= 2 (2.0 is no filtering).")
+    help="Threshold for the local density filtering prior to program consensus. Acceptable thresholds are > 0 and <= 2 (2.0 is no filtering).")
 @click.option(
     '--local_neighborhood_size', type=float, default=0.3, show_default=True,
     help="Fraction of the number of replicates to use as nearest neighbors for local density filtering.")
 @click.option(
     '--skip_missing_iterations', is_flag=True,
-    help="If specified, consensus GEPs and usages will be calculated even though individual iterations are missing.")
+    help="If specified, consensus programs and usages will be calculated even though individual iterations are missing.")
 @click.option(
     '--force_h5ad_update', is_flag=True,
     help="If specified, overwrites cNMF results already saved to the .h5ad file.")
 def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neighborhood_size, skip_missing_iterations, force_h5ad_update):
     """
     Perform post-processing routines on cNMF after factorization. This includes checking factorization outputs for completeness, combining individual
-    iterations, calculating consensus GEPs and usage matrices, and creating the k-selection and annotated usage plots.
+    iterations, calculating consensus programs and usage matrices, and creating the k-selection and annotated usage plots.
     """
     cnmf_obj = cNMF(output_dir=output_dir, name=name)
     utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
@@ -422,48 +425,70 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
         filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{k:03}.pdf")
         fig = plot_usage_heatmap(
             dataset=dataset, k=k, subset_metadata=subset_columns, colors=colors, title=title,
-            cluster_samples=True, cluster_geps=False, show_sample_labels=(not hide_sample_labels))
+            cluster_samples=True, cluster_programs=False, show_sample_labels=(not hide_sample_labels))
         fig.savefig(filename, transparent=False, bbox_inches = "tight")
+
+
+@click.command(name="create-config")
+@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help=".h5ad file with cNMF results. Can be used multiple times to specify one or more datasets from which to create a config.toml file.")
+@click.option('-o', '--output_toml', type=click.Path(file_okay=False), required=False, help="Output .toml file for configuring integration.")
+def cmd_create_config(input_h5ad, output_toml):
+    """Creates a TOML config file with default parameters to be used as input for `mosaicmpi integrate`.
+
+    :param input_h5ad: _description_
+    :type input_h5ad: _type_
+    :param output_toml: _description_
+    :type output_toml: _type_
+    """
+    utils.start_logging()
+    if output_toml is None:
+        output_toml = "config.toml"
+    elif not output_toml.lower().endswith(".toml"):
+        logging.warning(f"{output_toml} does not have a `.toml` extension.")
+        output_toml = output_toml + ".toml"
+    if os.path.exists(output_toml):
+        logging.warning(f"{output_toml} already exists. Overwriting.")
+    
+    config = Config.from_h5ad_files(input_h5ad)
+    config.to_toml(output_toml)
+    logging.info(f"Output TOML file to: {output_toml}")
+
 
 @click.command(name="integrate")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, help="Output directory for mosaicMPI results")
-@click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), required=False, help="TOML config file")
-@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help="h5ad file with cNMF results. Can be used to specify multiple datasets for integration instead of a TOML config file.")
-@click.option('--cpus', type=int, default=cpus_available, show_default=True, help="Number of CPUs to use for calculating correlation matrix")
-def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
+@click.option('-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), required=True, help="TOML config file")
+@click.option('-m', '--communities_toml', type=click.Path(exists=True, dir_okay=False), required=False, 
+    help="Use custom communities instead of performing unsupervised community discovery, such as those from a previous run.")
+@click.option(
+    '-l', '--colors_toml', type=click.Path(dir_okay=False, exists=True), required=False,
+    help="TOML file with metadata_colors specification. If not provided, visually distinct colors will be chosen automatically.")
+@click.option('--cpus', type=int, default=cpus_available, show_default=True, help="Number of CPUs to use for MP-enable operations")
+def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     """
     Initiate a new integration by creating a working directory with plots to assist with parameter selection.
     Although -i can be used multiple times to add .h5ad files directly, it is recommended to use a single TOML file instead for full customization.
     Using the .toml configuration file, datasets can be giving aliases and colors for use in downstream plots.
     """
     
-    # create directory structure, warn if not empty
-    output_dir = os.path.normpath(output_dir)
-    utils.start_logging()
+
+    utils.start_logging()  # allows warning messages to be printed even though logfile hasn't been made yet
+
+    # set CPU count for MP-enabled tasks
     global cpus_available
     cpus_available = cpus
+
+    config = Config.from_toml(config_toml)
+
+    # create directory structure, warn if not empty
+    output_dir = os.path.normpath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
     if os.listdir(output_dir):
-        logging.warning(f"Integration directory {output_dir} is not empty. Files may be overwritten.")
+        logging.warning(f"{output_dir} is not empty. Files may be overwritten.")
+
+    # write to log file
     utils.start_logging(os.path.join(output_dir, "logfile.txt"))
-    os.makedirs(os.path.join(output_dir, "integrate"), exist_ok=True)
-    if config_toml is None and len(input_h5ad) == 0:
-        logging.error("Datasets for integration must be specified in a config TOML file using `-c` or using `-i` for individual .h5ad files. ")
-        sys.exit(1)
-    if config_toml is not None and input_h5ad:
-        logging.error("A TOML config file can be specified, or 1 or more .h5ad files can be specified, but not both.")
-        sys.exit(1)
-    if not all(fn.endswith(".h5ad") for fn in input_h5ad):
-        logging.error("Input files must be AnnData .h5ad files.")
-        sys.exit(1)
 
-    # create config
-    if config_toml is not None:
-        config = Config.from_toml(config_toml)
-    elif input_h5ad:
-        config = Config.from_h5ad_files(input_h5ad)
-
-    # Create dataset objects from config parameters
+    # Create dataset objects from config
     datasets = {}
     for dsname, dsparams in config.datasets.items():
         
@@ -471,229 +496,182 @@ def cmd_integrate(output_dir, config_toml, cpus, input_h5ad):
             
         if "patient_id_col" in dsparams:
             dataset.patient_id_col = dsparams["patient_id_col"]
-
         datasets[dsname] = dataset
         
-    # creates integration object from config parameters
-    integration = Integration(
-        datasets=datasets,
-        corr_method = config.integrate["corr_method"],
-        max_median_corr = config.integrate["max_median_corr"],
-        negative_corr_quantile = config.integrate["negative_corr_quantile"]
-        )     
-        
-        
-    
-    # save correlation matrix
-    corr_path = os.path.join(output_dir, "integrate", config.integrate["corr_method"] + ".df.npz")
-    utils.save_df_to_npz(integration.corr_matrix, corr_path)
-    
-    integration.k_table.to_csv(os.path.join(output_dir, "integrate", "k_filters.txt"), sep="\t")
-    
-    # output updated TOML with default k value selections based on filters etc
-    for dataset_name, dataset_params in config.datasets.items():
-        selected_k = integration.k_table[(dataset_name, "selected_k")]
-        selected_k = sorted(selected_k[selected_k].index.to_list())
-        config.datasets[dataset_name]["selected_k"] = selected_k
-    output_toml = os.path.join(output_dir, "integrate", "config.toml")
-    config.to_toml(output_toml)
-    logging.info(f"Output updated TOML file to: {output_toml}")
-
-    # Rank Reduction Plots
-    fig = plot_rank_reduction(integration)
-    fig.savefig(os.path.join(output_dir, "integrate", f"rank_reduction.pdf"))
-    fig.savefig(os.path.join(output_dir, "integrate", f"rank_reduction.png"))
-
-    integration.pairwise_thresholds.to_csv(os.path.join(output_dir, "integrate", "pairwise_corr_thresholds.txt"), sep="\t")
-
-    # plot pairwise corr of all k
-    fig = plot_pairwise_corr(integration)
-    fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr.pdf"))
-    fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr.png"), dpi=600)
-
-    # plot mirrored distributions with thresholds (which are computed on max-k filtered data only)
-    fig = plot_pairwise_corr_overlaid(integration)
-    fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr_overlaid.pdf"))
-    fig.savefig(os.path.join(output_dir, "integrate", "pairwise_corr_overlaid.png"), dpi=600)
-
-    # UpSet plot of odgenes and all genes in each dataset
-
-    df = integration.get_overdispersed_features_overlap_table()
-    df.to_csv(os.path.join(output_dir, "integrate", "overdispersed_features.txt"), sep="\t")
-    
-    df = integration.get_features_overlap_table()
-    df.to_csv(os.path.join(output_dir, "integrate", "features.txt"), sep="\t")
-    
-    if integration.n_datasets > 1:
-
-        fig = plot_overdispersed_features_upset(integration)
-        fig.savefig(os.path.join(output_dir, "integrate", "overdispersed_features_upsetplot.pdf"))
-        fig.savefig(os.path.join(output_dir, "integrate", "overdispersed_features_upsetplot.png"), dpi=200)
-        
-        fig = plot_features_upset(integration)
-        fig.savefig(os.path.join(output_dir, "integrate", "all_features_upsetplot.pdf"))
-        fig.savefig(os.path.join(output_dir, "integrate", "all_features_upsetplot.png"), dpi=200)
-
-    nodetable = integration.get_node_table()
-    nodetable.to_csv(os.path.join(output_dir, "integrate", "node_stats.txt"), sep="\t")
-
-@click.command(name="create-network")
-@click.option(
-    '-o', '--output_dir', type=click.Path(file_okay=False, exists=True), required=True,
-    help="Output directory for mosaicMPI results generated using `mosaicmpi integrate`")
-@click.option(
-    '-n', '--name', type=str, default=datetime.strftime(datetime.now(), "%Y-%m-%d_%H%M%S"),
-    help="Name for this network. Output from this step will be in [output_dir]/sns_networks/[name]/...")
-@click.option(
-    '-c', '--config_toml', type=click.Path(exists=True, dir_okay=False), 
-    help="TOML config file. Defaults to file output from `mosaicmpi integrate` step: [output_dir]/integrate/config.toml")
-@click.option(
-    '-m', '--communities_toml', type=click.Path(exists=True, dir_okay=False), 
-    help="TOML file containing communities from a previous run. This file overrides community discovery according to parameters in the config TOML file.")
-
-def cmd_create_network(output_dir, name, config_toml, communities_toml):
-    """
-    Create network integration.
-    """
-    utils.start_logging(os.path.join(output_dir, "logfile.txt"))
-
-    if config_toml is None:
-        config = Config.from_toml(os.path.join(output_dir, "integrate", "config.toml"))
+    # gets k-values from config
+    has_k_subset = {dsname: ("k_subset" in dsparams) for dsname, dsparams in config.datasets.items()}
+    if all(list(has_k_subset.values())):
+        k_subset = {dsname: dsparams["k_subset"] for dsname, dsparams in config.datasets.items()}
+    elif any(list(has_k_subset.values())):
+        no_k_subset = ", ".join([dsname for dsname, has in has_k_subset.items() if not has])
+        raise ValueError('"k_subset" parameter must be set for all datasets or none of them. '
+                         f'These datasets are missing selected_k parameter: {no_k_subset}')
     else:
-        config = Config.from_toml(config_toml)
+        k_subset = list(range(2, 10)) + list(range(10, 65, 5))
 
-    # Create directory structures
-    sns_output_dir = os.path.join(output_dir, "sns_networks", name)
-    os.makedirs(sns_output_dir, exist_ok=True)
-
-    # Create dataset objects from config parameters
-    datasets = {}
-    for dsname, dsparams in config.datasets.items():
-        ds_obj = Dataset.from_h5ad(dsparams["filename"], force_migrate = False)
-        if "patient_id_col" in dsparams:
-            dataset.patient_id_col = dsparams["patient_id_col"]
-        datasets[dsname] = ds_obj
-        
-    # selected_k from config.toml file overrides defaults
-    selected_k = {dsname: ("selected_k" in dsparams) for dsname, dsparams in config.datasets.items()}
-    if all(list(selected_k.values())):
-        selected_k = {dsname: dsparams["selected_k"] for dsname, dsparams in config.datasets.items()}
-    elif any(list(selected_k.values())):
-        no_selected_k = ", ".join([dsname for dsname, hasselected in selected_k.items() if not hasselected])
-        raise ValueError('"selected_k" parameter must be set for all datasets or none of them. '
-                         f'These datasets are missing selected_k parameter: {no_selected_k}')
-    else:
-        selected_k = None
-        
-    # creates integration object from config parameters
+    # creates integration object
     integration = Integration(
         datasets=datasets,
         corr_method = config.integrate["corr_method"],
         max_median_corr = config.integrate["max_median_corr"],
         negative_corr_quantile = config.integrate["negative_corr_quantile"],
-        k_subset = selected_k
+        k_subset = k_subset
         )
 
-    # creates SNS object from config
-    if config.sns["subset_nodes"] == "none":
+    # save correlation matrix
+    corr_path = os.path.join(output_dir, config.integrate["corr_method"] + ".df.npz")
+    utils.save_df_to_npz(integration.corr_matrix, corr_path)
+    
+    # output k-value and pairwise correlation thresholds
+    integration.k_table.to_csv(os.path.join(output_dir, "k_values.txt"), sep="\t")
+    integration.pairwise_thresholds.to_csv(os.path.join(output_dir, "pairwise_corr_thresholds.txt"), sep="\t")
+
+    # Rank Reduction Plots
+    fig = plot_rank_reduction(integration)
+    fig.savefig(os.path.join(output_dir, f"rank_reduction.pdf"))
+    fig.savefig(os.path.join(output_dir, f"rank_reduction.png"))
+
+    logging.info("Plotting pairwise correlation distributions")
+    # plot pairwise corr of all k
+    fig = plot_pairwise_corr(integration)
+    fig.savefig(os.path.join(output_dir, "pairwise_corr.pdf"))
+    fig.savefig(os.path.join(output_dir, "pairwise_corr.png"), dpi=400)
+
+    # plot mirrored distributions with thresholds (which are computed on max-k filtered data only)
+    fig = plot_pairwise_corr_overlaid(integration)
+    fig.savefig(os.path.join(output_dir, "pairwise_corr_overlaid.pdf"))
+    fig.savefig(os.path.join(output_dir, "pairwise_corr_overlaid.png"), dpi=400)
+
+    logging.info("Analyzing feature overlaps")
+    # Features and overdispersed features tables and UpSet plots
+    df = integration.get_overdispersed_features_overlap_table()
+    df.to_csv(os.path.join(output_dir, "overdispersed_features.txt"), sep="\t")
+
+    df = integration.get_features_overlap_table()
+    df.to_csv(os.path.join(output_dir, "features.txt"), sep="\t")
+    
+    if integration.n_datasets > 1:
+        fig = plot_overdispersed_features_upset(integration)
+        fig.savefig(os.path.join(output_dir, "overdispersed_features_upsetplot.pdf"))
+        fig.savefig(os.path.join(output_dir, "overdispersed_features_upsetplot.png"), dpi=200)
+        
+        fig = plot_features_upset(integration)
+        fig.savefig(os.path.join(output_dir, "all_features_upsetplot.pdf"))
+
+    nodetable = integration.get_node_table()
+    nodetable.to_csv(os.path.join(output_dir, "node_stats.txt"), sep="\t")
+
+    # creates Network object from Integration
+    logging.info("Creating integration network")
+    if config.integrate["subset_nodes"] == "none":
         subset_nodes = None
     else:
-        subset_nodes = config.sns["subset_nodes"]
+        subset_nodes = config.integrate["subset_nodes"]
         
     network = Network(integration=integration, subset_nodes=subset_nodes)
     
 
     if communities_toml is None:
-        community_algorithm = config.sns["community_algorithm"]
+        community_algorithm = config.integrate["community_algorithm"]
         network.community_search(algorithm=community_algorithm,
-                                resolution=config.sns["communities"][community_algorithm]["resolution"])
+                                resolution=config.integrate["communities"][community_algorithm]["resolution"])
     else:
         network.read_communities_from_toml(communities_toml)
-    nx.write_graphml(network.gep_graph, os.path.join(sns_output_dir, "gep_graph.graphml"))
-
-
+    nx.write_graphml(network.program_graph, os.path.join(output_dir, "program_graph.graphml"))
 
     network.compute_layout(
-        algorithm=config.sns["layout_algorithm"],
-        shared_community_weight = config.sns["layouts"]["community_weighted_spring"]["within_community"],
-        shared_dataset_weight = config.sns["layouts"]["community_weighted_spring"]["within_dataset"]
+        algorithm=config.integrate["layout_algorithm"],
+        shared_community_weight = config.integrate["layouts"]["community_weighted_spring"]["within_community"],
+        shared_dataset_weight = config.integrate["layouts"]["community_weighted_spring"]["within_dataset"]
     )
-    community_layout_algorithm = config.sns["community_layout_algorithm"]
+    community_layout_algorithm = config.integrate["community_layout_algorithm"]
     network.compute_community_network_layout(
         algorithm=community_layout_algorithm,
-        **config.sns["community_layouts"][community_layout_algorithm]
+        **config.integrate["community_layouts"][community_layout_algorithm]
     )
 
-    # persist SNS object to file
-    network.to_pkl(os.path.join(sns_output_dir, "sns.pkl"))
+    # persist Network object to file
+    logging.info("Writing network_integration.pkl.gz file")
+    if config.integrate["write_integration_pkl"]:
+        network.to_pkl(os.path.join(output_dir, "network_integration.pkl.gz"))
 
     # make figure legends for metadata
-    colors = Colors.from_config(config)
-    colors.add_missing_dataset_colors(datasets=integration)
-    colors.add_missing_metadata_colors(datasets=integration)
-    colors.add_missing_community_colors(network=network)
-    colors.to_toml(os.path.join(sns_output_dir, "colors.toml"))
+    if colors_toml is None:
+        logging.info("Creating visually distinct color palettes")
+        colors = Colors.from_network(network)
+    else:
+        logging.info("Using provided .toml file for color palettes")
+        colors = Colors.from_toml(colors_toml)
+        colors.add_missing_dataset_colors(datasets=integration)
+        colors.add_missing_metadata_colors(datasets=integration)
+        colors.add_missing_community_colors(network=network)
+    colors.to_toml(os.path.join(output_dir, "colors.toml"))
     
     fig = colors.plot_metadata_colors_legend()
-    fig.savefig(os.path.join(sns_output_dir, "metadata_colors_legend.pdf"))
+    fig.savefig(os.path.join(output_dir, "metadata_colors_legend.pdf"))
     plt.close(fig)
     
     fig = colors.plot_dataset_colors_legend()
-    fig.savefig(os.path.join(sns_output_dir, "dataset_colors_legend.pdf"))
+    fig.savefig(os.path.join(output_dir, "dataset_colors_legend.pdf"))
     plt.close(fig)
     
-    network.write_communities_toml( os.path.join(sns_output_dir, "communities.toml"))
-    pd.DataFrame.from_dict(data=network.gep_communities, orient='index').to_csv(os.path.join(sns_output_dir, 'gep_communities.txt'), sep="\t", header=False)
+    network.write_communities_toml( os.path.join(output_dir, "communities.toml"))
+    pd.DataFrame.from_dict(data=network.program_communities, orient='index').to_csv(os.path.join(output_dir, 'program_communities.txt'), sep="\t", header=False)
     
-    central_gep_ids = network.get_representative_programs()
-    central_geps = network.integration.get_geps()[central_gep_ids.index]
-    central_geps.columns = pd.MultiIndex.from_tuples([[community] + list(gep_id) for community, gep_id in zip(central_gep_ids, central_gep_ids.index)], names=["Community", "dataset", "k", "GEP"])
-    central_geps.to_csv(os.path.join(sns_output_dir, "central_geps.txt"), sep="\t") # outputs the GEPs to text file
-
-    logging.info("Creating SNS plots...")
+    # Write representative programs and usages
+    logging.info("Writing representative programs")
+    central_program_ids = network.get_representative_programs()
+    central_programs = network.integration.get_programs()[central_program_ids.index]
+    central_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(central_program_ids, central_program_ids.index)], names=["Community", "dataset", "k", "Program"])
+    central_programs.to_csv(os.path.join(output_dir, "representative_programs.txt"), sep="\t") # outputs the Programs to text file
+    central_program_usage = network.integration.get_usages()[central_program_ids.index]
+    central_program_usage.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(central_program_ids, central_program_ids.index)], names=["Community", "dataset", "k", "Program"])
+    central_program_usage.to_csv(os.path.join(output_dir, "representative_program_usageks.txt"), sep="\t") # outputs the Programs to text file
+    
+    logging.info("Creating network plots")
 
     # plot membership of datasets and ranks for each community
     fig = plot_community_by_dataset_rank(network, colors)
-    fig.savefig(os.path.join(sns_output_dir, "communities_by_dataset_rank.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "communities_by_dataset_rank.png"), dpi=600)
+    fig.savefig(os.path.join(output_dir, "communities_by_dataset_rank.pdf"))
+    fig.savefig(os.path.join(output_dir, "communities_by_dataset_rank.png"), dpi=600)
     plt.close(fig)
     
     # summary community network
-    fig = plot_summary_community_network(network, colors)
-    fig.savefig(os.path.join(sns_output_dir, "community_summary_network.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "community_summary_network.png"), dpi=600)
+    fig = plot_community_network_summary(network, colors)
+    fig.savefig(os.path.join(output_dir, "community_network_summary.pdf"))
+    fig.savefig(os.path.join(output_dir, "community_network_summary.png"), dpi=600)
     plt.close(fig)
 
 
     # Plot network colored by dataset
-    fig = plot_gep_network_datasets(network, colors)
-    fig.savefig(os.path.join(sns_output_dir, "gep_network_datasets.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "gep_network_datasets.png"), dpi=600)
+    fig = plot_program_network_datasets(network, colors)
+    fig.savefig(os.path.join(output_dir, "network_datasets.pdf"))
+    fig.savefig(os.path.join(output_dir, "network_datasets.png"), dpi=600)
     plt.close(fig)
     
     # Plot network colored by dataset and size by rank
-    fig = plot_gep_network_datasets(network, colors, node_size_kval=True)
-    fig.savefig(os.path.join(sns_output_dir, "gep_network_rank.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "gep_network_rank.png"), dpi=600)
+    fig = plot_program_network_datasets(network, colors, node_size_kval=True)
+    fig.savefig(os.path.join(output_dir, "network_rank.pdf"))
+    fig.savefig(os.path.join(output_dir, "network_rank.png"), dpi=600)
     plt.close(fig)
     
     # Plot network colored by community
-    fig = plot_gep_network_communities(network, colors)
-    fig.savefig(os.path.join(sns_output_dir, "gep_network_communities.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "gep_network_communities.png"), dpi=600)
+    fig = plot_program_network_communities(network, colors)
+    fig.savefig(os.path.join(output_dir, "network_communities.pdf"))
+    fig.savefig(os.path.join(output_dir, "network_communities.png"), dpi=600)
     plt.close(fig)
     
-    # Cumulative proportion of samples contributing to each GEP
-    fig = plot_gep_network_nsamples(network, colors)
-    fig.savefig(os.path.join(sns_output_dir, "gep_network_n_samples.pdf"))
-    fig.savefig(os.path.join(sns_output_dir, "gep_network_n_samples.png"), dpi=600)
+    # Cumulative proportion of samples contributing to each Program
+    fig = plot_program_network_nsamples(network, colors)
+    fig.savefig(os.path.join(output_dir, "network_n_samples.pdf"))
+    fig.savefig(os.path.join(output_dir, "network_n_samples.png"), dpi=600)
     plt.close(fig)
     
-    # Cumulative proportion of patients contributing to each GEP
+    # Cumulative proportion of patients contributing to each Program
     if network.integration.sample_to_patient is not None:
-        fig = plot_gep_network_npatients(network, colors)
-        fig.savefig(os.path.join(sns_output_dir, "gep_network_n_patients.pdf"))
-        fig.savefig(os.path.join(sns_output_dir, "gep_network_n_patients.png"), dpi=600)
+        fig = plot_program_network_npatients(network, colors)
+        fig.savefig(os.path.join(output_dir, "network_n_patients.pdf"))
+        fig.savefig(os.path.join(output_dir, "network_n_patients.png"), dpi=600)
         plt.close(fig)
     
     
@@ -701,46 +679,46 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
 
     # integrated community usage
     ic_usage = network.get_community_usage()
-    ic_usage.to_csv(os.path.join(sns_output_dir, "integrated_community_usage.txt"), sep="\t")
+    ic_usage.to_csv(os.path.join(output_dir, "community_usage.txt"), sep="\t")
     fig = plot_community_usage_heatmap(network, colors)
-    fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage.pdf"))
+    fig.savefig(os.path.join(output_dir, "community_usage.pdf"))
     plt.close(fig)
    
 
-    logging.info("Creating community-level associations")
+    logging.info("Computing community-level associations")
 
     # Community-level, categorical metadata, overrepresentation
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation", dataset_name), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "annotated_communities", "overrepresentation", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
             df = network.get_community_category_overrepresentation(layer=layer, subset_datasets=dataset_name, truncate_negative=False)
-            df.to_csv(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation", dataset_name, layer + ".txt"), sep='\t')
+            df.to_csv(os.path.join(output_dir, "annotated_communities", "overrepresentation", dataset_name, layer + ".txt"), sep='\t')
             
     # Community-level, numerical metadata, correlation
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation", dataset_name), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "annotated_communities", "correlation", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
             df = network.get_community_metadata_correlation(layer=layer, subset_datasets=dataset_name, method="pearson")
-            df.to_csv(os.path.join(sns_output_dir, "annotated_communities", "correlation", dataset_name, layer + ".txt"), sep='\t')
+            df.to_csv(os.path.join(output_dir, "annotated_communities", "correlation", dataset_name, layer + ".txt"), sep='\t')
 
     logging.info("Creating community-level bar plots")
 
     # Community-level, categorical data, overrepresentation bar plots
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "annotated_communities", "overrepresentation_bar", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
             fig = plot_overrepresentation_community_bar(network, colors, layer=layer, subset_datasets=dataset_name)
-            os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar"), exist_ok=True)
-            fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, layer + ".pdf"))
+            os.makedirs(os.path.join(output_dir, "annotated_communities", "overrepresentation_bar"), exist_ok=True)
+            fig.savefig(os.path.join(output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, layer + ".pdf"))
             plt.close(fig)
         
     # Community-level, numerical metadata, correlation bar plots
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar", dataset_name), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "annotated_communities", "correlation_bar", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
             fig = plot_metadata_correlation_community_bar(network, colors, layer=layer, subset_datasets=dataset_name)
-            os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar"), exist_ok=True)
-            fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_bar", dataset_name, layer + ".pdf"))
+            os.makedirs(os.path.join(output_dir, "annotated_communities", "correlation_bar"), exist_ok=True)
+            fig.savefig(os.path.join(output_dir, "annotated_communities", "correlation_bar", dataset_name, layer + ".pdf"))
             plt.close(fig)
 
 
@@ -748,95 +726,95 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
 
     # Community-level, categorical data, overrepresentation network
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "annotated_communities", "overrepresentation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
             fig = plot_overrepresentation_community_network(network, colors, layer=layer, subset_datasets=dataset_name)   
-            fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, layer + ".pdf"))
-            fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "overrepresentation_network", dataset_name, layer + ".png"), dpi=600)
+            fig.savefig(os.path.join(output_dir, "annotated_communities", "overrepresentation_network", dataset_name, layer + ".pdf"))
+            fig.savefig(os.path.join(output_dir, "annotated_communities", "overrepresentation_network", dataset_name, layer + ".png"), dpi=600)
             plt.close(fig)
  
     # Community-level, numerical data, correlation network
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "annotated_communities", "correlation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
             fig = plot_metadata_correlation_community_network(network, colors, layer=layer, subset_datasets=dataset_name)   
-            fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name, layer + ".pdf"))
-            fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "correlation_network", dataset_name, layer + ".png"), dpi=600)
+            fig.savefig(os.path.join(output_dir, "annotated_communities", "correlation_network", dataset_name, layer + ".pdf"))
+            fig.savefig(os.path.join(output_dir, "annotated_communities", "correlation_network", dataset_name, layer + ".png"), dpi=600)
             plt.close(fig)    
 
-    logging.info("Creating GEP-level associations")
+    logging.info("Computing program-level associations")
 
-    # GEP-level, categorical metadata, overrepresentation
+    # Program-level, categorical metadata, overrepresentation
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation", dataset_name), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "annotated_programs", "overrepresentation", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
             df = dataset.get_category_overrepresentation(layer)
-            df.to_csv(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation", dataset_name, layer + ".txt"), sep='\t')
+            df.to_csv(os.path.join(output_dir, "annotated_programs", "overrepresentation", dataset_name, layer + ".txt"), sep='\t')
             
-    # GEP-level, numerical metadata, correlation
+    # Program-level, numerical metadata, correlation
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation", dataset_name), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "annotated_programs", "correlation", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
             df = dataset.get_metadata_correlation(layer, method="pearson")
-            df.to_csv(os.path.join(sns_output_dir, "annotated_geps", "correlation", dataset_name, layer + ".txt"), sep='\t')
+            df.to_csv(os.path.join(output_dir, "annotated_programs", "correlation", dataset_name, layer + ".txt"), sep='\t')
 
-    logging.info("Creating GEP-level bar plots")
+    logging.info("Creating program-level bar plots")
 
-    # GEP-level, categorical data, overrepresentation bar plots
+    # Program-level, categorical data, overrepresentation bar plots
     for dataset_name in integration.datasets:
-        fig = plot_overrepresentation_gep_bar(network, colors, dataset_name=dataset_name)
-        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar"), exist_ok=True)
-        fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_bar", dataset_name + ".pdf"))
+        fig = plot_overrepresentation_program_bar(network, colors, dataset_name=dataset_name)
+        os.makedirs(os.path.join(output_dir, "annotated_programs", "overrepresentation_bar"), exist_ok=True)
+        fig.savefig(os.path.join(output_dir, "annotated_programs", "overrepresentation_bar", dataset_name + ".pdf"))
         plt.close(fig)
         
-    # GEP-level, numerical metadata, correlation bar plots
+    # Program-level, numerical metadata, correlation bar plots
     for dataset_name in integration.datasets:
-        fig = plot_metadata_correlation_gep_bar(network, colors, dataset_name=dataset_name)
-        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation_bar"), exist_ok=True)
-        fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_bar", dataset_name + ".pdf"))
+        fig = plot_metadata_correlation_program_bar(network, colors, dataset_name=dataset_name)
+        os.makedirs(os.path.join(output_dir, "annotated_programs", "correlation_bar"), exist_ok=True)
+        fig.savefig(os.path.join(output_dir, "annotated_programs", "correlation_bar", dataset_name + ".pdf"))
         plt.close(fig)
 
-    logging.info("Creating GEP-level network plots")
+    logging.info("Creating program-level network plots")
 
-    # GEP-level, categorical data, overrepresentation network
+    # Program-level, categorical data, overrepresentation network
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "annotated_programs", "overrepresentation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
-            fig = plot_overrepresentation_gep_network(network, colors, layer=layer, subset_datasets=dataset_name)   
-            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, layer + ".pdf"))
-            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "overrepresentation_network", dataset_name, layer + ".png"), dpi=600)
+            fig = plot_overrepresentation_program_network(network, colors, layer=layer, subset_datasets=dataset_name)   
+            fig.savefig(os.path.join(output_dir, "annotated_programs", "overrepresentation_network", dataset_name, layer + ".pdf"))
+            fig.savefig(os.path.join(output_dir, "annotated_programs", "overrepresentation_network", dataset_name, layer + ".png"), dpi=600)
             plt.close(fig)
  
-    # GEP-level, numerical data, correlation network
+    # Program-level, numerical data, correlation network
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
-            fig = plot_metadata_correlation_gep_network(network, colors, layer=layer, subset_datasets=dataset_name)   
-            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name, layer + ".pdf"))
-            fig.savefig(os.path.join(sns_output_dir, "annotated_geps", "correlation_network", dataset_name, layer + ".png"), dpi=600)
+            fig = plot_metadata_correlation_program_network(network, colors, layer=layer, subset_datasets=dataset_name)   
+            fig.savefig(os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name, layer + ".pdf"))
+            fig.savefig(os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name, layer + ".png"), dpi=600)
             plt.close(fig)       
 
 
-    # for dataset_name, geps in selected_geps.droplevel(axis=1, level=[2,3]).groupby(axis=1, level=1):
-    #     geps = geps.droplevel(axis=1, level=1)
-    #     geps.columns = geps.columns.astype("int")
+    # for dataset_name, programs in selected_programs.droplevel(axis=1, level=[2,3]).groupby(axis=1, level=1):
+    #     programs = programs.droplevel(axis=1, level=1)
+    #     programs.columns = programs.columns.astype("int")
     #     for feature in config.features["features_of_interest"]:
-    #         if feature in geps.index:
-    #             positive_scores = geps.loc[feature].groupby(axis=0, level=0).mean().reindex(communities.keys()).fillna(0).clip(lower=0)
+    #         if feature in programs.index:
+    #             positive_scores = programs.loc[feature].groupby(axis=0, level=0).mean().reindex(communities.keys()).fillna(0).clip(lower=0)
     #             if positive_scores.sum() == 0:
     #                 continue
     #             fig = plot_community_network(
     #                 graph = Gcomm,
     #                 layout = community_layout,
-    #                 plot_size = config.sns["plot_size_community"],
+    #                 plot_size = config.integrate["plot_size_community"],
     #                 title = f"Dataset: {dataset_name}\nFeature: {feature}",
     #                 node_sizes=positive_scores,
     #                 edge_weights="n_edges",
     #                 config=config,
     #                 community_colors=community_colors
     #             )
-    #             os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "cNMF_score"), exist_ok=True)
-    #             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "cNMF_score", f"{feature}_{dataset_name}.pdf"))
+    #             os.makedirs(os.path.join(output_dir, "annotated_communities", "cNMF_score"), exist_ok=True)
+    #             fig.savefig(os.path.join(output_dir, "annotated_communities", "cNMF_score", f"{feature}_{dataset_name}.pdf"))
     #             plt.close(fig)
         
     # # per patient community level plots
@@ -856,7 +834,7 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     #         for min_samples_per_patient in [1,2]:
     #             n_plots = (patient_to_samples.groupby(axis=0, level=[0,1]).count() >= min_samples_per_patient).sum() + 1  # one plot per patient as well as an extra for the legend.
     #             n_rows = 1 + n_plots // n_cols
-    #             fig, axes = plt.subplots(n_rows, n_cols, figsize = [config.sns["plot_size_community"][0]*n_cols, config.sns["plot_size_community"][1]*n_rows], squeeze=False, layout="constrained")
+    #             fig, axes = plt.subplots(n_rows, n_cols, figsize = [config.integrate["plot_size_community"][0]*n_cols, config.integrate["plot_size_community"][1]*n_rows], squeeze=False, layout="constrained")
     #             for row in range(n_rows):
     #                 for col in range(n_cols):
     #                     axes[row,col].set_axis_off()
@@ -876,11 +854,11 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     #                     bar_data = ic_usage.loc[patient_samples].fillna(0)
     #                     bar_data.index = merged_metadata.loc[bar_data.index][annotation_layer].cat.add_categories("").fillna("")
     #                     bar_data = bar_data.groupby(axis=0, level=0).mean().dropna(how="any")
-    #                     plot_overrepresentation_network(Gcomm, community_layout, f"{dataset}\n{patient}", overrepresentation=bar_data, colordict=colordict, pie_size=config.sns["pie_size_community"], ax=ax, edge_weights=None, show_legends=False)
+    #                     plot_overrepresentation_network(Gcomm, community_layout, f"{dataset}\n{patient}", overrepresentation=bar_data, colordict=colordict, pie_size=config.integrate["pie_size_community"], ax=ax, edge_weights=None, show_legends=False)
     #                     plot_count += 1
-    #             os.makedirs(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer), exist_ok=True)
-    #             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.pdf"))
-    #             fig.savefig(os.path.join(sns_output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.png"), dpi=100)
+    #             os.makedirs(os.path.join(output_dir, "annotated_communities", "patient_network", annotation_layer), exist_ok=True)
+    #             fig.savefig(os.path.join(output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.pdf"))
+    #             fig.savefig(os.path.join(output_dir, "annotated_communities", "patient_network", annotation_layer, f"{min_samples_per_patient}samplesperpatient.png"), dpi=100)
     #             plt.close("all")
         
     # # Plot pairwise correlation heatmaps of community usage across samples
@@ -897,10 +875,10 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     #     for dataset_name, df in ic_usage.dropna(axis=1).groupby(axis=0, level=0)
     #     })
 
-    # os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_shared"), exist_ok=True)
+    # os.makedirs(os.path.join(output_dir, "integrated_community_usage", "correlation_heatmaps_shared"), exist_ok=True)
     # for plot_name, fig in plots.items():
-    #     fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_shared", plot_name + ".pdf"))
-    #     fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_shared", plot_name + ".png"), dpi=600)
+    #     fig.savefig(os.path.join(output_dir, "integrated_community_usage", "correlation_heatmaps_shared", plot_name + ".pdf"))
+    #     fig.savefig(os.path.join(output_dir, "integrated_community_usage", "correlation_heatmaps_shared", plot_name + ".png"), dpi=600)
         
     # plots = {"All Datasets": plot_icusage_correlation(ic_usage.corr("spearman"), title="All Datasets")}
     # plots.update({
@@ -908,17 +886,17 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     #     for dataset_name, df in ic_usage.groupby(axis=0, level=0)
     #     })
 
-    # os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all"), exist_ok=True)
+    # os.makedirs(os.path.join(output_dir, "integrated_community_usage", "correlation_heatmaps_all"), exist_ok=True)
     # for plot_name, fig in plots.items():
-    #     fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all", plot_name + ".pdf"))
-    #     fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "correlation_heatmaps_all", plot_name + ".png"), dpi=600)
+    #     fig.savefig(os.path.join(output_dir, "integrated_community_usage", "correlation_heatmaps_all", plot_name + ".pdf"))
+    #     fig.savefig(os.path.join(output_dir, "integrated_community_usage", "correlation_heatmaps_all", plot_name + ".png"), dpi=600)
     
     
     # # Diversity analysis (shannon entropy of community-level usage)
 
     # diversity = ic_usage.apply(lambda x: entropy(x.dropna()), axis=1)
-    # diversity.to_csv(os.path.join(sns_output_dir, "integrated_community_usage", "diversity.txt"), sep="\t")
-    # os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "diversity"), exist_ok=True)
+    # diversity.to_csv(os.path.join(output_dir, "integrated_community_usage", "diversity.txt"), sep="\t")
+    # os.makedirs(os.path.join(output_dir, "integrated_community_usage", "diversity"), exist_ok=True)
 
     # for col in merged_metadata.select_dtypes("float").columns:  # association of diversity with numerical metadata
     #     df = pd.DataFrame({"diversity": diversity, col: merged_metadata[col]})
@@ -929,23 +907,23 @@ def cmd_create_network(output_dir, name, config_toml, communities_toml):
     #     ax.text(s=f"Spearman ρ = {correlation:.3f}", x=0.01, y=0.01, va="bottom", transform=ax.transAxes)
     #     ax.set_title(col)
     #     sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
-    #     fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"{col}.pdf"))
+    #     fig.savefig(os.path.join(output_dir, "integrated_community_usage", "diversity", f"{col}.pdf"))
     #     plt.close('all')
 
     # sample_groups = merged_metadata["Dataset"]  # association of diversity with dataset
     # fig = plot_icu_diversity(sample_groups, diversity, config, title=f"Datasets")
-    # fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"datasets.pdf"), bbox_inches="tight")
-    # fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", f"datasets.png"), bbox_inches="tight", dpi=400)
+    # fig.savefig(os.path.join(output_dir, "integrated_community_usage", "diversity", f"datasets.pdf"), bbox_inches="tight")
+    # fig.savefig(os.path.join(output_dir, "integrated_community_usage", "diversity", f"datasets.png"), bbox_inches="tight", dpi=400)
     # plt.close('all')
 
     # for dataset in config.datasets: # association of diversity with categorical data by dataset
-    #     os.makedirs(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset), exist_ok=True)   
+    #     os.makedirs(os.path.join(output_dir, "integrated_community_usage", "diversity", dataset), exist_ok=True)   
     #     for annotation_layer in merged_metadata.select_dtypes("category").columns:
     #         sample_groups = merged_metadata.loc[dataset, annotation_layer]
     #         if 0 < sample_groups.nunique() < 20:
     #             fig = plot_icu_diversity(sample_groups, diversity.loc[dataset], config, title=f"{dataset}\n{annotation_layer}")
-    #             fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset, f"{annotation_layer}.pdf"), bbox_inches="tight")
-    #             fig.savefig(os.path.join(sns_output_dir, "integrated_community_usage", "diversity", dataset, f"{annotation_layer}.png"), bbox_inches="tight", dpi=400)
+    #             fig.savefig(os.path.join(output_dir, "integrated_community_usage", "diversity", dataset, f"{annotation_layer}.pdf"), bbox_inches="tight")
+    #             fig.savefig(os.path.join(output_dir, "integrated_community_usage", "diversity", dataset, f"{annotation_layer}.png"), bbox_inches="tight", dpi=400)
     #             plt.close('all')
     
     
@@ -957,5 +935,5 @@ cli.add_command(cmd_set_parameters)
 cli.add_command(cmd_factorize)
 cli.add_command(cmd_postprocess)
 cli.add_command(cmd_annotated_heatmap)
+cli.add_command(cmd_create_config)
 cli.add_command(cmd_integrate)
-cli.add_command(cmd_create_network)
