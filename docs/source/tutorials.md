@@ -9,5 +9,5 @@ For a quick introduction to `MosaicMPI`, check out `Getting Started with MosaicM
 
 tutorials/getting-started.ipynb
 tutorials/cli-workflow.md
-tutoirals/configtoml.md
+tutorials/configtoml.md
 ```
