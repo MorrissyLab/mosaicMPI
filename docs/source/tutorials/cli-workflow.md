@@ -176,6 +176,7 @@ Once the command has completed, outputs in the output directory will include:
   - `overdispersed_features.txt`: table showing features that are overdispersed between datasets
   - `overdispersed_features_upsetplot.pdf`: UpSet plot showing overlaps of overdispersed features between datasets.
   - `node_stats.txt`: number of nodes before and after node and edge filters, per dataset.
+  - `community_contribution.pdf`: contribution of datasets and ranks to each community
 
 - program network plots:
   - `network_communities.pdf`: Colored by community

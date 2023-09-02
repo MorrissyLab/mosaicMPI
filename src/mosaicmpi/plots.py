@@ -543,10 +543,13 @@ def plot_community_usage_per_sample(network: Network,
     
     return fig
 
-def plot_community_by_dataset_rank(network: Network, colors: Colors, figsize: Collection = None, highlight_central_program: bool = True):
+def plot_community_contribution(network: Network, colors: Colors, figsize: Collection = None, highlight_central_program: bool = True, orientation = "horizontal"):
     """
     Plot communities by dataset and rank representation
     """
+    #TODO: orientation and docstring
+
+
 
     marker_style = {
         1: ("s", 30),  # 1 factor: square markers, size 30

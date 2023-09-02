@@ -15,19 +15,20 @@ config_defaults = {
         "max_median_corr": 0,
         "negative_corr_quantile": 0.95,
         "subset_nodes": "none",
-        "edge_color": "#bbbbbb20",
         "edge_weight": "none",
         "community_algorithm": "greedy_modularity",
-        "communities": {
+        "community_algorithm_parameters": {
             "greedy_modularity": {
                 "resolution": 2,
-                "best_n": "none",
-                "resolution_sweep": [0.5, 0.75, 1, 1.25, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.25, 3.5, 3.75, 4.0, 4.5, 5.0, 5.5, 6.0]
-            },
+                "best_n": "none"},
             "leiden": {
-                "resolution": 0.01,
-                "resolution_sweep": [0.001, 0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08]
+                "resolution": 0.01
             }
+        },
+        "community_pruning": {
+            "min_nodes": 1,
+            "min_datasets": 1, 
+            "min_nodes_per_dataset": 0
         },
         "layout_algorithm": "community_weighted_spring",   # "neato", "spring", "community_weighted_spring"
         "community_layout_algorithm": "spring",   # "neato", "spring", "community_weighted_spring"
@@ -35,8 +36,8 @@ config_defaults = {
             "neato": {},
             "spring": {},
             "community_weighted_spring": {
-                "within_community": 100,
-                "within_dataset": 1
+                "shared_community_weight": 100,
+                "shared_dataset_weight": 1
             }
         },
         "community_layouts": {  # parameters for each layout algorithm
@@ -51,7 +52,7 @@ config_defaults = {
         "pie_size_gep": 50,
         "pie_size_community": 50,
         "plot_size_community": [4, 4],
-        "write_integration_pkl": True
+        "save_network_as_pkl": True
         },
     "datasets": {}
 }

@@ -573,15 +573,15 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
         community_algorithm = config.integrate["community_algorithm"]
         network.community_search(algorithm=community_algorithm,
                                 resolution=config.integrate["communities"][community_algorithm]["resolution"])
+        network.prune_communities(renumber=True, **config.integrate["community_pruning"])
     else:
         network.read_communities_from_toml(communities_toml)
+
     nx.write_graphml(network.program_graph, os.path.join(output_dir, "program_graph.graphml"))
 
-    network.compute_layout(
-        algorithm=config.integrate["layout_algorithm"],
-        shared_community_weight = config.integrate["layouts"]["community_weighted_spring"]["within_community"],
-        shared_dataset_weight = config.integrate["layouts"]["community_weighted_spring"]["within_dataset"]
-    )
+    layout_algorithm = config.integrate["layout_algorithm"]
+    network.compute_layout(algorithm=layout_algorithm, **config.integrate["layouts"][layout_algorithm])
+    
     community_layout_algorithm = config.integrate["community_layout_algorithm"]
     network.compute_community_network_layout(
         algorithm=community_layout_algorithm,
@@ -589,9 +589,24 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     )
 
     # persist Network object to file
-    logging.info("Writing network_integration.pkl.gz file")
-    if config.integrate["write_integration_pkl"]:
+    if config.integrate["save_network_as_pkl"]:
+        logging.info("Writing network_integration.pkl.gz file")
         network.to_pkl(os.path.join(output_dir, "network_integration.pkl.gz"))
+
+    
+    network.write_communities_toml( os.path.join(output_dir, "communities.toml"))
+    pd.DataFrame.from_dict(data=network.program_communities, orient='index').to_csv(os.path.join(output_dir, 'program_communities.txt'), sep="\t", header=False)
+    
+    # Write representative programs and usages
+    logging.info("Writing representative programs")
+    central_program_ids = network.get_representative_programs()
+    central_programs = network.integration.get_programs()[central_program_ids.index]
+    central_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(central_program_ids, central_program_ids.index)], names=["Community", "dataset", "k", "Program"])
+    central_programs.to_csv(os.path.join(output_dir, "representative_programs.txt"), sep="\t") # outputs the Programs to text file
+    central_program_usage = network.integration.get_usages()[central_program_ids.index]
+    central_program_usage.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(central_program_ids, central_program_ids.index)], names=["Community", "dataset", "k", "Program"])
+    central_program_usage.to_csv(os.path.join(output_dir, "representative_program_usages.txt"), sep="\t") # outputs the Programs to text file
+    
 
     # make figure legends for metadata
     if colors_toml is None:
@@ -612,28 +627,22 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     fig = colors.plot_dataset_colors_legend()
     fig.savefig(os.path.join(output_dir, "dataset_colors_legend.pdf"))
     plt.close(fig)
-    
-    network.write_communities_toml( os.path.join(output_dir, "communities.toml"))
-    pd.DataFrame.from_dict(data=network.program_communities, orient='index').to_csv(os.path.join(output_dir, 'program_communities.txt'), sep="\t", header=False)
-    
-    # Write representative programs and usages
-    logging.info("Writing representative programs")
-    central_program_ids = network.get_representative_programs()
-    central_programs = network.integration.get_programs()[central_program_ids.index]
-    central_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(central_program_ids, central_program_ids.index)], names=["Community", "dataset", "k", "Program"])
-    central_programs.to_csv(os.path.join(output_dir, "representative_programs.txt"), sep="\t") # outputs the Programs to text file
-    central_program_usage = network.integration.get_usages()[central_program_ids.index]
-    central_program_usage.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(central_program_ids, central_program_ids.index)], names=["Community", "dataset", "k", "Program"])
-    central_program_usage.to_csv(os.path.join(output_dir, "representative_program_usages.txt"), sep="\t") # outputs the Programs to text file
-    
+
     logging.info("Creating network plots")
 
     # plot membership of datasets and ranks for each community
-    fig = plot_community_by_dataset_rank(network, colors)
-    fig.savefig(os.path.join(output_dir, "communities_by_dataset_rank.pdf"))
-    fig.savefig(os.path.join(output_dir, "communities_by_dataset_rank.png"), dpi=600)
+    fig = plot_community_contribution(network, colors)
+    fig.savefig(os.path.join(output_dir, "community_contribution.pdf"))
+    fig.savefig(os.path.join(output_dir, "community_contribution.png"), dpi=600)
+    plt.close(fig)
+
+    fig = plot_community_contribution(network, colors, orientation="vertical")
+    fig.savefig(os.path.join(output_dir, "community_contribution.pdf"))
+    fig.savefig(os.path.join(output_dir, "community_contribution.png"), dpi=600)
     plt.close(fig)
     
+
+
     # summary community network
     fig = plot_community_network_summary(network, colors)
     fig.savefig(os.path.join(output_dir, "community_network_summary.pdf"))
