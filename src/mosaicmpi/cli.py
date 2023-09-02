@@ -573,7 +573,7 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
         community_algorithm = config.integrate["community_algorithm"]
         network.community_search(algorithm=community_algorithm,
                                 resolution=config.integrate["communities"][community_algorithm]["resolution"])
-        network.prune_communities(renumber=True, **config.integrate["community_pruning"])
+        network.prune_communities(renumber=True, **config.integrate["community_pruning"])   # TODO: track in node stats table
     else:
         network.read_communities_from_toml(communities_toml)
 
