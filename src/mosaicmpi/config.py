@@ -10,50 +10,49 @@ import tomli_w
 # Default parameters for the config files are used when missing as input to mosaicmpi integrate
 
 config_defaults = {
-    "integrate": {
-        "corr_method": "pearson",
-        "max_median_corr": 0,
-        "negative_corr_quantile": 0.95,
-        "subset_nodes": "none",
-        "edge_weight": "none",
-        "community_algorithm": "greedy_modularity",
-        "community_algorithm_parameters": {
-            "greedy_modularity": {
-                "resolution": 2,
-                "best_n": "none"},
-            "leiden": {
-                "resolution": 0.01
-            }
-        },
-        "community_pruning": {
-            "min_nodes": 1,
-            "min_datasets": 1, 
-            "min_nodes_per_dataset": 0
-        },
-        "layout_algorithm": "community_weighted_spring",   # "neato", "spring", "community_weighted_spring"
-        "community_layout_algorithm": "spring",   # "neato", "spring", "community_weighted_spring"
-        "layouts": {  # parameters for each layout algorithm
-            "neato": {},
-            "spring": {},
-            "community_weighted_spring": {
-                "shared_community_weight": 100,
-                "shared_dataset_weight": 1
-            }
-        },
-        "community_layouts": {  # parameters for each layout algorithm
-            "centroid": {},
-            "neato": {},
-            "spring": {
-                "k": 8
-            }
-        },
-        "node_size": 30,
-        "plot_size_gep": [10, 10],
-        "pie_size_gep": 50,
-        "pie_size_community": 50,
-        "plot_size_community": [4, 4],
-        "save_network_as_pkl": True
-        },
+    "plot_formats": ["pdf", "png"],
+    "corr_method": "pearson",
+    "max_median_corr": 0,
+    "negative_corr_quantile": 0.95,
+    "subset_nodes": "none",
+    "edge_weight": "none",
+    "community_algorithm": "greedy_modularity",
+    "community_algorithm_parameters": {
+        "greedy_modularity": {
+            "resolution": 2,
+            "best_n": "none"},
+        "leiden": {
+            "resolution": 0.01
+        }
+    },
+    "community_pruning": {
+        "min_nodes": 1,
+        "min_datasets": 1, 
+        "min_nodes_per_dataset": 0
+    },
+    "layout_algorithm": "community_weighted_spring",   # "neato", "spring", "community_weighted_spring"
+    "community_layout_algorithm": "spring",   # "neato", "spring", "community_weighted_spring"
+    "layouts": {  # parameters for each layout algorithm
+        "neato": {},
+        "spring": {},
+        "community_weighted_spring": {
+            "shared_community_weight": 100,
+            "shared_dataset_weight": 1
+        }
+    },
+    "community_layouts": {  # parameters for each layout algorithm
+        "centroid": {},
+        "neato": {},
+        "spring": {
+            "k": 8
+        }
+    },
+    "node_size": 30,
+    "plot_size_gep": [10, 10],
+    "pie_size_gep": 50,
+    "pie_size_community": 50,
+    "plot_size_community": [4, 4],
+    "save_network_as_pkl": True,
     "datasets": {}
 }
 dataset_defaults = {"k_subset": list(range(2, 10)) + list(range(10, 65, 5))}

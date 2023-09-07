@@ -509,14 +509,14 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     # creates integration object
     integration = Integration(
         datasets=datasets,
-        corr_method = config.integrate["corr_method"],
-        max_median_corr = config.integrate["max_median_corr"],
-        negative_corr_quantile = config.integrate["negative_corr_quantile"],
+        corr_method = config.corr_method,
+        max_median_corr = config.max_median_corr,
+        negative_corr_quantile = config.negative_corr_quantile,
         k_subset = k_subset
         )
 
     # save correlation matrix
-    corr_path = os.path.join(output_dir, config.integrate["corr_method"] + ".df.npz")
+    corr_path = os.path.join(output_dir, config.corr_method + ".df.npz")
     utils.save_df_to_npz(integration.corr_matrix, corr_path)
     
     # output k-value and pairwise correlation thresholds
@@ -525,19 +525,16 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
 
     # Rank Reduction Plots
     fig = plot_rank_reduction(integration)
-    fig.savefig(os.path.join(output_dir, f"rank_reduction.pdf"))
-    fig.savefig(os.path.join(output_dir, f"rank_reduction.png"))
+    utils.save_fig(fig, os.path.join(output_dir, f"rank_reduction"), target_dpi=300, formats=config.plot_formats)
 
     logging.info("Plotting pairwise correlation distributions")
     # plot pairwise corr of all k
     fig = plot_pairwise_corr(integration)
-    fig.savefig(os.path.join(output_dir, "pairwise_corr.pdf"))
-    fig.savefig(os.path.join(output_dir, "pairwise_corr.png"), dpi=400)
+    utils.save_fig(fig, os.path.join(output_dir, f"pairwise_corr"), target_dpi=300, formats=config.plot_formats)
 
     # plot mirrored distributions with thresholds (which are computed on max-k filtered data only)
     fig = plot_pairwise_corr_overlaid(integration)
-    fig.savefig(os.path.join(output_dir, "pairwise_corr_overlaid.pdf"))
-    fig.savefig(os.path.join(output_dir, "pairwise_corr_overlaid.png"), dpi=400)
+    utils.save_fig(fig, os.path.join(output_dir, f"pairwise_corr_overlaid"), target_dpi=300, formats=config.plot_formats)
 
     logging.info("Analyzing feature overlaps")
     # Features and overdispersed features tables and UpSet plots
@@ -549,63 +546,62 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     
     if integration.n_datasets > 1:
         fig = plot_overdispersed_features_upset(integration)
-        fig.savefig(os.path.join(output_dir, "overdispersed_features_upsetplot.pdf"))
-        fig.savefig(os.path.join(output_dir, "overdispersed_features_upsetplot.png"), dpi=200)
+        utils.save_fig(fig, os.path.join(output_dir, "overdispersed_features_upsetplot"), target_dpi=200, formats=config.plot_formats)
         
         fig = plot_features_upset(integration)
-        fig.savefig(os.path.join(output_dir, "features_upsetplot.pdf"))
-        fig.savefig(os.path.join(output_dir, "features_upsetplot.png"), dpi=200)
+        utils.save_fig(fig, os.path.join(output_dir, "features_upsetplot"), target_dpi=200, formats=config.plot_formats)
 
-    nodetable = integration.get_node_table()
-    nodetable.to_csv(os.path.join(output_dir, "node_stats.txt"), sep="\t")
 
     # creates Network object from Integration
     logging.info("Creating integration network")
-    if config.integrate["subset_nodes"] == "none":
+    if config.subset_nodes == "none":
         subset_nodes = None
     else:
-        subset_nodes = config.integrate["subset_nodes"]
+        subset_nodes = config.subset_node
         
     network = Network(integration=integration, subset_nodes=subset_nodes)
     
-
+    # community discovery
     if communities_toml is None:
-        community_algorithm = config.integrate["community_algorithm"]
+        community_algorithm = config.community_algorithm
         network.community_search(algorithm=community_algorithm,
-                                resolution=config.integrate["communities"][community_algorithm]["resolution"])
-        network.prune_communities(renumber=True, **config.integrate["community_pruning"])   # TODO: track in node stats table
+                                resolution=config.communities[community_algorithm]["resolution"])
+        network.prune_communities(renumber=True, **config.community_pruning)
     else:
         network.read_communities_from_toml(communities_toml)
 
-    nx.write_graphml(network.program_graph, os.path.join(output_dir, "program_graph.graphml"))
+    nodetable = network.get_node_table()
+    nodetable.to_csv(os.path.join(output_dir, "node_stats.txt"), sep="\t")
 
-    layout_algorithm = config.integrate["layout_algorithm"]
-    network.compute_layout(algorithm=layout_algorithm, **config.integrate["layouts"][layout_algorithm])
+    nx.write_graphml(network.program_graph, os.path.join(output_dir, "program_graph.graphml"))
+    nx.write_graphml(network.comm_graph, os.path.join(output_dir, "community_graph.graphml"))
+
+    layout_algorithm = config.layout_algorithm
+    network.compute_layout(algorithm=layout_algorithm, **config.layouts[layout_algorithm])
     
-    community_layout_algorithm = config.integrate["community_layout_algorithm"]
+    community_layout_algorithm = config.community_layout_algorithm
     network.compute_community_network_layout(
         algorithm=community_layout_algorithm,
-        **config.integrate["community_layouts"][community_layout_algorithm]
+        **config.community_layouts[community_layout_algorithm]
     )
 
     # persist Network object to file
-    if config.integrate["save_network_as_pkl"]:
+    if config.save_network_as_pkl:
         logging.info("Writing network_integration.pkl.gz file")
         network.to_pkl(os.path.join(output_dir, "network_integration.pkl.gz"))
 
-    
     network.write_communities_toml( os.path.join(output_dir, "communities.toml"))
     pd.DataFrame.from_dict(data=network.program_communities, orient='index').to_csv(os.path.join(output_dir, 'program_communities.txt'), sep="\t", header=False)
     
     # Write representative programs and usages
     logging.info("Writing representative programs")
-    central_program_ids = network.get_representative_programs()
-    central_programs = network.integration.get_programs()[central_program_ids.index]
-    central_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(central_program_ids, central_program_ids.index)], names=["Community", "dataset", "k", "Program"])
-    central_programs.to_csv(os.path.join(output_dir, "representative_programs.txt"), sep="\t") # outputs the Programs to text file
-    central_program_usage = network.integration.get_usages()[central_program_ids.index]
-    central_program_usage.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(central_program_ids, central_program_ids.index)], names=["Community", "dataset", "k", "Program"])
-    central_program_usage.to_csv(os.path.join(output_dir, "representative_program_usages.txt"), sep="\t") # outputs the Programs to text file
+    rep_programs_ids = network.get_representative_programs()
+    rep_programss = network.integration.get_programs()[rep_programs_ids.index]
+    rep_programss.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["Community", "dataset", "k", "Program"])
+    rep_programss.to_csv(os.path.join(output_dir, "representative_programs.txt"), sep="\t") # outputs the programs to text file
+    rep_programs_usage = network.integration.get_usages()[rep_programs_ids.index]
+    rep_programs_usage.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["Community", "dataset", "k", "Program"])
+    rep_programs_usage.to_csv(os.path.join(output_dir, "representative_program_usages.txt"), sep="\t") # outputs the program usages to text file
     
 
     # make figure legends for metadata
@@ -621,66 +617,45 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     colors.to_toml(os.path.join(output_dir, "colors.toml"))
     
     fig = colors.plot_metadata_colors_legend()
-    fig.savefig(os.path.join(output_dir, "metadata_colors_legend.pdf"))
-    plt.close(fig)
+    utils.save_fig(fig, os.path.join(output_dir, f"metadata_colors_legend"), target_dpi=300, formats=config.plot_formats)
     
     fig = colors.plot_dataset_colors_legend()
-    fig.savefig(os.path.join(output_dir, "dataset_colors_legend.pdf"))
-    plt.close(fig)
+    utils.save_fig(fig, os.path.join(output_dir, f"dataset_colors_legend"), target_dpi=300, formats=config.plot_formats)
 
     logging.info("Creating network plots")
 
     # plot membership of datasets and ranks for each community
-    fig = plot_community_contribution(network, colors)
-    fig.savefig(os.path.join(output_dir, "community_contribution.pdf"))
-    fig.savefig(os.path.join(output_dir, "community_contribution.png"), dpi=600)
-    plt.close(fig)
+    fig = plot_community_contribution(network, colors, orientation="horizontal")
+    utils.save_fig(fig, os.path.join(output_dir, f"community_contribution"), target_dpi=600, formats=config.plot_formats)
 
     fig = plot_community_contribution(network, colors, orientation="vertical")
-    fig.savefig(os.path.join(output_dir, "community_contribution.pdf"))
-    fig.savefig(os.path.join(output_dir, "community_contribution.png"), dpi=600)
-    plt.close(fig)
+    utils.save_fig(fig, os.path.join(output_dir, f"community_contribution_vertical"), target_dpi=600, formats=config.plot_formats)
     
-
-
     # summary community network
     fig = plot_community_network_summary(network, colors)
-    fig.savefig(os.path.join(output_dir, "community_network_summary.pdf"))
-    fig.savefig(os.path.join(output_dir, "community_network_summary.png"), dpi=600)
-    plt.close(fig)
+    utils.save_fig(fig, os.path.join(output_dir, f"community_network_summary"), target_dpi=600, formats=config.plot_formats)
 
 
     # Plot network colored by dataset
     fig = plot_program_network_datasets(network, colors)
-    fig.savefig(os.path.join(output_dir, "network_datasets.pdf"))
-    fig.savefig(os.path.join(output_dir, "network_datasets.png"), dpi=600)
-    plt.close(fig)
+    utils.save_fig(fig, os.path.join(output_dir, f"network_datasets"), target_dpi=600, formats=config.plot_formats)
     
     # Plot network colored by dataset and size by rank
     fig = plot_program_network_datasets(network, colors, node_size_kval=True)
-    fig.savefig(os.path.join(output_dir, "network_rank.pdf"))
-    fig.savefig(os.path.join(output_dir, "network_rank.png"), dpi=600)
-    plt.close(fig)
+    utils.save_fig(fig, os.path.join(output_dir, f"network_rank"), target_dpi=600, formats=config.plot_formats)
     
     # Plot network colored by community
     fig = plot_program_network_communities(network, colors)
-    fig.savefig(os.path.join(output_dir, "network_communities.pdf"))
-    fig.savefig(os.path.join(output_dir, "network_communities.png"), dpi=600)
-    plt.close(fig)
-    
+    utils.save_fig(fig, os.path.join(output_dir, f"network_communities"), target_dpi=600, formats=config.plot_formats)
+
     # Cumulative proportion of samples contributing to each Program
     fig = plot_program_network_nsamples(network, colors)
-    fig.savefig(os.path.join(output_dir, "network_n_samples.pdf"))
-    fig.savefig(os.path.join(output_dir, "network_n_samples.png"), dpi=600)
-    plt.close(fig)
+    utils.save_fig(fig, os.path.join(output_dir, f"network_n_samples"), target_dpi=600, formats=config.plot_formats)
     
     # Cumulative proportion of patients contributing to each Program
     if network.integration.sample_to_patient is not None:
         fig = plot_program_network_npatients(network, colors)
-        fig.savefig(os.path.join(output_dir, "network_n_patients.pdf"))
-        fig.savefig(os.path.join(output_dir, "network_n_patients.png"), dpi=600)
-        plt.close(fig)
-    
+        utils.save_fig(fig, os.path.join(output_dir, f"network_n_patients"), target_dpi=600, formats=config.plot_formats)
     
     logging.info("Creating community usage heatmap...")
 
@@ -688,11 +663,15 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     ic_usage = network.get_community_usage()
     ic_usage.to_csv(os.path.join(output_dir, "community_usage.txt"), sep="\t")
     fig = plot_community_usage_heatmap(network, colors)
-    fig.savefig(os.path.join(output_dir, "community_usage.pdf"))
-    plt.close(fig)
-   
+    utils.save_fig(fig, os.path.join(output_dir, f"community_usage"), target_dpi=200, formats=config.plot_formats)
 
     logging.info("Computing community-level associations")
+
+    # category counts for each layer
+    for dataset_name, dataset in integration.datasets.items():
+        for layer in dataset.get_metadata_df(include_numerical=False):
+            fig = plot_sample_numbers(dataset=dataset, layer=layer)
+            utils.save_fig(fig, os.path.join(output_dir, "categories", dataset_name, layer), target_dpi=300, formats=config.plot_formats)
 
     # Community-level, categorical metadata, overrepresentation
     for dataset_name, dataset in integration.datasets.items():
@@ -712,42 +691,30 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
 
     # Community-level, categorical data, overrepresentation bar plots
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(output_dir, "annotated_communities", "overrepresentation_bar", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
             fig = plot_overrepresentation_community_bar(network, colors, layer=layer, subset_datasets=dataset_name)
-            os.makedirs(os.path.join(output_dir, "annotated_communities", "overrepresentation_bar"), exist_ok=True)
-            fig.savefig(os.path.join(output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, layer + ".pdf"))
-            plt.close(fig)
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, layer), target_dpi=300, formats=config.plot_formats)
         
     # Community-level, numerical metadata, correlation bar plots
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(output_dir, "annotated_communities", "correlation_bar", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
             fig = plot_metadata_correlation_community_bar(network, colors, layer=layer, subset_datasets=dataset_name)
-            os.makedirs(os.path.join(output_dir, "annotated_communities", "correlation_bar"), exist_ok=True)
-            fig.savefig(os.path.join(output_dir, "annotated_communities", "correlation_bar", dataset_name, layer + ".pdf"))
-            plt.close(fig)
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "correlation_bar", dataset_name, layer), target_dpi=300, formats=config.plot_formats)
 
 
     logging.info("Creating community-level network plots")
 
     # Community-level, categorical data, overrepresentation network
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(output_dir, "annotated_communities", "overrepresentation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
-            fig = plot_overrepresentation_community_network(network, colors, layer=layer, subset_datasets=dataset_name)   
-            fig.savefig(os.path.join(output_dir, "annotated_communities", "overrepresentation_network", dataset_name, layer + ".pdf"))
-            fig.savefig(os.path.join(output_dir, "annotated_communities", "overrepresentation_network", dataset_name, layer + ".png"), dpi=600)
-            plt.close(fig)
+            fig = plot_overrepresentation_community_network(network, colors, layer=layer, subset_datasets=dataset_name)
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "overrepresentation_network", dataset_name, layer), target_dpi=600, formats=config.plot_formats)
  
     # Community-level, numerical data, correlation network
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(output_dir, "annotated_communities", "correlation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
             fig = plot_metadata_correlation_community_network(network, colors, layer=layer, subset_datasets=dataset_name)   
-            fig.savefig(os.path.join(output_dir, "annotated_communities", "correlation_network", dataset_name, layer + ".pdf"))
-            fig.savefig(os.path.join(output_dir, "annotated_communities", "correlation_network", dataset_name, layer + ".png"), dpi=600)
-            plt.close(fig)    
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "correlation_network", dataset_name, layer), target_dpi=600, formats=config.plot_formats)
 
     logging.info("Computing program-level associations")
 
@@ -770,37 +737,26 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     # Program-level, categorical data, overrepresentation bar plots
     for dataset_name in integration.datasets:
         fig = plot_overrepresentation_program_bar(network, colors, dataset_name=dataset_name)
-        os.makedirs(os.path.join(output_dir, "annotated_programs", "overrepresentation_bar"), exist_ok=True)
-        fig.savefig(os.path.join(output_dir, "annotated_programs", "overrepresentation_bar", dataset_name + ".pdf"))
-        plt.close(fig)
+        utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "overrepresentation_bar", dataset_name), target_dpi=300, formats=config.plot_formats)
         
     # Program-level, numerical metadata, correlation bar plots
     for dataset_name in integration.datasets:
         fig = plot_metadata_correlation_program_bar(network, colors, dataset_name=dataset_name)
-        os.makedirs(os.path.join(output_dir, "annotated_programs", "correlation_bar"), exist_ok=True)
-        fig.savefig(os.path.join(output_dir, "annotated_programs", "correlation_bar", dataset_name + ".pdf"))
-        plt.close(fig)
+        utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "correlation_bar", dataset_name), target_dpi=300, formats=config.plot_formats)
 
     logging.info("Creating program-level network plots")
 
     # Program-level, categorical data, overrepresentation network
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(output_dir, "annotated_programs", "overrepresentation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
-            fig = plot_overrepresentation_program_network(network, colors, layer=layer, subset_datasets=dataset_name)   
-            fig.savefig(os.path.join(output_dir, "annotated_programs", "overrepresentation_network", dataset_name, layer + ".pdf"))
-            fig.savefig(os.path.join(output_dir, "annotated_programs", "overrepresentation_network", dataset_name, layer + ".png"), dpi=600)
-            plt.close(fig)
+            fig = plot_overrepresentation_program_network(network, colors, layer=layer, subset_datasets=dataset_name)  
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "overrepresentation_network", dataset_name, layer), target_dpi=600, formats=config.plot_formats)
  
     # Program-level, numerical data, correlation network
     for dataset_name, dataset in integration.datasets.items():
-        os.makedirs(os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
             fig = plot_metadata_correlation_program_network(network, colors, layer=layer, subset_datasets=dataset_name)   
-            fig.savefig(os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name, layer + ".pdf"))
-            fig.savefig(os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name, layer + ".png"), dpi=600)
-            plt.close(fig)       
-    
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name, layer), target_dpi=600, formats=config.plot_formats)
     
 cli.add_command(cmd_txt_to_h5ad)
 cli.add_command(cmd_update_h5ad_metadata)

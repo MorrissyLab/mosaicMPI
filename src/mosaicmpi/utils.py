@@ -1,8 +1,12 @@
 import logging
+import os
 import numpy as np
 import pandas as pd
 from matplotlib.text import Text
+from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 from typing import Tuple, Union
+from collections.abc import Collection
 from . import __version__, logging_started
 
 
@@ -110,4 +114,48 @@ def program_to_node(program: Tuple[str, int, int]) -> str:
     """
     node = "|".join((str(p) for p in program))
     return node
+    
+
+def get_adjusted_dpi(fig: Figure, target_dpi: float = 200) -> float:
+    
+    """Lower the DPI if figure size in pixels exceeds 2 ^ 16 in either direction.
+
+    :param fig: figure
+    :type fig: Figure
+    :param target: maximum DPI, defaults to 200
+    :type target: float, optional
+    :return: DPI for error-free PNG outputs
+    :rtype: float
+    """
+
+    max_dpi = (2**16 - 1)/(fig.get_size_inches().max())
+    return min(max_dpi, target_dpi)
+
+def save_fig(fig: Figure, filepath_no_ext: str, target_dpi: float, formats: Union[str, Collection[str]]="pdf", close: bool = True):
+    """Save figure to one or more files with the same basename. Directories are created as needed.
+
+    :param fig: figure
+    :type fig: Figure
+    :param basename: path to filename excluding extension
+    :type basename: str
+    :param target_dpi: target DPI (for PNG output only)
+    :type target_dpi: float
+    :param formats: figure extension or list of extensions. Values can be "pdf" or "png", or ("pdf", "png") for both, defaults to "pdf"
+    :type formats: Union[str, Collection[str]], optional
+    :param close: close figure after saving, defaults to True
+    :type close: bool, optional
+    """
+    dpi = get_adjusted_dpi(fig, target_dpi)
+    if isinstance(formats, str):
+        formats == [formats]
+    elif isinstance(formats, Collection):
+        pass
+    else:
+        formats_type = type(formats)
+        raise TypeError(f"{formats_type} is not a valid format or collection of formats. `formats` must be a string or Collection.")
+    
+    os.makedirs(os.path.dirname(filepath_no_ext), exist_ok=True)
+    for format in formats:
+        fig.savefig(fname = filepath_no_ext + "." + format, dpi=dpi)
+    plt.close(fig)
     

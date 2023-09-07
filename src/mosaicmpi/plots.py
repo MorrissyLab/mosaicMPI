@@ -258,6 +258,39 @@ def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors, subset_metada
                             ylabel="Program")
     return fig
 
+def plot_sample_numbers(dataset: Dataset, layer: str, figsize = None, ax = None):
+    """Bar plot of sample numbers in each category based on a single categorical layer.
+
+    :param dataset: dataset
+    :type dataset: Dataset
+    :param layer: categorical metadata layer
+    :type layer: str
+    :param figsize: figure size, defaults to None
+    :type figsize: Collection[float, float], optional
+    :param ax: axes object for adding to an existing plot, defaults to None
+    :type ax: Axes, optional
+    :return: figure or None
+    :rtype: Union[Figure, None]
+    """
+
+
+    data = dataset.get_metadata_df(include_numerical=False)[layer].replace("nan", np.NaN).value_counts()
+    
+    if ax is None:
+        if figsize is None:
+            figsize = [1 + len(data) / 4, 4]
+
+
+
+        fig, ax_plot = plt.subplots(figsize=figsize, layout="constrained")
+    else:
+        ax_plot = ax
+
+    
+    data.plot.bar(ax = ax_plot, width=0.8, color = "#666666")
+    ax_plot.set_ylabel("# samples")
+
+    return fig
 
 
 #############################
@@ -544,10 +577,21 @@ def plot_community_usage_per_sample(network: Network,
     return fig
 
 def plot_community_contribution(network: Network, colors: Colors, figsize: Collection = None, highlight_central_program: bool = True, orientation = "horizontal"):
+    """_summary_
+
+    :param network: _description_
+    :type network: Network
+    :param colors: _description_
+    :type colors: Colors
+    :param figsize: _description_, defaults to None
+    :type figsize: Collection, optional
+    :param highlight_central_program: _description_, defaults to True
+    :type highlight_central_program: bool, optional
+    :param orientation: _description_, defaults to "horizontal"
+    :type orientation: str, optional
+    :return: _description_
+    :rtype: _type_
     """
-    Plot communities by dataset and rank representation
-    """
-    #TODO: orientation and docstring
 
 
 
@@ -560,9 +604,20 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
         central_ranks = pd.DataFrame(network.get_representative_programs()).reset_index().set_index(["Community", "dataset"])["k"]
 
     n_datasets = network.integration.n_datasets
+
     if figsize is None:
-        figsize = [2 + n_datasets * 5.5, 1 + len(network.communities)/4]
-    fig, axes = plt.subplots(1, n_datasets+1, figsize=figsize, sharex=True, sharey=True, layout="tight")
+        if orientation == "horizontal":
+            figsize = [2 + n_datasets * 6, 1 + len(network.communities)/4]
+        elif orientation == "vertical":
+            figsize= [4, (2 + len(network.communities)/4) * n_datasets]
+        else:
+            raise ValueError(f"{orientation} is not a valid orientation. Please choose from `horizontal` or `vertical`")
+
+    if orientation == "horizontal":
+        fig, axes = plt.subplots(1, n_datasets+1, figsize=figsize, sharex=True, sharey=True, layout="tight")
+    elif orientation == "vertical":
+        fig, axes = plt.subplots(n_datasets+1, 1, figsize=figsize, sharex=True, sharey=True, layout="tight")
+    
     for dataset, ax in zip(network.integration.datasets, axes):
         for y, community in enumerate(network.ordered_community_names):
             members = network.communities[community]
@@ -598,10 +653,20 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
         ax.set_yticklabels(network.ordered_community_names)
         ax.set_xticks(list(range(len(network.integration.selected_k[dataset]))))
         ax.set_xticklabels(network.integration.selected_k[dataset])
-        ax.set_title(dataset)
 
-    fig.supxlabel("Rank (k)")
-    fig.supylabel("Community")
+
+        if orientation == "vertical":
+            ax.set_ylabel("Community")
+            if ax is axes[-2]:
+                ax.set_xlabel("Rank (k)")
+                ax.xaxis.set_tick_params(labelbottom=True)
+        elif orientation == "horizontal":
+            ax.set_xlabel("Rank (k)")
+            if ax is axes[-2]:
+                ax.set_ylabel("Community")
+
+        ax.set_title(dataset)
+   
 
 
     # Add legend

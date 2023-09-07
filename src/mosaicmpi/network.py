@@ -111,12 +111,22 @@ class Network():
             nodes.append((dataset_name, int(k_str), int(program_str)))
         return nodes
     
+    def get_node_table(self) -> pd.DataFrame:
+        """Get node counts before and after various node and edge filters.
+
+        :return: Summary table of node counts
+        :rtype: pd.DataFrame
+        """
+        node_table = self.integration.get_node_table()
+        node_table[("network", "")] = pd.Series([node_to_program(node)[0] for node in self.program_graph.nodes]).value_counts()
+        return node_table
+
     def get_community_usage(self,
                             subset_datasets: Optional[Union[str, Iterable[str]]] = None,
                             normalize: bool = True,
                             discretize: bool = False):
         """
-        Get median usage of each community of programs for each samples. 
+        Get median usage of each community of programs for each samples.  # TODO: migrate to representative programs
 
         :param subset_datasets: dataset name or iterable of dataset names to subset the results, defaults to None
         :type subset_datasets: str or Iterable[str], optional
