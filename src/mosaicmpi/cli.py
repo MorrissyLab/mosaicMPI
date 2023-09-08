@@ -13,13 +13,10 @@ import logging
 import subprocess
 import collections
 import sys
-from datetime import datetime
 from typing import Optional, Mapping
 
 import click
 import pandas as pd
-import matplotlib.pyplot as plt
-import networkx as nx
 
 class _OrderedGroup(click.Group):
     """
@@ -433,12 +430,8 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help=".h5ad file with cNMF results. Can be used multiple times to specify one or more datasets from which to create a config.toml file.")
 @click.option('-o', '--output_toml', type=click.Path(file_okay=False), required=False, help="Output .toml file for configuring integration.")
 def cmd_create_config(input_h5ad, output_toml):
-    """Creates a TOML config file with default parameters to be used as input for `mosaicmpi integrate`.
-
-    :param input_h5ad: _description_
-    :type input_h5ad: _type_
-    :param output_toml: _description_
-    :type output_toml: _type_
+    """
+    Creates a TOML config file with default parameters to be used as input for `mosaicmpi integrate`.
     """
     utils.start_logging()
     if output_toml is None:
@@ -467,7 +460,7 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     """
     Integrate one or more datasets across ranks using a TOML configuration file.
     """
-    
+    import networkx as nx
     utils.start_logging()  # allows warning messages to be printed even though logfile hasn't been made yet
 
     # set CPU count for MP-enabled tasks
@@ -565,7 +558,7 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     if communities_toml is None:
         community_algorithm = config.community_algorithm
         network.community_search(algorithm=community_algorithm,
-                                resolution=config.communities[community_algorithm]["resolution"])
+                                resolution=config.community_algorithm_parameters[community_algorithm]["resolution"])
         network.prune_communities(renumber=True, **config.community_pruning)
     else:
         network.read_communities_from_toml(communities_toml)
@@ -758,6 +751,45 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
             fig = plot_metadata_correlation_program_network(network, colors, layer=layer, subset_datasets=dataset_name)   
             utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name, layer), target_dpi=600, formats=config.plot_formats)
     
+@click.command(name="ssgsea")
+@click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
+    help="Output directory for ssgsea results")
+@click.option('-n', '--pkl_file', type=click.Path(exists=True, dir_okay=False), required=True, 
+    help="Path to network_integration.pkl.gz file from `mosaicmpi integrate` step")
+@click.option('-g', '--gmt_file', type=click.Path(exists=True, dir_okay=False), required=True, 
+    help="Path to GMT file with gene sets.")
+@click.option("--min_intersection", type=int, default=5, 
+    help="Minimum intersection size for gene sets")
+@click.option("--max_intersection", type=int, default=500, 
+    help="Minimum intersection size for gene sets")
+@click.option('--cpus', type=int, default=cpus_available, show_default=True,
+    help="Number of CPUs for MP-enabled tasks")
+def cmd_ssgsea(output_dir, pkl_file, gmt_file, min_intersection, max_intersection, cpus):
+    """
+    Compute and plot ssGSEA Normalized Enrichment Scores (NES) for programs from an integration.
+    """
+    import gseapy
+
+    utils.start_logging()  # allows warning messages to be printed even though logfile hasn't been made yet
+
+    # set CPU count for MP-enabled tasks
+    global cpus_available
+    cpus_available = cpus
+
+    # create directory structure, warn if not empty
+    output_dir = os.path.normpath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    if os.listdir(output_dir):
+        logging.warning(f"{output_dir} is not empty. Files may be overwritten.")
+
+    # write to log file
+    utils.start_logging(os.path.join(output_dir, "logfile.txt"))
+
+    network = Network.from_pkl(pkl_file)
+
+    raise NotImplementedError  # TODO
+
+
 cli.add_command(cmd_txt_to_h5ad)
 cli.add_command(cmd_update_h5ad_metadata)
 cli.add_command(cmd_check_h5ad)
@@ -768,3 +800,4 @@ cli.add_command(cmd_postprocess)
 cli.add_command(cmd_annotated_heatmap)
 cli.add_command(cmd_create_config)
 cli.add_command(cmd_integrate)
+cli.add_command(cmd_ssgsea)
