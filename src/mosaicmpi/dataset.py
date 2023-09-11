@@ -37,9 +37,7 @@ class Dataset():
         """
 
         if adata.X is None:
-            logging.error(f"adata contains no expression data (adata.X)")
-            raise ValueError()
-        
+            logging.error(f"adata contains no data")
         
         if "mosaicmpi_version" in adata.uns and adata.uns["mosaicmpi_version"] is not None:
             self.adata = adata
@@ -69,20 +67,20 @@ class Dataset():
                 X_is_tpm = ((X.sum(axis=1) - 1e6).abs() > 1e2).any()
                 if is_normalized and not X_is_tpm:
                     logging.warning("AnnData object contains non-TPM normalized data. New AnnData object will retain the count (unnormalized) data only.")
-                
-            if "odg" in adata.uns and "gene_stats" in adata.uns["odg"]:
-                gene_stat_columns = adata.uns["odg"]["gene_stats"].columns
-                if adata.var.columns.isin(gene_stat_columns).any():
-                    overlapping_cols = adata.var.columns.isin(gene_stat_columns)
-                    overlapping_colstr = ", ".join(overlapping_cols[overlapping_cols].index.to_list())
-                    logging.warning(f"AnnData object contains cNMF gene stats which will override columns in adata.var: {overlapping_colstr}")
-                adata.var = pd.merge(left=adata.var, right=adata.uns["odg"]["gene_stats"], how="left", left_index=True, right_index=True)
-                del adata.uns["odg"]["gene_stats"]
             
             # create new AnnData object
             new_adata = ad.AnnData(X=raw, obs=adata.obs, var=adata.var, varm=adata.varm, obsm=adata.obsm, uns=adata.uns)
+            
+            # check/initialize unstructured metadata
             if "history" not in new_adata.uns:
                 new_adata.uns["history"] = {}
+            if "odg" not in new_adata.uns:
+                new_adata.uns["odg"] = {}
+            # add missing value calculations on input data
+            if "missing_values" not in new_adata.var:
+                new_adata.var["missing_values"] = raw.isnull().sum()
+            if "missingness" not in new_adata.var:
+                new_adata.var["missingness"] = new_adata.var["missing_values"] / raw.shape[0]
 
             # update dataset object
             self.adata = new_adata
@@ -120,8 +118,7 @@ class Dataset():
         if sparsify:
             data = sp.csr_matrix(data.values)
         data = data.astype("float32")
-        uns = {"history": {}, "odg":{}}
-        adata = ad.AnnData(X=data, var=var, uns=uns)
+        adata = ad.AnnData(X=data, var=var)
         dataset = cls(adata)
         if obs is not None:
             dataset.update_obs(obs=obs) 
@@ -323,7 +320,7 @@ class Dataset():
         
         self.adata = self.adata[:,genes_to_keep].copy()
 
-    def compute_gene_stats(self, odg_default_spline_degree: int = 3, odg_default_dof: int = 8):
+    def compute_gene_stats(self, odg_default_spline_degree: int = 3, odg_default_dof: int = 8, max_missingness: float = 0.5):
         """
         Computes gene statistics and fits two models of mean and variance of genes in the dataset. The first method is the
         generalized additive model with smooth components (B-splines) to model the relationship of mean and variance
@@ -335,6 +332,8 @@ class Dataset():
         :type odg_default_spline_degree: int, optional
         :param odg_default_dof: Degrees of freedom for GLM-GAM modelling of mean-varance, defaults to 8
         :type odg_default_dof: int, optional
+        :param max_missingness: Exclude features with high pre-imputation missingness. Value must be between 0 and 1, defaults to 0.5
+        :type max_missingness: float, optional
         """
         data_raw = self.to_df()
         data_normalized = self.to_df(normalized=True)
@@ -344,10 +343,9 @@ class Dataset():
         self.adata.var["rank_mean"] = self.adata.var["mean"].rank()
         self.adata.var["variance"] = data_normalized.var()
         self.adata.var["sd"] = data_normalized.std()
-        self.adata.var["missingness"] = data_normalized.isnull().sum() / data_normalized.shape[0]
         self.adata.var[["log_mean", "log_variance"]] = np.log10(self.adata.var[["mean", "variance"]])
         self.adata.var["mean_counts"] = data_raw.mean()
-        self.adata.var["odscore_excluded"] = ((self.adata.var["missingness"] > 0) |
+        self.adata.var["odscore_excluded"] = ((self.adata.var["missingness"] > max_missingness) |
                                               self.adata.var["log_mean"].isnull() |
                                               (self.adata.var["mean"] == 0) |
                                               self.adata.var["log_variance"].isnull())

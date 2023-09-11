@@ -2,7 +2,7 @@
 
 # mosaicMPI: mosaic multi-resolution program integration
 
-![version badge](https://img.shields.io/badge/version-2.1.2-blue)
+![version badge](https://img.shields.io/badge/version-2.1.3-blue)
 [![PyPI Latest Release](https://img.shields.io/pypi/v/mosaicmpi.svg)](https://pypi.org/project/mosaicmpi/)
 [![Conda Latest Release](https://img.shields.io/conda/vn/conda-forge/mosaicmpi)](https://anaconda.org/conda-forge/mosaicmpi/)
 [![Documentation status](https://readthedocs.org/projects/mosaicmpi/badge/?version=latest&style=flat)](https://mosaicmpi.readthedocs.io)
@@ -47,8 +47,18 @@ Here are just a few of the things that mosaicMPI does well:
 ### ✨ Latest Release
 Install the package with `conda`:
 ```bash
-conda create -n mosaicmpi -c conda-forge mosaicmpi
-conda activate mosaicmpi
+# create an environment called mosaic and install
+conda create -n mosaic -c conda-forge mosaicmpi
+conda activate mosaic
+```
+
+For ssGSEA analysis, you will also need to install GSEApy into the same environment.
+
+```bash
+# if you have conda (MacOS_x86-64 and Linux only)
+conda install -c bioconda gseapy
+# Windows and MacOS_ARM64(M1/2-Chip)
+pip install gseapy
 ```
 
 ## 📖 Documentation

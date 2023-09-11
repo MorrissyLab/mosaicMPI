@@ -27,10 +27,33 @@ import networkx as nx
 # Dataset-related plots #
 #########################
 
+def plot_feature_missingness(dataset: Dataset, ax: Optional[Axes] = None, proportion=False):
+        
+    if ax is None:
+        fig, ax_plot = plt.subplots(figsize=[10, 3], layout="constrained")
+    else:
+        ax_plot = ax
+
+    if proportion:
+        stat = "missingness"
+    else:
+        stat = "missing_values"
+
+    missingness = dataset.adata.var[stat]
+    missingness.value_counts().sort_index().plot.bar(width=0.9, color="k", ax=ax_plot)
+    ax_plot.set_ylabel("Features")
+    ax_plot.set_xlabel(stat)
+
+    if ax is None:
+        return fig
+
+
+
 def plot_feature_dispersion(dataset: Dataset,
                             show_selected: bool = False,
                             show_model_curve: bool = True,
                             y_unit: Literal["log_variance", "odscore", "log_odscore", "vscore", "log_vscore"] = "log_variance",
+                            exclude_unmodelled_features: bool = True,
                             ax: Optional[Axes] = None):
     
     df = dataset.adata.var.sort_values("mean")
@@ -662,7 +685,7 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
                 ax.xaxis.set_tick_params(labelbottom=True)
         elif orientation == "horizontal":
             ax.set_xlabel("Rank (k)")
-            if ax is axes[-2]:
+            if ax is axes[0]:
                 ax.set_ylabel("Community")
 
         ax.set_title(dataset)

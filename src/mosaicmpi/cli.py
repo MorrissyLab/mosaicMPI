@@ -98,6 +98,43 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
                  + dataset.get_metadata_type_summary())
     dataset.write_h5ad(input_h5ad)
 
+@click.command(name="impute-zeros")
+@click.option(
+    "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=True,
+    help="Input .h5ad file.")
+@click.option(
+    "-o", "--output", type=click.Path(dir_okay=False, exists=False), required=True,
+    help="Output .h5ad file.")
+def cmd_impute_zeros(input, output):
+    """
+    Impute missing values with zeros.
+    """
+    utils.start_logging()
+    raise NotImplementedError  # TODO: impute_zeros
+    dataset = Dataset.from_h5ad(input)
+    
+    # Save output to new h5ad file
+    dataset.write_h5ad(output)
+
+@click.command(name="impute-knn")
+@click.option(
+    "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=True,
+    help="Input .h5ad file.")
+@click.option(
+    "-o", "--output", type=click.Path(dir_okay=False, exists=False), required=True,
+    help="Output .h5ad file.")
+def cmd_impute_knn(input, output):
+    """
+    K-nearest neighbour imputation of missing values.
+    """
+    utils.start_logging()
+    raise NotImplementedError  #TODO: impute_knn
+    dataset = Dataset.from_h5ad(input)
+    
+    # Save output to new h5ad file
+    dataset.write_h5ad(output)
+
+
 @click.command(name="check-h5ad")
 @click.option(
     "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=True,
@@ -428,7 +465,7 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
 
 @click.command(name="create-config")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help=".h5ad file with cNMF results. Can be used multiple times to specify one or more datasets from which to create a config.toml file.")
-@click.option('-o', '--output_toml', type=click.Path(file_okay=False), required=False, help="Output .toml file for configuring integration.")
+@click.option('-o', '--output_toml', type=click.Path(exists=False, dir_okay=False), required=False, help="Output .toml file for configuring integration.")
 def cmd_create_config(input_h5ad, output_toml):
     """
     Creates a TOML config file with default parameters to be used as input for `mosaicmpi integrate`.
@@ -664,35 +701,40 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     for dataset_name, dataset in integration.datasets.items():
         for layer in dataset.get_metadata_df(include_numerical=False):
             fig = plot_sample_numbers(dataset=dataset, layer=layer)
-            utils.save_fig(fig, os.path.join(output_dir, "categories", dataset_name, layer), target_dpi=300, formats=config.plot_formats)
+            layer_str = layer.replace("\\", "_").replace("/", "_")
+            utils.save_fig(fig, os.path.join(output_dir, "categories", dataset_name, layer_str), target_dpi=300, formats=config.plot_formats)
 
     # Community-level, categorical metadata, overrepresentation
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(output_dir, "annotated_communities", "overrepresentation", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
+            layer_str = layer.replace("\\", "_").replace("/", "_")
             df = network.get_community_category_overrepresentation(layer=layer, subset_datasets=dataset_name, truncate_negative=False)
-            df.to_csv(os.path.join(output_dir, "annotated_communities", "overrepresentation", dataset_name, layer + ".txt"), sep='\t')
+            df.to_csv(os.path.join(output_dir, "annotated_communities", "overrepresentation", dataset_name, layer_str + ".txt"), sep='\t')
             
     # Community-level, numerical metadata, correlation
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(output_dir, "annotated_communities", "correlation", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
+            layer_str = layer.replace("\\", "_").replace("/", "_")
             df = network.get_community_metadata_correlation(layer=layer, subset_datasets=dataset_name, method="pearson")
-            df.to_csv(os.path.join(output_dir, "annotated_communities", "correlation", dataset_name, layer + ".txt"), sep='\t')
+            df.to_csv(os.path.join(output_dir, "annotated_communities", "correlation", dataset_name, layer_str + ".txt"), sep='\t')
 
     logging.info("Creating community-level bar plots")
 
     # Community-level, categorical data, overrepresentation bar plots
     for dataset_name, dataset in integration.datasets.items():
         for layer in dataset.get_metadata_df(include_numerical=False):
+            layer_str = layer.replace("\\", "_").replace("/", "_")
             fig = plot_overrepresentation_community_bar(network, colors, layer=layer, subset_datasets=dataset_name)
-            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, layer), target_dpi=300, formats=config.plot_formats)
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "overrepresentation_bar", dataset_name, layer_str), target_dpi=300, formats=config.plot_formats)
         
     # Community-level, numerical metadata, correlation bar plots
     for dataset_name, dataset in integration.datasets.items():
         for layer in dataset.get_metadata_df(include_categorical=False):
+            layer_str = layer.replace("\\", "_").replace("/", "_")
             fig = plot_metadata_correlation_community_bar(network, colors, layer=layer, subset_datasets=dataset_name)
-            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "correlation_bar", dataset_name, layer), target_dpi=300, formats=config.plot_formats)
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "correlation_bar", dataset_name, layer_str), target_dpi=300, formats=config.plot_formats)
 
 
     logging.info("Creating community-level network plots")
@@ -700,14 +742,16 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     # Community-level, categorical data, overrepresentation network
     for dataset_name, dataset in integration.datasets.items():
         for layer in dataset.get_metadata_df(include_numerical=False):
+            layer_str = layer.replace("\\", "_").replace("/", "_")
             fig = plot_overrepresentation_community_network(network, colors, layer=layer, subset_datasets=dataset_name)
-            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "overrepresentation_network", dataset_name, layer), target_dpi=600, formats=config.plot_formats)
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "overrepresentation_network", dataset_name, layer_str), target_dpi=600, formats=config.plot_formats)
  
     # Community-level, numerical data, correlation network
     for dataset_name, dataset in integration.datasets.items():
         for layer in dataset.get_metadata_df(include_categorical=False):
+            layer_str = layer.replace("\\", "_").replace("/", "_")
             fig = plot_metadata_correlation_community_network(network, colors, layer=layer, subset_datasets=dataset_name)   
-            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "correlation_network", dataset_name, layer), target_dpi=600, formats=config.plot_formats)
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_communities", "correlation_network", dataset_name, layer_str), target_dpi=600, formats=config.plot_formats)
 
     logging.info("Computing program-level associations")
 
@@ -715,15 +759,17 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(output_dir, "annotated_programs", "overrepresentation", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_numerical=False):
+            layer_str = layer.replace("\\", "_").replace("/", "_")
             df = dataset.get_category_overrepresentation(layer)
-            df.to_csv(os.path.join(output_dir, "annotated_programs", "overrepresentation", dataset_name, layer + ".txt"), sep='\t')
+            df.to_csv(os.path.join(output_dir, "annotated_programs", "overrepresentation", dataset_name, layer_str + ".txt"), sep='\t')
             
     # Program-level, numerical metadata, correlation
     for dataset_name, dataset in integration.datasets.items():
         os.makedirs(os.path.join(output_dir, "annotated_programs", "correlation", dataset_name), exist_ok=True)
         for layer in dataset.get_metadata_df(include_categorical=False):
+            layer_str = layer.replace("\\", "_").replace("/", "_")
             df = dataset.get_metadata_correlation(layer, method="pearson")
-            df.to_csv(os.path.join(output_dir, "annotated_programs", "correlation", dataset_name, layer + ".txt"), sep='\t')
+            df.to_csv(os.path.join(output_dir, "annotated_programs", "correlation", dataset_name, layer_str + ".txt"), sep='\t')
 
     logging.info("Creating program-level bar plots")
 
@@ -742,14 +788,16 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     # Program-level, categorical data, overrepresentation network
     for dataset_name, dataset in integration.datasets.items():
         for layer in dataset.get_metadata_df(include_numerical=False):
+            layer_str = layer.replace("\\", "_").replace("/", "_")
             fig = plot_overrepresentation_program_network(network, colors, layer=layer, subset_datasets=dataset_name)  
-            utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "overrepresentation_network", dataset_name, layer), target_dpi=600, formats=config.plot_formats)
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "overrepresentation_network", dataset_name, layer_str), target_dpi=600, formats=config.plot_formats)
  
     # Program-level, numerical data, correlation network
     for dataset_name, dataset in integration.datasets.items():
         for layer in dataset.get_metadata_df(include_categorical=False):
+            layer_str = layer.replace("\\", "_").replace("/", "_")
             fig = plot_metadata_correlation_program_network(network, colors, layer=layer, subset_datasets=dataset_name)   
-            utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name, layer), target_dpi=600, formats=config.plot_formats)
+            utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name, layer_str), target_dpi=600, formats=config.plot_formats)
     
 @click.command(name="ssgsea")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
@@ -768,9 +816,17 @@ def cmd_ssgsea(output_dir, pkl_file, gmt_file, min_intersection, max_intersectio
     """
     Compute and plot ssGSEA Normalized Enrichment Scores (NES) for programs from an integration.
     """
-    import gseapy
-
-    utils.start_logging()  # allows warning messages to be printed even though logfile hasn't been made yet
+    utils.start_logging()  # allows warning messages to be rinted even though logfile hasn't been made yet
+    try:
+        import gseapy
+    except ImportError:
+        
+        logging.error("gseapy is not installed. Please install using:\n\n\t"
+                      "# if you have conda (MacOS_x86-64 and Linux only)\n\t"
+                      "conda install -c bioconda gseapy\n\n\t"
+                      "# Windows and MacOS_ARM64(M1/2-Chip)\n\t"
+                      "pip install gseapy\nl"
+                      )
 
     # set CPU count for MP-enabled tasks
     global cpus_available
@@ -786,12 +842,36 @@ def cmd_ssgsea(output_dir, pkl_file, gmt_file, min_intersection, max_intersectio
     utils.start_logging(os.path.join(output_dir, "logfile.txt"))
 
     network = Network.from_pkl(pkl_file)
+    raise NotImplementedError
+    
+@click.command(name="compare-integrations")
+@click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
+    help="Output directory for results")
+@click.option('-n', '--pkl_files', type=click.Path(exists=True, dir_okay=False), required=True, multiple=True,
+    help="Path to network_integration.pkl.gz files from `mosaicmpi integrate` step")
+@click.option('-d', '--dataset_mapping_toml', type=click.Path(exists=True, dir_okay=False), required=False,
+    help="Path to TOML file with dataset mappings in cases where dataset names are mismatched between integrations.")
 
-    raise NotImplementedError  # TODO
+def cmd_compare_integrations(output_dir, pkl_files, dataset_mapping_toml):
+    """Compare communities from two network_integration.pkl files.
+    """
+    raise NotImplementedError
 
+@click.command(name="label-transfer")
+@click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
+    help="Output directory for results")
+@click.option('-n', '--pkl_file', type=click.Path(exists=True, dir_okay=False), required=True,
+    help="Path to network_integration.pkl.gz file from `mosaicmpi integrate` step")
+
+def cmd_label_transfer(output_dir, pkl_file):
+    """Transfer labels between datasets.
+    """
+    raise NotImplementedError
 
 cli.add_command(cmd_txt_to_h5ad)
 cli.add_command(cmd_update_h5ad_metadata)
+cli.add_command(cmd_impute_knn)
+cli.add_command(cmd_impute_zeros)
 cli.add_command(cmd_check_h5ad)
 cli.add_command(cmd_model_odg)
 cli.add_command(cmd_set_parameters)
@@ -801,3 +881,5 @@ cli.add_command(cmd_annotated_heatmap)
 cli.add_command(cmd_create_config)
 cli.add_command(cmd_integrate)
 cli.add_command(cmd_ssgsea)
+cli.add_command(cmd_compare_integrations)
+cli.add_command(cmd_label_transfer)
