@@ -53,14 +53,16 @@ def plot_feature_dispersion(dataset: Dataset,
                             show_selected: bool = False,
                             show_model_curve: bool = True,
                             y_unit: Literal["log_variance", "odscore", "log_odscore", "vscore", "log_vscore"] = "log_variance",
-                            exclude_unmodelled_features: bool = True,
+                            modelled_features_only: bool = True,
                             ax: Optional[Axes] = None):
-    
-    df = dataset.adata.var.sort_values("mean")
+    df = dataset.adata.var
+    if modelled_features_only:
+        df = df[~df["odscore_excluded"]]
+    df = df.sort_values("mean")
     if "log_odscore" not in df.columns:  # required for compatibility with older h5ad files which do not have this column
         df["log_odscore"] = np.log10(df["odscore"])
         df["log_vscore"] = np.log10(df["vscore"])
-    
+
     if ax is None:
         fig, ax_plot = plt.subplots(figsize=[4, 4], layout="tight")
     else:
@@ -589,7 +591,7 @@ def plot_community_usage_per_sample(network: Network,
 
     fig, axes = plt.subplots(n_row, n_col, figsize=[3 * n_col, 3 * n_row], sharex=True, sharey=True, layout="tight")
 
-    for i, (celltype, subdf) in enumerate(df.groupby(axis=0, level=0)):
+    for i, (celltype, subdf) in enumerate(df.groupby(level=0)):
         ax = axes[i // n_col, i % n_col]
         sns.violinplot(data=subdf, linewidth=0.1, ax=ax, cut=0, color=colors.community_colors)
         ax.set_title(celltype)
@@ -1071,7 +1073,7 @@ def plot_program_network_npatients(network: Network,
         raise ValueError("No samples have valid patient IDs. Make sure to set the patient_id_col property for each Dataset")
     usages = usages[usages.index.isin(s2p.index)]
     usages.index = usages.index.map(s2p)
-    usages = usages.groupby(axis=0, level=[0,1]).any()
+    usages = usages.groupby(level=[0,1]).any()
         
     labels = usages[network.programs_in_graph].sum().apply(lambda x: str(int(x))).to_dict()
     labels = {f"{k[0]}|{k[1]}|{k[2]}": v for k,v in labels.items()}

@@ -110,9 +110,8 @@ def cmd_impute_zeros(input, output):
     Impute missing values with zeros.
     """
     utils.start_logging()
-    raise NotImplementedError  # TODO: impute_zeros
     dataset = Dataset.from_h5ad(input)
-    
+    dataset.impute_zeros()
     # Save output to new h5ad file
     dataset.write_h5ad(output)
 
@@ -123,14 +122,30 @@ def cmd_impute_zeros(input, output):
 @click.option(
     "-o", "--output", type=click.Path(dir_okay=False, exists=False), required=True,
     help="Output .h5ad file.")
-def cmd_impute_knn(input, output):
+@click.option(
+    "--n_neighbors", default=5, type=int, show_default=True,
+    help="Number of neighboring samples to use for imputation.")
+@click.option(
+    "--weights", default = "distance", type=str, show_default=True,
+    help="""Weight function used in prediction, defaults to 'distance'. Possible values:
+            
+            - 'uniform' : uniform weights. All points in each neighborhood are
+            weighted equally.
+
+            - 'distance' : weight points by the inverse of their distance.
+            in this case, closer neighbors of a query point will have a
+            greater influence than neighbors which are further away.
+            
+            .
+            """
+)
+def cmd_impute_knn(input, output, n_neighbors, weights):
     """
     K-nearest neighbour imputation of missing values.
     """
-    utils.start_logging()
-    raise NotImplementedError  #TODO: impute_knn
+    utils.start_logging
     dataset = Dataset.from_h5ad(input)
-    
+    dataset.impute_knn(n_neighbors = n_neighbors, weights = weights)
     # Save output to new h5ad file
     dataset.write_h5ad(output)
 
@@ -144,11 +159,15 @@ def cmd_impute_knn(input, output):
     help="Output .h5ad file. If not specified, no output file will be written.")
 def cmd_check_h5ad(input, output):
     """
-    Removes unfactorizable genes from a .h5ad file.
+    Removes unfactorizable features (features with zero variance and features with missing values).
+    This step prevents errors during factorization. If missing values are present in a larger
+    number of features, it is recommended to run `mosaicmpi impute_knn` first to impute missing
+    values. Then, this command will remove only those features that have zero variance or were
+    not able to be imputed for other reasons.
     """
     utils.start_logging()
     dataset = Dataset.from_h5ad(input)
-    dataset.remove_unfactorizable_genes()
+    dataset.remove_unfactorizable_features()
     
     # Save output to new h5ad file
     if output is not None:
@@ -171,7 +190,14 @@ def cmd_check_h5ad(input, output):
 @click.option(
     "--default_dof", type=int, default=20, show_default=True,
     help="Degrees of Freedom (number of components) for the Generalized Additive Model (default method).")
-def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof):
+@click.option(
+    "--max_missingness", type=float, default=0.0, show_default=True,
+    help="""Maximum proportion of missing values allowed for each feature prior to modelling the mean-variance relationship.
+            This parameter is helpful for reducing the tendency of kNN- and zero-imputed features to have higher variance 
+            relative to unimputed genes.
+            """
+)
+def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, max_missingness):
     """
     Model gene overdispersion and plot calibration plots for selection of overdispersed genes, using two methods:
     
@@ -191,8 +217,9 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof):
     dataset = Dataset.from_h5ad(input)
     
     # Create gene stats table and save h5ad file
-    dataset.compute_gene_stats(odg_default_spline_degree=default_spline_degree,
-                               odg_default_dof=default_dof)
+    dataset.model_overdispersed_genes(odg_default_spline_degree=default_spline_degree,
+                               odg_default_dof=default_dof,
+                               max_missingness=max_missingness)
     dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     
     # output text file

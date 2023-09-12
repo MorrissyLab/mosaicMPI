@@ -203,7 +203,7 @@ class Network():
                                                               subset_categories=subset_categories)
         mapper = {tuple([program.split("|")[0], int(program.split("|")[1]), int(program.split("|")[2])]): comm for program, comm in self.program_communities.items()}
         df.columns = df.columns.map(mapper)
-        df = df.groupby(axis=1, level=0).mean()
+        df = df.T.groupby(level=0).mean()
         df = df.reindex(self.ordered_community_names, axis=1)
         return df
     
@@ -227,7 +227,7 @@ class Network():
         ser = self.integration.get_metadata_correlation(layer=layer, subset_datasets=subset_datasets, method=method)
         mapper = {tuple([program.split("|")[0], int(program.split("|")[1]), int(program.split("|")[2])]): comm for program, comm in self.program_communities.items()}
         ser.index = ser.index.map(mapper)
-        ser = ser.groupby(axis=0, level=0).mean()
+        ser = ser.groupby(level=0).mean()
         ser = ser.reindex(self.ordered_community_names)
         return ser
 
@@ -715,7 +715,7 @@ class Network():
 
         selected_programs = []
         for community, cprograms in programs.groupby(programs):
-            for dataset_name, cdprograms in cprograms.groupby(axis=0, level=0):
+            for dataset_name, cdprograms in cprograms.groupby(level=0):
                 min_rank = cdprograms.index.get_level_values(1).min()
                 min_rank_programs = cdprograms[cdprograms.index.get_level_values(1) == min_rank]
                 selected_programs.append(min_rank_programs)
@@ -808,9 +808,9 @@ class Network():
         programs = programs.loc[:, ~programs.columns.to_frame().isnull().any(axis=1)]  # Remove programs not in any community
         # aggregate programs to community
         if method == "median":
-            community_scores = programs.groupby(axis=1, level=[0,1]).median()
+            community_scores = programs.T.groupby(level=[0,1]).median()
         elif method == "mean":
-            community_scores = programs.groupby(axis=1, level=[0,1]).mean()
+            community_scores = programs.T.groupby(level=[0,1]).mean()
         else:
             raise NotImplementedError
         community_scores = community_scores.loc[:, self.ordered_community_names]  # sort community names

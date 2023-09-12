@@ -6,7 +6,7 @@ import pandas as pd
 import logging
 from datetime import datetime
 import sys
-from typing import Union, Optional
+from typing import Union, Optional, Literal
 from collections.abc import Iterable, Collection
 import os
 from glob import glob
@@ -16,6 +16,7 @@ import scanpy as sc
 import anndata as ad
 import pandas as pd
 import numpy as np
+from sklearn.impute import KNNImputer, SimpleImputer
 from statsmodels.gam.api import GLMGam, BSplines
 
 class Dataset():
@@ -257,6 +258,7 @@ class Dataset():
         if missing_samples_in_md:
             logging.warning("The following samples in the data (`adata.X`) were absent in the metadata:\n  - " + "\n  - ".join(missing_samples_in_md))
         self.adata.obs = obs.reindex(self.adata.obs.index)
+        self.append_to_history(f"metadata (adata.obs) updated.")
     
     def get_metadata_type_summary(self):
         """Return a printable summary of metadata and value types for each metadata layer.
@@ -280,6 +282,7 @@ class Dataset():
         """
         filename = os.path.abspath(filename)
         logging.info(f"Writing to {filename}")
+        self.append_to_history("Writing to {filename}")
         self.adata.write_h5ad(filename)
         logging.info(f"Done")
     
@@ -297,7 +300,7 @@ class Dataset():
             df = df.div(df.sum(axis=1), axis=0) * 1e6  # TPM normalization
         return df
         
-    def remove_unfactorizable_genes(self):
+    def remove_unfactorizable_features(self):
         """Removes genes with missing values or zero variance from the data matrix.
         """
         df = self.to_df(normalized=False)
@@ -308,19 +311,47 @@ class Dataset():
         logging.info(f"{n_missing} of {self.adata.n_vars} features are missing values.")
         if n_missing:
             logging.warning(f"Subsetting features to those with no missing values.")
+            self.append_to_history(f"Removing features with missing values: {genes_with_missingvalues}")
         # Check for genes with zero variance
         zerovargenes = (df.var() == 0)
         n_zerovar = zerovargenes.sum()
         logging.info(f"{n_zerovar} of {self.adata.n_vars} features have a variance of zero.")
         if n_zerovar:
             logging.warning(f"Subsetting features to those with nonzero variance.")
+            self.append_to_history(f"Removing features with zero variance: {zerovargenes}")
         
-
         genes_to_keep = (~genes_with_missingvalues) & (~zerovargenes)
-        
         self.adata = self.adata[:,genes_to_keep].copy()
 
-    def compute_gene_stats(self, odg_default_spline_degree: int = 3, odg_default_dof: int = 8, max_missingness: float = 0.5):
+    def impute_knn(self, n_neighbors: int = 5, weights: Literal["distance", "uniform"] = "distance"):
+        """Imputation for completing missing values using k-Nearest Neighbors.
+           Each sample's missing values are imputed using the mean value from
+           `n_neighbors` nearest neighbors. Two samples are
+           close if the features that neither is missing are close.
+
+        :param n_neighbors: Number of neighboring samples to use for imputation, defaults to 5
+        :type n_neighbors: int, optional
+        :param weights: Weight function used in prediction, defaults to 'distance'. Possible values:
+            - 'uniform' : uniform weights. All points in each neighborhood are
+            weighted equally.
+            - 'distance' : weight points by the inverse of their distance.
+            in this case, closer neighbors of a query point will have a
+            greater influence than neighbors which are further away.
+        :type weights: Literal[&quot;distance&quot;, &quot;uniform&quot;], optional
+        """
+
+        self.adata.X = KNNImputer(n_neighbors=n_neighbors, weights=weights, keep_empty_features=True).fit_transform(self.adata.X)
+        self.append_to_history(f"KNN Imputation: n_neighbors = {n_neighbors}, weights = {weights}")
+
+    def impute_zeros(self):
+        """Imputation for completing missing values using zeros.
+        """
+
+        self.adata.X = SimpleImputer(strategy="constant", fill_value=0.0, keep_empty_features=True).fit_transform(self.adata.X)
+        self.append_to_history(f"Zero Imputation")
+
+
+    def model_overdispersed_genes(self, odg_default_spline_degree: int = 3, odg_default_dof: int = 8, max_missingness: float = 0.5):
         """
         Computes gene statistics and fits two models of mean and variance of genes in the dataset. The first method is the
         generalized additive model with smooth components (B-splines) to model the relationship of mean and variance
@@ -624,12 +655,12 @@ class Dataset():
         df.columns = df.columns.set_levels([l.astype("int") for l in df.columns.levels])
         if normalize:
             normalized = []
-            for _, subdf in df.groupby(axis=1, level=0):
+            for _, subdf in df.T.groupby(level=0):
                 normalized.append(subdf.div(subdf.sum(axis=1), axis=0))
             df = pd.concat(normalized, axis=1)
         if discretize:
             discretized = []
-            for _, subdf in df.groupby(axis=1, level=0):
+            for _, subdf in df.T.groupby(level=0):
                 discretized.append(subdf.eq(subdf.max(axis=1), axis=0).astype(int))
             df = pd.concat(discretized, axis=1)        
         if k is not None:
@@ -707,7 +738,7 @@ class Dataset():
         if subset_categories is not None:
             sample_to_class[~sample_to_class.isin(subset_categories)] = np.NaN
         usage.index = usage.index.map(sample_to_class)
-        observed = usage.groupby(axis=0, level=0).sum()
+        observed = usage.groupby(level=0, observed=True).sum()
         observed = observed[observed.sum(axis=1) > 0]
         n_categories = observed.shape[0]
         if n_categories < 2:
@@ -717,7 +748,7 @@ class Dataset():
                                 f"Overrepresentation cannot be calculated with fewer than 2 categories for each layer. ")
             return pd.DataFrame(np.NaN, index = observed.index, columns=observed.columns)
         expected = []
-        for k, obs_k in observed.groupby(axis=1, level=1):
+        for k, obs_k in observed.T.groupby(level=1):
             exp_k = pd.DataFrame(obs_k.sum(axis=1)) @ pd.DataFrame(obs_k.sum(axis=0)).T / obs_k.sum().sum()
             expected.append(exp_k)
         expected = pd.concat(expected, axis=1)

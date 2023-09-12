@@ -1,9 +1,9 @@
-    # for dataset_name, programs in selected_programs.droplevel(axis=1, level=[2,3]).groupby(axis=1, level=1):
+    # for dataset_name, programs in selected_programs.droplevel(axis=1, level=[2,3]).T.groupby(level=1):
     #     programs = programs.droplevel(axis=1, level=1)
     #     programs.columns = programs.columns.astype("int")
     #     for feature in config.features["features_of_interest"]:
     #         if feature in programs.index:
-    #             positive_scores = programs.loc[feature].groupby(axis=0, level=0).mean().reindex(communities.keys()).fillna(0).clip(lower=0)
+    #             positive_scores = programs.loc[feature].groupby(level=0).mean().reindex(communities.keys()).fillna(0).clip(lower=0)
     #             if positive_scores.sum() == 0:
     #                 continue
     #             fig = plot_community_network(
@@ -35,7 +35,7 @@
     #             colordict = config.get_metadata_colors(annotation_layer)
     #             colordict[""] = config.metadata_colors["missing_data"]
     #         for min_samples_per_patient in [1,2]:
-    #             n_plots = (patient_to_samples.groupby(axis=0, level=[0,1]).count() >= min_samples_per_patient).sum() + 1  # one plot per patient as well as an extra for the legend.
+    #             n_plots = (patient_to_samples.groupby(level=[0,1]).count() >= min_samples_per_patient).sum() + 1  # one plot per patient as well as an extra for the legend.
     #             n_rows = 1 + n_plots // n_cols
     #             fig, axes = plt.subplots(n_rows, n_cols, figsize = [config.integrate["plot_size_community"][0]*n_cols, config.integrate["plot_size_community"][1]*n_rows], squeeze=False, layout="constrained")
     #             for row in range(n_rows):
@@ -51,12 +51,12 @@
     #             ax.set_title("Legend", fontdict={'fontsize': 26})
 
     #             plot_count = 1
-    #             for (dataset, patient), patient_samples in patient_to_samples.groupby(axis=0, level=[0,1]):
+    #             for (dataset, patient), patient_samples in patient_to_samples.groupby(level=[0,1]):
     #                 if patient_samples.shape[0] >= min_samples_per_patient:
     #                     ax = axes[plot_count // n_cols, plot_count % n_cols]
     #                     bar_data = ic_usage.loc[patient_samples].fillna(0)
     #                     bar_data.index = merged_metadata.loc[bar_data.index][annotation_layer].cat.add_categories("").fillna("")
-    #                     bar_data = bar_data.groupby(axis=0, level=0).mean().dropna(how="any")
+    #                     bar_data = bar_data.groupby(level=0).mean().dropna(how="any")
     #                     plot_overrepresentation_network(Gcomm, community_layout, f"{dataset}\n{patient}", overrepresentation=bar_data, colordict=colordict, pie_size=config.integrate["pie_size_community"], ax=ax, edge_weights=None, show_legends=False)
     #                     plot_count += 1
     #             os.makedirs(os.path.join(output_dir, "annotated_communities", "patient_network", annotation_layer), exist_ok=True)
@@ -75,7 +75,7 @@
     # plots = {"All Datasets": plot_icusage_correlation(ic_usage.dropna(axis=1).corr("spearman"), title="All Datasets")}
     # plots.update({
     #     dataset_name: plot_icusage_correlation(df.corr("spearman"), title=dataset_name)
-    #     for dataset_name, df in ic_usage.dropna(axis=1).groupby(axis=0, level=0)
+    #     for dataset_name, df in ic_usage.dropna(axis=1).groupby(level=0)
     #     })
 
     # os.makedirs(os.path.join(output_dir, "integrated_community_usage", "correlation_heatmaps_shared"), exist_ok=True)
@@ -86,7 +86,7 @@
     # plots = {"All Datasets": plot_icusage_correlation(ic_usage.corr("spearman"), title="All Datasets")}
     # plots.update({
     #     dataset_name: plot_icusage_correlation(df.corr("spearman"), title=dataset_name)
-    #     for dataset_name, df in ic_usage.groupby(axis=0, level=0)
+    #     for dataset_name, df in ic_usage.groupby(level=0)
     #     })
 
     # os.makedirs(os.path.join(output_dir, "integrated_community_usage", "correlation_heatmaps_all"), exist_ok=True)

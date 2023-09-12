@@ -319,7 +319,7 @@ class Integration():
                     df_filt = df
 
                 results = {}
-                for dataset_name, subdf in df_filt.groupby(axis=0, level=0):
+                for dataset_name, subdf in df_filt.groupby(level=0):
                     results[dataset_name] = subdf.shape[0]
                 nodetable[(node_filter, edge_filter)] = results
 
