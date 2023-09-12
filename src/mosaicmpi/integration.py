@@ -24,7 +24,7 @@ class Integration():
         Integrate multiple datasets together.
 
         :param datasets: dictionary of name: Dataset pairs.
-        :type datasets: dict[str, Dataset]
+        :type datasets: dict[str, :class:`~mosaicmpi.dataset.Dataset`]
         :param corr_method: Correlation method: "pearson", "spearman", or "kendall", defaults to "pearson"
         :type corr_method: str, optional
         :param max_median_corr: Threshold for rank reduction procedure, relevant only for datasets where GEPs tend to be highly correlated.

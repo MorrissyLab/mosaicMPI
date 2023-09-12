@@ -287,7 +287,7 @@ def plot_sample_numbers(dataset: Dataset, layer: str, figsize = None, ax = None)
     """Bar plot of sample numbers in each category based on a single categorical layer.
 
     :param dataset: dataset
-    :type dataset: Dataset
+    :type dataset: :class:`~mosaicmpi.dataset.Dataset`
     :param layer: categorical metadata layer
     :type layer: str
     :param figsize: figure size, defaults to None
@@ -361,7 +361,7 @@ def plot_pairwise_corr(integration: Integration, subplot_size: Collection = [3, 
     """Plot histograms of the pairwise correlation distribution for each dataset pair.
 
     :param integration: Integration object
-    :type integration: Integration
+    :type integration: :class:`~mosaicmpi.integration.Integration`
     :param subplot_size: width and height of each subplot, defaults to [3, 3.5]
     :type subplot_size: Collection, optional
     :param overlaid: Overlay negative and positive parts to compare the distribution, defaults to False
@@ -489,7 +489,7 @@ def plot_overdispersed_features_upset(integration: Integration, figsize: Collect
     """Plot overlaps of overdispersed features between datasets
 
     :param integration: integration object
-    :type integration: Integration
+    :type integration: :class:`~mosaicmpi.integration.Integration`
     :param figsize: width and height of figure, defaults to [6, 4]
     :type figsize: Collection, optional
     :return: figure
@@ -505,7 +505,7 @@ def plot_features_upset(integration: Integration, figsize=[6, 4], show_counts: b
     """Plot overlaps of features between datasets
 
     :param integration: integration object
-    :type integration: Integration
+    :type integration: :class:`~mosaicmpi.integration.Integration`
     :param figsize: width and height of figure, defaults to [6, 4]
     :type figsize: Collection, optional
     :return: figure
@@ -605,10 +605,10 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
     """_summary_
 
     :param network: _description_
-    :type network: Network
+    :type network: :class:`~mosaicmpi.network.Network`
     :param colors: _description_
-    :type colors: Colors
-    :param figsize: _description_, defaults to None
+    :type colors: :class:`~mosaicmpi.colors.Colors`
+    :param figsize: figure size, defaults to None
     :type figsize: Collection, optional
     :param highlight_central_program: _description_, defaults to True
     :type highlight_central_program: bool, optional

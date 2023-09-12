@@ -16,7 +16,7 @@ These can be made from from pandas data matrices or imported from AnnData files/
 
 ```{eval-rst}
 .. autosummary::
-
+   
    mosaicmpi.Dataset.from_df
    mosaicmpi.Dataset.from_h5ad
    mosaicmpi.Dataset.from_anndata
@@ -59,8 +59,7 @@ Functions to create plots from Dataset, Integration, and Network objects are in 
 
 ```{eval-rst}
 .. autosummary::
-   :toctree: generated/
-   :recursive:
+   :toctree: api/
 
    mosaicmpi.plots
 ```
