@@ -141,7 +141,7 @@ def cmd_impute_zeros(input, output):
 )
 def cmd_impute_knn(input, output, n_neighbors, weights):
     """
-    K-nearest neighbour imputation of missing values.
+    k-Nearest Neighbour (KNN) imputation of missing values.
     """
     utils.start_logging
     dataset = Dataset.from_h5ad(input)
