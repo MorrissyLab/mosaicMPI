@@ -203,7 +203,7 @@ class Network():
                                                               subset_categories=subset_categories)
         mapper = {tuple([program.split("|")[0], int(program.split("|")[1]), int(program.split("|")[2])]): comm for program, comm in self.program_communities.items()}
         df.columns = df.columns.map(mapper)
-        df = df.T.groupby(level=0).mean()
+        df = df.T.groupby(level=0).mean().T
         df = df.reindex(self.ordered_community_names, axis=1)
         return df
     
@@ -808,9 +808,9 @@ class Network():
         programs = programs.loc[:, ~programs.columns.to_frame().isnull().any(axis=1)]  # Remove programs not in any community
         # aggregate programs to community
         if method == "median":
-            community_scores = programs.T.groupby(level=[0,1]).median()
+            community_scores = programs.T.groupby(level=[0,1]).median().T
         elif method == "mean":
-            community_scores = programs.T.groupby(level=[0,1]).mean()
+            community_scores = programs.T.groupby(level=[0,1]).mean().T
         else:
             raise NotImplementedError
         community_scores = community_scores.loc[:, self.ordered_community_names]  # sort community names

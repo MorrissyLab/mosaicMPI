@@ -1,5 +1,5 @@
     # for dataset_name, programs in selected_programs.droplevel(axis=1, level=[2,3]).T.groupby(level=1):
-    #     programs = programs.droplevel(axis=1, level=1)
+    #     programs = programs.droplevel(level=1).T
     #     programs.columns = programs.columns.astype("int")
     #     for feature in config.features["features_of_interest"]:
     #         if feature in programs.index:

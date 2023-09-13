@@ -656,18 +656,18 @@ class Dataset():
         if normalize:
             normalized = []
             for _, subdf in df.T.groupby(level=0):
-                normalized.append(subdf.div(subdf.sum(axis=1), axis=0))
-            df = pd.concat(normalized, axis=1)
+                normalized.append(subdf.div(subdf.sum()))
+            df = pd.concat(normalized).T
         if discretize:
             discretized = []
             for _, subdf in df.T.groupby(level=0):
-                discretized.append(subdf.eq(subdf.max(axis=1), axis=0).astype(int))
-            df = pd.concat(discretized, axis=1)        
+                discretized.append(subdf.eq(subdf.max()).astype(int))
+            df = pd.concat(discretized).T        
         if k is not None:
             df = df.loc[:, k]
         df = df.sort_index(axis=0).sort_index(axis=1)   
         return df
-    
+
     def get_programs(self,
                  k: Union[int, Iterable] = None,
                  type="cnmf_gep_score"
@@ -751,7 +751,7 @@ class Dataset():
         for k, obs_k in observed.T.groupby(level=1):
             exp_k = pd.DataFrame(obs_k.sum(axis=1)) @ pd.DataFrame(obs_k.sum(axis=0)).T / obs_k.sum().sum()
             expected.append(exp_k)
-        expected = pd.concat(expected, axis=1)
+        expected = pd.concat(expected).T
         chisq_resid = (observed - expected) / np.sqrt(expected)  # pearson residual of chi-squared test of contingency table
         if truncate_negative:
             chisq_resid = chisq_resid.clip(lower=0)
