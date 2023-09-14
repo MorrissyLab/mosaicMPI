@@ -52,6 +52,7 @@ config_defaults = {
     "pie_size_gep": 50,
     "pie_size_community": 50,
     "plot_size_community": [4, 4],
+    "max_cells_per_heatmap_dimension": 500,
     "save_network_as_pkl": True,
     "datasets": {}
 }

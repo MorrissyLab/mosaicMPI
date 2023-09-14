@@ -714,13 +714,17 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
         fig = plot_program_network_npatients(network, colors)
         utils.save_fig(fig, os.path.join(output_dir, f"network_n_patients"), target_dpi=600, formats=config.plot_formats)
     
-    logging.info("Creating community usage heatmap...")
 
     # integrated community usage
     ic_usage = network.get_community_usage()
     ic_usage.to_csv(os.path.join(output_dir, "community_usage.txt"), sep="\t")
-    fig = plot_community_usage_heatmap(network, colors)
-    utils.save_fig(fig, os.path.join(output_dir, f"community_usage"), target_dpi=200, formats=config.plot_formats)
+    n_samples = ic_usage.shape[0]
+    if n_samples <= config.max_cells_per_heatmap_dimension:
+        logging.info("Creating community usage heatmap...")
+        fig = plot_community_usage_heatmap(network, colors)
+        utils.save_fig(fig, os.path.join(output_dir, f"community_usage"), target_dpi=200, formats=config.plot_formats)
+    else:
+        logging.info(f"Skipped community usage heatmap. n_samples = {n_samples} is greater than the 'max_cells_per_heatmap_dimension' parameter.")
 
     logging.info("Computing community-level associations")
 
