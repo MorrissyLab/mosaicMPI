@@ -7,7 +7,7 @@ from . import utils
 
 import logging
 from typing import Optional, Union
-from collections.abc import Collection, Iterable
+from collections.abc import Iterable
 
 import matplotlib.pyplot as plt
 from matplotlib import colors as mpl_colors

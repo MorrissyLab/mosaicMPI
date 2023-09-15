@@ -232,7 +232,7 @@ def annotated_heatmap(
                 ordered_rgb[~ordered_rgb.isin(metadata_colors[track])] = np.NaN
                 ordered_rgb = ordered_rgb.replace(metadata_colors[track])
                 if ordered_rgb.isnull().any():
-                    if pd.api.types.is_categorical_dtype(annot):
+                    if pd.api.types.is_categorical_dtype(annot) and missing_data_color not in ordered_rgb.cat.categories:
                         ordered_rgb = ordered_rgb.cat.add_categories(missing_data_color)
                     ordered_rgb = ordered_rgb.fillna(missing_data_color)
                 ordered_rgb = ordered_rgb.astype("object").map(mpl.colors.to_rgb)
@@ -299,14 +299,11 @@ def plot_sample_numbers(dataset: Dataset, layer: str, figsize = None, ax = None)
     """
 
 
-    data = dataset.get_metadata_df(include_numerical=False)[layer].replace("nan", np.NaN).value_counts()
+    data = dataset.get_metadata_df(include_numerical=False)[layer].value_counts()
     
     if ax is None:
         if figsize is None:
             figsize = [1 + len(data) / 4, 4]
-
-
-
         fig, ax_plot = plt.subplots(figsize=figsize, layout="constrained")
     else:
         ax_plot = ax
@@ -1552,4 +1549,55 @@ def plot_sample_entropy(network: Network,
     ax.set_ybound(lower=0)
     ax.set_title("Shannon Entropy")
     ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
+    return fig
+
+
+
+########################
+# Label-transfer plots #
+########################
+
+
+def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str, figsize: Collection[float, float] = None, annotate: Optional[Union[str, Collection[str]]] = None, colors: Colors = None) -> Figure:
+    """Plot heatmap of metadata transfer scores
+
+    :param network: network through which to propagate labels
+    :type network: :class:`mosaicmpi.network.Network`
+    :param colors: colors object with metadata colors if 'annotation' parameter is specified
+    :type colors: :class:`mosaicmpi.colors.Colors`
+    :param source: Source dataset for label transfer
+    :type source: str
+    :param dest: Target dataset for label transfer
+    :type dest: str
+    :param layer: name of categorical data layer from source dataset
+    :type layer: str
+    :param annotate: categorical metadata layer, defaults to None
+    :type annotate: Union[str, Collection[str]], optional
+    :return: figure object
+    :rtype: Figure
+    """
+    if annotate is None:
+        annotations = []
+    elif isinstance(annotate, str):
+        annotations = [annotate]
+    elif isinstance(annotate, Collection):
+        annotations = annotate
+
+    transfer_df = network.transfer_labels(source=source, dest=dest, layer=layer)
+    if annotate is not None:
+        metadata = network.integration.datasets[dest].get_metadata_df()[annotations].copy()
+        for annotation_layer in annotations:
+            mapper = colors.get_metadata_colors(annotation_layer)
+            color_vec = metadata[annotation_layer].map(mapper)
+            if colors.missing_data_color not in color_vec.cat.categories:
+                color_vec = color_vec.cat.add_categories(colors.missing_data_color)
+            color_vec = color_vec.fillna(colors.missing_data_color)
+            metadata[annotation_layer] = color_vec
+        col_colors = metadata
+    else:
+        col_colors = None
+    if figsize is None:
+        figsize = [8, 1 + transfer_df.shape[0] * 0.2 + len(annotations) * 0.3]
+
+    fig = sns.clustermap(data = transfer_df, col_colors=col_colors, figsize=figsize, row_cluster=False, xticklabels=False, yticklabels=True, cmap="Blues")
     return fig

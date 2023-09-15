@@ -88,6 +88,9 @@ class Dataset():
             self.is_normalized = is_normalized
             self.mosaicmpi_version = __version__
     
+        # fix limitations of AnnData on-disk format
+
+
     @classmethod
     def from_df(cls,
                   data: pd.DataFrame,
@@ -193,8 +196,8 @@ class Dataset():
     @patient_id_col.setter
     def patient_id_col(self, value: str):
         
-        if value is not None and value not in self.adata.obs.columns:
-            avail_columns = ", ".join(self.adata.obs.columns)
+        if value is not None and value not in self.get_metadata_df():
+            avail_columns = ", ".join(self.get_metadata_df())
             raise ValueError(f"{value} is not a valid column in the metadata matrix. Available columns are: {avail_columns}")
         self.adata.uns["patient_id_col"] = value
 
@@ -266,7 +269,7 @@ class Dataset():
         :return: Summary of metadata
         :rtype: str
         """
-        msg = ""
+        msg = "Data types for non-missing values in each layer of metadata:\n"
         for col in self.adata.obs.columns:
             msg += "    Column: " + col + "\n"
             for value_type, count in self.adata.obs[col].dropna().map(type).value_counts().items():
@@ -715,6 +718,7 @@ class Dataset():
             raise ValueError(f"{unexplained_col_str} metadata columns have unrecognized dtypes.")
         df = self.adata.obs.select_dtypes(include=dtypes)
         df = df.dropna(axis=1, how="all")
+        df = df.replace("nan", np.NaN)
         return df
     
     def get_category_overrepresentation(self,
@@ -734,7 +738,7 @@ class Dataset():
         :rtype: pd.DataFrame
         """
         usage = self.get_usages(normalize=True).copy()
-        sample_to_class = self.get_metadata_df()[layer].replace("nan", np.NaN)
+        sample_to_class = self.get_metadata_df()[layer]
         if subset_categories is not None:
             sample_to_class[~sample_to_class.isin(subset_categories)] = np.NaN
         usage.index = usage.index.map(sample_to_class)

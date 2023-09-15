@@ -103,7 +103,7 @@ class Integration():
         mapping = {}
         for dataset_name, dataset in self.datasets.items():
             if dataset.patient_id_col is not None:
-                for sample_id, patient_id in dataset.adata.obs[dataset.patient_id_col].replace("nan", np.NaN).items():
+                for sample_id, patient_id in dataset.get_metadata_df()[dataset.patient_id_col].items():
                     mapping[(dataset_name, sample_id)] = (dataset_name, patient_id)
         if mapping:
             return pd.Series(mapping)
@@ -418,7 +418,7 @@ class Integration():
         
         combined = {}
         for dataset_name in subset_datasets:
-            if layer in self.datasets[dataset_name].adata.obs:
+            if layer in self.datasets[dataset_name].get_metadata_df():
                 combined[dataset_name] = self.datasets[dataset_name].get_category_overrepresentation(layer=layer,
                                                                                                      truncate_negative=truncate_negative,
                                                                                                      subset_categories=subset_categories)
@@ -452,7 +452,7 @@ class Integration():
         
         combined = {}
         for dataset_name in subset_datasets:
-            if layer in self.datasets[dataset_name].adata.obs:
+            if layer in self.datasets[dataset_name].get_metadata_df():
                 combined[dataset_name] = self.datasets[dataset_name].get_metadata_correlation(layer=layer, method=method)
         combined = pd.concat(combined)
         return combined

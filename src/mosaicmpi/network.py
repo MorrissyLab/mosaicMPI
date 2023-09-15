@@ -818,36 +818,93 @@ class Network():
 
 
     def transfer_labels(self,
-                          source: str,
-                          dest: str,
-                          layer: str,
-                          subset_categories: Collection[str]
+                          source: Optional[Union[str, Collection[str]]] = None,
+                          dest: Optional[Union[str, Collection[str]]] = None,
+                          layer: Optional[Union[str, Collection[str]]] = None,
+                          subset_categories: Collection[str] = None,
+                          simplify: bool = True
                           ) -> pd.DataFrame:
-        """_summary_
+        """Transfer sample categories between datasets using usage of representative programs as a proxy.
 
-        :param source: Source dataset for label transfer
-        :type source: str
-        :param dest: Target dataset for label transfer
-        :type dest: str
-        :param layer: name of categorical data layer
-        :type layer: str
-        :param subset_categories: Provide a subset of categories for calculating overrepresentation
-        :type subset_categories: Collection[str]
-        :return: _description_
+        :param source: Source dataset(s) for label transfer, defaults to None
+        :type source: Union[str, Collection[str]], optional
+        :param dest: Target dataset(s) for label transfer, defaults to None
+        :type dest: Union[str, Collection[str]], optional
+        :param layer: name of categorical data layer(s) from source dataset, defaults to None
+        :type layer: Union[str, Collection[str]], optional
+        :param subset_categories: a subset of categories for calculating overrepresentation, defaults to None
+        :type subset_categories: Collection[str], optional
+        :param simplify: Simplify multi-index results when only one source, dest, or layer are specified, defaults to True
+        :type simplify: bool, optional
+        :raises ValueError: if source or dest is not a correct type
+        :return: transfer score
         :rtype: pd.DataFrame
         """
-        rprogs = self.get_representative_programs()  # representative programs
-        source_progs = rprogs.xs(source)
-        source_or = self.integration.datasets[source].get_category_overrepresentation(layer=layer, subset_categories=subset_categories)[source_progs.index]
-        source_or.columns = source_or.columns.map(source_progs)  # community-level overrepresentation based on representative programs
-        dest_progs = rprogs.xs(dest)
-        dest_usage = self.integration.datasets[dest].get_usages(normalize=False)
-        dest_cu = dest_usage[dest_progs.index]
-        dest_cu.columns = dest_cu.columns.map(dest_progs) # community-level usage based on representative programs
-        intgc = dest_cu.columns.intersection(source_or.columns)  # integrative communities (i.e., shared communities)
-        
-        source_or = source_or[intgc].div(source_or[intgc].sum(axis=1), axis=0)
-        dest_cu = dest_cu[intgc].div(dest_cu[intgc].sum(axis=1), axis=0)
 
-        transfer_df = source_or @ dest_cu[intgc].T  # multiply usage by overrepresentation for integrative communities
-        return transfer_df
+        # parameter flexibility, by default everything
+        if source is None:
+            sources = self.integration.datasets.keys()
+        elif isinstance(source, str):
+            sources = [source]
+        elif isinstance(source, Collection):
+            sources = source
+        else:
+            raise ValueError
+        
+        if layer is None:
+            # get all layers for all selected source datasets
+            layers = self.integration.get_metadata_df(include_numerical=False, subset_datasets=sources).columns
+        elif isinstance(layer, str):
+            layers = [layer]
+        elif isinstance(layer, Collection):
+            layers = layer
+        else:
+            raise ValueError
+        
+        if dest is None:
+            dests = self.integration.datasets.keys()
+        elif isinstance(dest, str):
+            dests = [dest]
+        elif isinstance(dest, Collection):
+            dests = dest
+        else:
+            raise ValueError
+        
+
+        agg = []
+        for source_name in sources:
+            for layer_name in layers:
+                rowblock = []
+                for dest_name in dests:
+                    rprogs = self.get_representative_programs()  # representative programs
+                    source_progs = rprogs.xs(source_name)
+                    source_or = self.integration.datasets[source_name].get_category_overrepresentation(layer=layer_name, subset_categories=subset_categories)[source_progs.index]
+                    source_or.columns = source_or.columns.map(source_progs)  # community-level overrepresentation based on representative programs
+                    dest_progs = rprogs.xs(dest_name)
+                    dest_usage = self.integration.datasets[dest_name].get_usages(normalize=False)
+                    dest_cu = dest_usage[dest_progs.index]
+                    dest_cu.columns = dest_cu.columns.map(dest_progs) # community-level usage based on representative programs
+                    intgc = dest_cu.columns.intersection(source_or.columns)  # integrative communities (i.e., shared communities)
+                    
+                    source_or = source_or[intgc].div(source_or[intgc].sum(axis=1), axis=0)
+                    dest_cu = dest_cu[intgc].div(dest_cu[intgc].sum(axis=1), axis=0)
+
+                    transfer_df = source_or @ dest_cu[intgc].T  # multiply usage by overrepresentation for integrative communities
+                    transfer_df.index = pd.MultiIndex.from_arrays([[source_name]*transfer_df.shape[0],
+                                                                   [layer_name]*transfer_df.shape[0],
+                                                                   transfer_df.index],
+                                                                   names=["source_dataset", "layer", "category"])
+
+                    transfer_df.columns = pd.MultiIndex.from_arrays([[dest_name]*transfer_df.shape[1], transfer_df.columns], names=["dest_dataset", "sample"])
+                    rowblock.append(transfer_df)
+                agg.append(pd.concat(rowblock, axis=1))
+        agg = pd.concat(agg)
+
+        if simplify:
+            if isinstance(layer, str):
+                agg = agg.droplevel(axis=0, level="layer")
+            if isinstance(source, str):
+                agg = agg.droplevel(axis=0, level="source_dataset")
+            if isinstance(dest, str):
+                agg = agg.droplevel(axis=1, level="dest_dataset")
+        return agg

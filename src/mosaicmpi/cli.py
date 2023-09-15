@@ -13,8 +13,10 @@ import logging
 import subprocess
 import collections
 import sys
+from itertools import product
 from typing import Optional, Mapping
 
+from tqdm import tqdm
 import click
 import pandas as pd
 
@@ -75,8 +77,7 @@ def cmd_txt_to_h5ad(data_file, is_normalized, metadata, output, transpose, spars
     else:
         metadata_df = None
     dataset = Dataset.from_df(data=df, obs=metadata_df, sparsify=sparsify, is_normalized=is_normalized)
-    logging.info("Data types for non-missing values in each layer of metadata:\n"
-                 + dataset.get_metadata_type_summary())
+    logging.info(dataset.get_metadata_type_summary())
     dataset.write_h5ad(output)
 
 @click.command(name="update-h5ad-metadata")
@@ -94,8 +95,7 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
     dataset = Dataset.from_h5ad(input_h5ad)
     metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
     dataset.update_obs(metadata_df)
-    logging.info("Data types for non-missing values in each layer of metadata:\n"
-                 + dataset.get_metadata_type_summary())
+    logging.info(dataset.get_metadata_type_summary())
     dataset.write_h5ad(input_h5ad)
 
 @click.command(name="impute-zeros")
@@ -365,7 +365,6 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
 @click.option(
     '--slurm_script', type=click.Path(dir_okay=False, exists=True),
     help="Submit jobs to SLURM scheduler using this job submission script. Sample scripts are located in `scripts/slurm.sh`.")
-
 def cmd_factorize(name, output_dir, worker_index, total_workers, slurm_script):
     """
     Performs factorization according to parameters specified using `mosaicmpi set-parameters`.
@@ -439,7 +438,7 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
     help="Output directory for annotated heatmaps.")
 @click.option(
     '-m', '--metadata_colors_toml', type=click.Path(dir_okay=False, exists=True),
-    help="TOML file with metadata_colors specification. See README for more information. If not provided, visually distinct colors will be chosen automatically.")
+    help="TOML file with metadata_colors specification. If not provided, visually distinct colors will be chosen automatically.")
 @click.option(
     '--max_categories_per_layer', type=int,
     help="Filter metadata layers by the number of categories. This parameter is useful to simplify heatmaps with too many annotations.")
@@ -882,22 +881,60 @@ def cmd_ssgsea(output_dir, pkl_file, gmt_file, min_intersection, max_intersectio
     help="Path to network_integration.pkl.gz files from `mosaicmpi integrate` step")
 @click.option('-d', '--dataset_mapping_toml', type=click.Path(exists=True, dir_okay=False), required=False,
     help="Path to TOML file with dataset mappings in cases where dataset names are mismatched between integrations.")
-
 def cmd_compare_integrations(output_dir, pkl_files, dataset_mapping_toml):
     """Compare communities from two network_integration.pkl files.
     """
     raise NotImplementedError
 
-@click.command(name="label-transfer")
-@click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
-    help="Output directory for results")
+@click.command(name="transfer-labels")
+@click.option("-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
+    help="Output directory for results.")
 @click.option('-n', '--pkl_file', type=click.Path(exists=True, dir_okay=False), required=True,
     help="Path to network_integration.pkl.gz file from `mosaicmpi integrate` step")
+@click.option('-s', '--source', type=str, multiple=True,
+    help="Only calculate Name of source dataset for sample labels.")
+@click.option('-d', '--dest', type=str, multiple=True,
+    help="Name of destination dataset")
+@click.option('-l', '--layer', type=str, multiple=True,
+    help="Name of categorical data layer to transfer")
+@click.option('-a', '--annotate', type=str, required=False, multiple=True,
+    help="Annotate transfer heatmap using categorical data layer(s) from destination dataset")
+@click.option('-m', '--metadata_colors_toml', type=click.Path(dir_okay=False, exists=True), required=False,
+    help="TOML file with metadata_colors specification. If not provided, visually distinct colors will be chosen automatically.")
+def cmd_transfer_labels(output_dir, pkl_file, source, dest, layer, annotate, metadata_colors_toml):
+    """Transfer labels from a source to a destination dataset.
+    """ 
+    network = Network.from_pkl(pkl_file)
+    os.makedirs(output_dir, exist_ok=True)
 
-def cmd_label_transfer(output_dir, pkl_file):
-    """Transfer labels between datasets.
-    """
-    raise NotImplementedError
+    transfer_df = network.transfer_labels(source=(source if source else None),
+                                          dest=(dest if dest else None),
+                                          layer=(layer if layer else None))
+    transfer_df.to_csv(os.path.join(output_dir, "transfer_score.txt"), sep="\t")
+
+    if annotate:
+        if metadata_colors_toml:
+            colors = Colors.from_toml(metadata_colors_toml)
+        else:
+            colors = Colors.from_network(network)
+    else:
+        colors = None
+        annotate = None
+
+    if not source:
+        source = list(network.integration.datasets.keys())
+    if not dest:
+        dest = list(network.integration.datasets.keys())
+    if not layer:
+        layer = network.integration.get_metadata_df(subset_datasets=source, include_numerical=False).columns
+    
+    total = len(source) * len(dest) * len(layer)
+
+    for s, d, l in tqdm(product(source, dest, layer), total=total, unit="plot", desc="Creating plots"):
+        if len(network.integration.datasets[s].get_metadata_df()[l].unique()) > 1:
+            cgrid = plot_metadata_transfer(network=network, source=s, dest=d, layer=l, annotate=annotate, colors=colors)
+            cgrid.fig.suptitle(f"source: {s}, dest: {d}, layer: {l}")
+            cgrid.savefig(os.path.join(output_dir, f"s.{s}_d.{d}_l.{l}.pdf"))
 
 cli.add_command(cmd_txt_to_h5ad)
 cli.add_command(cmd_update_h5ad_metadata)
@@ -913,4 +950,4 @@ cli.add_command(cmd_create_config)
 cli.add_command(cmd_integrate)
 cli.add_command(cmd_ssgsea)
 cli.add_command(cmd_compare_integrations)
-cli.add_command(cmd_label_transfer)
+cli.add_command(cmd_transfer_labels)
