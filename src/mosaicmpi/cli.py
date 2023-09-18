@@ -20,6 +20,9 @@ from tqdm import tqdm
 import click
 import pandas as pd
 
+
+CONTEXT_SETTINGS = {'help_option_names': ['-h', '--help']}
+
 class _OrderedGroup(click.Group):
     """
     Overwrites Groups in click to allow ordered commands.
@@ -33,7 +36,7 @@ class _OrderedGroup(click.Group):
         return self.commands
 
 
-@click.group(cls=_OrderedGroup)
+@click.group(cls=_OrderedGroup, context_settings=CONTEXT_SETTINGS)
 @click.version_option(version=__version__)
 def cli():
     """
@@ -375,7 +378,7 @@ def cmd_factorize(name, output_dir, worker_index, total_workers, slurm_script):
     run_params = utils.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
     if run_params.shape[0] == 0:
         logging.error("No factorization to do: either no values of k were selected using `mosaicmpi set-parameters` or iterations were set to 0.")
-
+        sys.exit(1)
     if slurm_script is None:
         cnmf_obj.factorize(worker_i=worker_index, total_workers=total_workers)
     else:
@@ -420,7 +423,7 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
                         "cnmf_gep_tpm" in dataset.adata.varm or\
                         "cnmf_gep_raw" in dataset.adata.varm
     if cnmf_data_loaded and not force_h5ad_update:
-        logging.Error(f"Error: AnnData already contains cNMF results. Use --force_h5ad_update to overwrite.")
+        logging.error(f"Error: AnnData already contains cNMF results. Use --force_h5ad_update to overwrite.")
         sys.exit(1)
 
     dataset.add_cnmf_results(cnmf_output_dir=output_dir,
@@ -651,10 +654,10 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     
     # Write representative programs and usages
     logging.info("Writing representative programs")
-    rep_programs_ids = network.get_representative_programs()
-    rep_programss = network.integration.get_programs()[rep_programs_ids.index]
-    rep_programss.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["Community", "dataset", "k", "Program"])
-    rep_programss.to_csv(os.path.join(output_dir, "representative_programs.txt"), sep="\t") # outputs the programs to text file
+    rep_programs_ids = network.get_representative_program_ids()
+    rep_programs = network.integration.get_programs()[rep_programs_ids.index]
+    rep_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["Community", "dataset", "k", "Program"])
+    rep_programs.to_csv(os.path.join(output_dir, "representative_programs.txt"), sep="\t") # outputs the programs to text file
     rep_programs_usage = network.integration.get_usages()[rep_programs_ids.index]
     rep_programs_usage.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["Community", "dataset", "k", "Program"])
     rep_programs_usage.to_csv(os.path.join(output_dir, "representative_program_usages.txt"), sep="\t") # outputs the program usages to text file
@@ -832,21 +835,25 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
 @click.command(name="ssgsea")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
     help="Output directory for ssgsea results")
-@click.option('-n', '--pkl_file', type=click.Path(exists=True, dir_okay=False), required=True, 
+@click.option('-n', '--pkl_file', type=click.Path(exists=True, dir_okay=False),
     help="Path to network_integration.pkl.gz file from `mosaicmpi integrate` step")
-@click.option('-g', '--gmt_file', type=click.Path(exists=True, dir_okay=False), required=True, 
-    help="Path to GMT file with gene sets.")
+@click.option('-i', '--h5ad_file', type=click.Path(exists=True, dir_okay=False),
+    help="Path to .h5ad file from `mosaicmpi postprocess`")
+@click.option('-g', '--gene_sets', type=str, required=True, 
+    help="Path to GMT file with gene sets or Enrichr Library name.")
 @click.option("--min_intersection", type=int, default=5, 
     help="Minimum intersection size for gene sets")
 @click.option("--max_intersection", type=int, default=500, 
     help="Minimum intersection size for gene sets")
 @click.option('--cpus', type=int, default=cpus_available, show_default=True,
     help="Number of CPUs for MP-enabled tasks")
-def cmd_ssgsea(output_dir, pkl_file, gmt_file, min_intersection, max_intersection, cpus):
+def cmd_ssgsea(output_dir, pkl_file, h5ad_file, gene_sets, min_intersection, max_intersection, cpus):
     """
-    Compute and plot ssGSEA Normalized Enrichment Scores (NES) for programs from an integration.
+    Compute and plot ssGSEA Normalized Enrichment Scores (NES) for mosaicMPI programs. If a network_integration.pkl file
+    is provided, ssGSEA is performed on reprepresentative programs from an integration. If a .h5ad file is provided, ssGSEA
+    is performed on all programs.
     """
-    utils.start_logging()  # allows warning messages to be rinted even though logfile hasn't been made yet
+    utils.start_logging()  # allows warning messages to be printed even though logfile hasn't been made yet
     try:
         import gseapy
     except ImportError:
@@ -857,10 +864,7 @@ def cmd_ssgsea(output_dir, pkl_file, gmt_file, min_intersection, max_intersectio
                       "# Windows and MacOS_ARM64(M1/2-Chip)\n\t"
                       "pip install gseapy\nl"
                       )
-
-    # set CPU count for MP-enabled tasks
-    global cpus_available
-    cpus_available = cpus
+        sys.exit(1)
 
     # create directory structure, warn if not empty
     output_dir = os.path.normpath(output_dir)
@@ -871,8 +875,34 @@ def cmd_ssgsea(output_dir, pkl_file, gmt_file, min_intersection, max_intersectio
     # write to log file
     utils.start_logging(os.path.join(output_dir, "logfile.txt"))
 
-    network = Network.from_pkl(pkl_file)
-    raise NotImplementedError
+    if h5ad_file and not pkl_file:
+        # run ssGSEA on all programs from a .h5ad file
+        dataset = Dataset.from_h5ad("rna.h5ad")
+        programs = dataset.get_programs()
+        result = gseapy.ssgsea(data=programs, gene_sets=gene_sets, min_size=min_intersection, max_size=max_intersection, threads=cpus)
+        prog_nes = result.res2d.pivot(index="Term", columns="Name", values="NES")
+        prog_nes.columns = pd.MultiIndex.from_tuples(prog_nes.columns, names=("k", "program"))
+        prog_nes.to_csv(os.path.join(output_dir, "program_nes.txt"), sep="\t")
+    elif pkl_file and not h5ad_file:
+        # run ssGSEA on representative programs for each dataset in a network_integration.pkl file
+        network = Network.from_pkl(pkl_file)
+        rep_programs = network.get_representative_programs()
+        result = gseapy.ssgsea(data=rep_programs, gene_sets=gene_sets, min_size=min_intersection, max_size=max_intersection, threads=cpus)
+        rep_nes = result.res2d.pivot(index="Term", columns="Name", values="NES")
+        rep_nes.columns = pd.MultiIndex.from_tuples(rep_nes.columns, names=("community", "dataset", "k", "program"))
+        sorter = rep_nes.astype(float).idxmax(axis=1)
+        sorter = sorter.str[0].sort_values()
+        rep_nes = rep_nes.loc[sorter.index]
+        rep_nes.to_csv(os.path.join(output_dir, "representative_program_nes.txt"), sep="\t")
+
+        # plot ssGSEA NES scores by community and dataset
+        fig, figlegend = plot_representative_program_nes(network=network, rep_nes=rep_nes)
+        utils.save_fig(fig, os.path.join(output_dir, "representative_program_nes"))
+        utils.save_fig(figlegend, os.path.join(output_dir, "representative_program_nes.legend"))
+        
+    else:
+        logging.error("mosaicmpi ssgsea requires either a factorized dataset (.h5ad) file or a network_integration.pkl file to run ssGSEA on programs.")
+        sys.exit(1)
     
 @click.command(name="compare-integrations")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,

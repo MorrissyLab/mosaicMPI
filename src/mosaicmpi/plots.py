@@ -623,7 +623,7 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
         }
 
     if highlight_central_program:
-        central_ranks = pd.DataFrame(network.get_representative_programs()).reset_index().set_index(["Community", "dataset"])["k"]
+        central_ranks = pd.DataFrame(network.get_representative_program_ids()).reset_index().set_index(["Community", "dataset"])["k"]
 
     n_datasets = network.integration.n_datasets
 
@@ -1601,3 +1601,39 @@ def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str,
 
     fig = sns.clustermap(data = transfer_df, col_colors=col_colors, figsize=figsize, row_cluster=False, xticklabels=False, yticklabels=True, cmap="Blues")
     return fig
+
+
+    
+################
+# ssGSEA plots #
+################
+
+
+def plot_representative_program_nes(network: Network, rep_nes: pd.DataFrame):
+
+    rep_ids = network.get_representative_program_ids()
+    height_ratios = rep_ids.value_counts()[network.ordered_community_names].values
+    ds_names = sorted(list(network.integration.datasets.keys()))
+
+    df = rep_nes.T.copy()
+    df = df.droplevel(axis=0, level=[2,3])
+    figsize = [df.shape[1] * 0.2, df.shape[0] * 0.2 + 4]
+
+    fig, axes = plt.subplots(nrows = len(height_ratios), figsize=figsize, sharex=True, gridspec_kw={"height_ratios": height_ratios}, layout="constrained")
+    figlegend, axlegend = plt.subplots(figsize=[1,2], layout="tight")
+    for community, ax in zip(network.ordered_community_names, axes):
+        df_comm = df.loc[community].astype("float").sort_index(key = lambda x: x.map(ds_names.index))
+        sns.heatmap(df_comm, square=True, yticklabels=True, cmap="RdBu_r", vmin = -0.5, vmax=0.5, center = 0, xticklabels=True, cbar_ax=axlegend, ax=ax)
+        ax.set_yticklabels(ax.get_yticklabels(), rotation=0, )
+        ax.set_xlabel(None)
+        ax.set_ylabel(community, rotation=0, fontweight = "bold", fontsize="large", va="center", ha="right")
+        is_bottom_subplot = community == network.ordered_community_names[-1]
+        ax.tick_params(top=False,
+                bottom=False,
+                left=False,
+                right=False,
+                labelleft=False,
+                labelright=True,
+                labelbottom=is_bottom_subplot)
+    fig.supylabel(f"Community")
+    return fig, figlegend

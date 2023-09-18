@@ -620,9 +620,9 @@ class Network():
                                                   edge_attr=["n_edges", "weight"])
         self.comm_graph.add_nodes_from(self.communities.keys())
         
-    def get_representative_programs(self,
+    def get_representative_program_ids(self,
                          correlation_axis: Literal["programs", "usage"] = "programs"
-                         ):
+                         ) -> pd.Series:
         """Select programs based on correlation with the median of all programs in each community
         
         :param correlation_axis: axis on which to compute correlations between programs whether correlating the programs or the usages, defaults to "programs"
@@ -661,8 +661,8 @@ class Network():
 
         return selected_programs
 
-    def get_selected_rank_programs(self,
-                            k: Union[int, Dict[str, int]]):
+    def get_selected_rank_program_ids(self,
+                            k: Union[int, Dict[str, int]]) -> pd.Series:
         """Select programs based on rank. k may be either a single value for all datasets
         as an integer, or as a dict with separate values for each dataset.
 
@@ -684,6 +684,20 @@ class Network():
         selected_programs = selected_programs.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
         return selected_programs
 
+    def get_representative_programs(self,
+                         correlation_axis: Literal["programs", "usage"] = "programs"
+                         ) -> pd.DataFrame:
+        """Select programs based on correlation with the median of all programs in each community
+        
+        :param correlation_axis: axis on which to compute correlations between programs whether correlating the programs or the usages, defaults to "programs"
+        :type correlation_axis: int or dict
+        :return: Communities, indexed by the most central program for each dataset
+        :rtype: pd.Series
+        """
+        rep_programs_ids = self.get_representative_program_ids(correlation_axis=correlation_axis)
+        rep_programs = self.integration.get_programs()[rep_programs_ids.index]
+        rep_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["Community", "dataset", "k", "Program"])
+        return rep_programs
 
     def get_lowest_rank_programs(self,
                                 min_k: Optional[Union[int, Dict[str, int]]] = None,
@@ -876,7 +890,7 @@ class Network():
             for layer_name in layers:
                 rowblock = []
                 for dest_name in dests:
-                    rprogs = self.get_representative_programs()  # representative programs
+                    rprogs = self.get_representative_program_ids()  # representative programs
                     source_progs = rprogs.xs(source_name)
                     source_or = self.integration.datasets[source_name].get_category_overrepresentation(layer=layer_name, subset_categories=subset_categories)[source_progs.index]
                     source_or.columns = source_or.columns.map(source_progs)  # community-level overrepresentation based on representative programs

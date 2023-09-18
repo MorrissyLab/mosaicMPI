@@ -5,7 +5,7 @@ import pandas as pd
 from matplotlib.text import Text
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 from collections.abc import Collection
 from . import __version__, logging_started
 
@@ -131,15 +131,15 @@ def get_adjusted_dpi(fig: Figure, target_dpi: float = 200) -> float:
     max_dpi = (2**16 - 1)/(fig.get_size_inches().max())
     return min(max_dpi, target_dpi)
 
-def save_fig(fig: Figure, filepath_no_ext: str, target_dpi: float, formats: Union[str, Collection[str]]="pdf", close: bool = True):
+def save_fig(fig: Figure, filepath_no_ext: str, target_dpi: Optional[float] = 200, formats: Union[str, Collection[str]] = "pdf", close: bool = True):
     """Save figure to one or more files with the same basename. Directories are created as needed.
 
     :param fig: figure
     :type fig: Figure
     :param basename: path to filename excluding extension
     :type basename: str
-    :param target_dpi: target DPI (for PNG output only)
-    :type target_dpi: float
+    :param target_dpi: target DPI (for PNG output only), defaults to 200
+    :type target_dpi: float, optional
     :param formats: figure extension or list of extensions. Values can be "pdf" or "png", or ("pdf", "png") for both, defaults to "pdf"
     :type formats: Union[str, Collection[str]], optional
     :param close: close figure after saving, defaults to True
@@ -147,7 +147,7 @@ def save_fig(fig: Figure, filepath_no_ext: str, target_dpi: float, formats: Unio
     """
     dpi = get_adjusted_dpi(fig, target_dpi)
     if isinstance(formats, str):
-        formats == [formats]
+        formats = [formats]
     elif isinstance(formats, Collection):
         pass
     else:
