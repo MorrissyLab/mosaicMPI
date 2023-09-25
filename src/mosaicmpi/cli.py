@@ -3,7 +3,7 @@ from .dataset import Dataset
 from .integration import Integration
 from .config import Config
 from .colors import Colors
-from .network import Network
+from .network import Network, compare_community_jaccard_similarity
 from .cnmf import cNMF
 from .plots import *
 from . import utils, __version__, cpus_available
@@ -82,6 +82,7 @@ def cmd_txt_to_h5ad(data_file, is_normalized, metadata, output, transpose, spars
     dataset = Dataset.from_df(data=df, obs=metadata_df, sparsify=sparsify, is_normalized=is_normalized)
     logging.info(dataset.get_metadata_type_summary())
     dataset.write_h5ad(output)
+    logging.info("Completed successfully.")
 
 @click.command(name="update-h5ad-metadata")
 @click.option(
@@ -100,6 +101,7 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
     dataset.update_obs(metadata_df)
     logging.info(dataset.get_metadata_type_summary())
     dataset.write_h5ad(input_h5ad)
+    logging.info("Completed successfully.")
 
 @click.command(name="impute-zeros")
 @click.option(
@@ -117,6 +119,8 @@ def cmd_impute_zeros(input, output):
     dataset.impute_zeros()
     # Save output to new h5ad file
     dataset.write_h5ad(output)
+    
+    logging.info("Completed successfully.")
 
 @click.command(name="impute-knn")
 @click.option(
@@ -146,11 +150,13 @@ def cmd_impute_knn(input, output, n_neighbors, weights):
     """
     k-Nearest Neighbour (KNN) imputation of missing values.
     """
-    utils.start_logging
+    utils.start_logging()
     dataset = Dataset.from_h5ad(input)
     dataset.impute_knn(n_neighbors = n_neighbors, weights = weights)
     # Save output to new h5ad file
     dataset.write_h5ad(output)
+    
+    logging.info("Completed successfully.")
 
 
 @click.command(name="check-h5ad")
@@ -175,6 +181,8 @@ def cmd_check_h5ad(input, output):
     # Save output to new h5ad file
     if output is not None:
         dataset.write_h5ad(output)
+
+    logging.info("Completed successfully.")
 
 
 @click.command(name="model-odg")
@@ -234,6 +242,8 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, m
     fig = plot_feature_dispersion(dataset, show_selected=False)
     fig.savefig(os.path.join(output_dir, name, "odgenes.pdf"), facecolor='white')
     fig.savefig(os.path.join(output_dir, name, "odgenes.png"), dpi=400, facecolor='white')
+    
+    logging.info("Completed successfully.")
 
 
 @click.command(name="set-parameters")
@@ -351,6 +361,8 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
     # output dataset with new information on overdispersed genes and cNMF parameters
     dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     
+    logging.info("Completed successfully.")
+    
 
 @click.command(name="factorize")
 @click.option(
@@ -433,6 +445,8 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
                              )
     dataset.write_h5ad(h5ad_path)
     
+    logging.info("Completed successfully.")
+    
 @click.command("annotated-heatmap")
 @click.option(
     "-i", "--input_h5ad", type=click.Path(exists=True, dir_okay=False), required=True, help="Path to AnnData (.h5ad) file containing cNMF results.")
@@ -490,6 +504,8 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
             dataset=dataset, k=k, subset_metadata=subset_columns, colors=colors, title=title,
             cluster_samples=True, cluster_programs=False, show_sample_labels=(not hide_sample_labels))
         fig.savefig(filename, transparent=False, bbox_inches = "tight")
+    
+    logging.info("Completed successfully.")
 
 
 @click.command(name="create-config")
@@ -832,6 +848,8 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
             fig = plot_metadata_correlation_program_network(network, colors, layer=layer, subset_datasets=dataset_name)   
             utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name, layer_str), target_dpi=600, formats=config.plot_formats)
     
+    logging.info("Completed successfully.")
+    
 @click.command(name="ssgsea")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
     help="Output directory for ssgsea results")
@@ -903,18 +921,56 @@ def cmd_ssgsea(output_dir, pkl_file, h5ad_file, gene_sets, min_intersection, max
     else:
         logging.error("mosaicmpi ssgsea requires either a factorized dataset (.h5ad) file or a network_integration.pkl file to run ssGSEA on programs.")
         sys.exit(1)
+    logging.info("Completed successfully.")
     
 @click.command(name="compare-integrations")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
     help="Output directory for results")
-@click.option('-n', '--pkl_files', type=click.Path(exists=True, dir_okay=False), required=True, multiple=True,
-    help="Path to network_integration.pkl.gz files from `mosaicmpi integrate` step")
-@click.option('-d', '--dataset_mapping_toml', type=click.Path(exists=True, dir_okay=False), required=False,
-    help="Path to TOML file with dataset mappings in cases where dataset names are mismatched between integrations.")
-def cmd_compare_integrations(output_dir, pkl_files, dataset_mapping_toml):
-    """Compare communities from two network_integration.pkl files.
+@click.option('--name1', type=str, default="Network 1",
+    help="Name of first network (plotted on the y-axis)")
+@click.option('--pkl1', type=click.Path(exists=True, dir_okay=False), required=True,
+    help="Path to first network_integration.pkl.gz file")
+@click.option('--name2', type=str, default="Network 2",
+    help="Name of second network (plotted on the x-axis)")
+@click.option('--pkl2', type=click.Path(exists=True, dir_okay=False), required=True,
+    help="Path to second network_integration.pkl.gz file")
+@click.option('-l', '--colors_toml', type=click.Path(dir_okay=False, exists=True), required=False,
+    help="TOML file with dataset_colors specification. If not provided, visually distinct colors will be chosen automatically.")
+def cmd_compare_integrations(output_dir, name1, pkl1, name2, pkl2, colors_toml):
+    """Compare communities from two network_integration.pkl files generated using `mosaicmpi integrate`.
+
     """
-    raise NotImplementedError
+    utils.start_logging()  # allows warning messages to be printed even though logfile hasn't been made yet
+    
+    # create directory structure, warn if not empty
+    output_dir = os.path.normpath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    if os.listdir(output_dir):
+        logging.warning(f"{output_dir} is not empty. Files may be overwritten.")
+
+    # write to log file
+    utils.start_logging(os.path.join(output_dir, "logfile.txt"))
+    
+    network1 = Network.from_pkl(pkl1)
+    network2 = Network.from_pkl(pkl2)
+
+    jaccard = compare_community_jaccard_similarity(name1=name1, name2=name2, network1=network1, network2=network2)
+    jaccard.to_csv(os.path.join(output_dir, "jaccard.txt"), sep="\t")
+
+    # create or import a color for each dataset
+    if colors_toml is None:
+        colors = Colors()        
+    else:
+        logging.info("Using provided TOML file for color palettes")
+        colors = Colors.from_toml(colors_toml)
+
+    dataset_names = set(network1.integration.datasets) | set(network2.integration.datasets)
+    colors.add_missing_dataset_colors(datasets=dataset_names)
+    colors.to_toml(os.path.join(output_dir, "colors.toml"))
+
+    fig = plot_compare_integrations(name1, network1, name2, network2, colors=colors)
+    utils.save_fig(fig, os.path.join(output_dir, "jaccard_heatmap"))
+    logging.info("Completed successfully.")
 
 @click.command(name="transfer-labels")
 @click.option("-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
@@ -965,6 +1021,7 @@ def cmd_transfer_labels(output_dir, pkl_file, source, dest, layer, annotate, met
             cgrid = plot_metadata_transfer(network=network, source=s, dest=d, layer=l, annotate=annotate, colors=colors)
             cgrid.fig.suptitle(f"source: {s}, dest: {d}, layer: {l}")
             cgrid.savefig(os.path.join(output_dir, f"s.{s}_d.{d}_l.{l}.pdf"))
+    logging.info("Completed successfully.")
 
 cli.add_command(cmd_txt_to_h5ad)
 cli.add_command(cmd_update_h5ad_metadata)

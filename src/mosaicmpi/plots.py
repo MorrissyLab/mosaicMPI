@@ -2,12 +2,12 @@
 from .dataset import Dataset
 from .integration import Integration
 from .colors import Colors
-from .network import Network
+from .network import Network, compare_community_jaccard_similarity
 from . import utils
 
 
 from collections.abc import Iterable, Collection, Mapping
-from typing import Union, Optional, Literal
+from typing import Union, Optional, Literal, Dict
 
 import pandas as pd
 import numpy as np
@@ -1433,8 +1433,8 @@ def plot_overrepresentation_community_bar(network: Network,
     # if existing axes object is provided, plots with legend on that axes. Otherwise, creates a new figure with a separate plot and legend Axes.
     if ax is None:
         if figsize is None:
-            figsize = [0.1 * df.shape[1] + 4, 4]
-        fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [4, 1]}, layout="tight")
+            figsize = [0.2 * df.shape[1] + 4, 4]
+        fig, (ax_plot, ax_legend) = plt.subplots(1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [df.shape[1]/5, 1]}, layout="tight")
         ax_legend.set_axis_off()
     else:
         ax_plot = ax
@@ -1442,7 +1442,7 @@ def plot_overrepresentation_community_bar(network: Network,
         
     # Overrepresentation plot
     df.T.plot.bar(stacked=True, ax=ax_plot, width = 0.9, color=colors.get_metadata_colors(layer), legend=False)
-    ax_plot.set_xticklabels(ax_plot.get_xticklabels(), rotation=0)
+    ax_plot.set_xticklabels(ax_plot.get_xticklabels(), rotation=90)
     ax_plot.set_ylabel("Median overrepresentation")
     ax_plot.set_xlabel("Community")
     
@@ -1473,7 +1473,7 @@ def plot_metadata_correlation_community_bar(network: Network,
         
     # Overrepresentation plot
     md_corr.plot.bar(ax=ax_plot, width = 0.9, color="#888888")
-    ax_plot.set_xticklabels(ax_plot.get_xticklabels(), rotation=0)
+    ax_plot.set_xticklabels(ax_plot.get_xticklabels(), rotation=90)
     ax_plot.set_ylabel(f"Median {method.capitalize()} Correlation")
     ax_plot.set_xlabel("Community")
     
@@ -1637,3 +1637,97 @@ def plot_representative_program_nes(network: Network, rep_nes: pd.DataFrame):
                 labelbottom=is_bottom_subplot)
     fig.supylabel(f"Community")
     return fig, figlegend
+
+####################
+# Compare Networks #
+####################
+
+def plot_compare_integrations(name1: str, network1: Network, name2: str, network2: str, colors: Colors, figsize: Optional[Collection[float]] = None) -> Figure:
+    """Calculate jaccard similarity of communities from two Network objects.
+       Jaccard similarity is calculated over programs from datasets in common between the two Network objects,
+       with network 1 on the y-axis, and network 2 on the x-axis.
+
+    :param name1: name of first network
+    :type name1: str
+    :param network1: first network
+    :type network1: :class:`mosaicmpi.Network`
+    :param name2: name of second network
+    :type name2: str
+    :param network2: second network
+    :type network2: :class:`mosaicmpi.Network`
+    :param colors: colors object with a color for each dataset from both networks.
+    :type colors: Colors
+    :param figsize: (width, height), defaults to None
+    :type figsize: Optional[Collection[float]], optional
+    :raises ValueError: raised if not exactly 2 networks are provided
+    :return: figure
+    :rtype: Figure
+    """
+    
+    shared_datasets = set(network1.integration.datasets) & set(network2.integration.datasets)
+    net1_datasets = set(network1.integration.datasets) - shared_datasets
+    net2_datasets = set(network2.integration.datasets) - shared_datasets
+
+    ds_colors = {"shared": colors.missing_data_color} | {ds: colors for ds, colors in colors.dataset_colors.items() if ds in (net1_datasets | net2_datasets)}
+
+    jaccard = compare_community_jaccard_similarity(name1=name1, network1=network1, name2=name2, network2=network2)
+
+    net1_bars = pd.DataFrame(np.NaN, index=jaccard.index[::-1], columns=["shared"] + list(net1_datasets))
+    for net1_comm in network1.ordered_community_names:
+        net1_bars.loc[net1_comm, "shared"] = len(set(n for n in network1.communities[net1_comm] if utils.node_to_program(n)[0] in shared_datasets))
+        for d in net1_datasets:
+            net1_bars.loc[net1_comm, d] = len(set(n for n in network1.communities[net1_comm] if utils.node_to_program(n)[0] == d))
+    net1_bars
+
+    net2_bars = pd.DataFrame(np.NaN, index=jaccard.columns, columns=["shared"] + list(net2_datasets))
+    for net2_comm in network2.ordered_community_names:
+        net2_bars.loc[net2_comm, "shared"] = len(set(n for n in network2.communities[net2_comm] if utils.node_to_program(n)[0] in shared_datasets))
+        for d in net2_datasets:
+            net2_bars.loc[net2_comm, d] = len(set(n for n in network2.communities[net2_comm] if utils.node_to_program(n)[0] == d))
+    net2_bars
+
+    max_bar_height = max(net1_bars.T.sum().max(), net2_bars.T.sum().max())
+
+    if figsize is None:
+        figsize = [0.5 * jaccard.shape[1] + 2, 0.5 * jaccard.shape[0] + 3]
+
+    fig, axes = plt.subplots(3,3, figsize=figsize, gridspec_kw={"width_ratios": [10, 1, 0.2], "height_ratios": [1, 1, 10]},
+                            sharex="col", sharey="row", layout="constrained")
+
+    sns.heatmap(jaccard, xticklabels=True, cmap="Blues", ax=axes[2,0], cbar_ax=axes[0,2])
+    axes[2,0].set_yticklabels(axes[2,0].get_yticklabels(), rotation=0)
+    axes[2,0].set_ylabel(f"{name1}\ncommunity")
+    axes[2,0].set_xlabel(f"{name2}\ncommunity")
+
+    axes[0,2].set_title("Jaccard\nsimilarity")
+
+
+    # horizontal bars
+    y_tick_pos = [i + 0.5 for i in range(len(network1.ordered_community_names))]
+    left = pd.Series(0, index=net1_bars.index[::-1])
+    for ds, ds_width in net1_bars[::-1].items():
+        axes[2,1].barh(y=y_tick_pos, width=ds_width, left=left, height=0.8, color=ds_colors[ds])
+        left += ds_width
+    axes[2,1].set_xlim([0,max_bar_height])
+    axes[2,1].set_xlabel("Nodes")
+
+    # vertical bars
+    x_tick_pos = [i + 0.5 for i in range(len(network2.ordered_community_names))]
+    bottom = pd.Series(0, index=net2_bars.index)
+    for ds, ds_height in net2_bars.items():
+        axes[1,0].bar(x=x_tick_pos, height=ds_height, bottom=bottom, width=0.8, color=ds_colors[ds])
+        bottom += ds_height
+    axes[1,0].set_ylim([0,max_bar_height])
+    axes[1,0].set_ylabel("Nodes")
+
+
+    axes[0,0].set_axis_off()
+    axes[0,1].set_axis_off()
+    axes[1,1].set_axis_off()
+    axes[1,2].set_axis_off()
+    axes[2,2].set_axis_off()
+
+    legend_handles = [Patch(color=color, label=ds) for ds, color in ds_colors.items()]
+    axes[0,0].legend(handles=legend_handles, loc = "center", ncols = 3)
+    
+    return fig

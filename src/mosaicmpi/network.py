@@ -922,3 +922,38 @@ class Network():
             if isinstance(dest, str):
                 agg = agg.droplevel(axis=1, level="dest_dataset")
         return agg
+
+
+def compare_community_jaccard_similarity(name1: str, network1: Network, name2: str, network2: Network, subset_to_shared_datasets: bool = True):
+    """_summary_
+
+    :param network1: _description_
+    :type network1: Network
+    :param network2: network object
+    :type network2: Network
+    :param subset_to_shared_datasets: calculate jaccard similarity over shared datasets only, defaults to True
+    :type subset_to_shared_datasets: bool, optional
+    """
+
+    all_datasets = set(network1.integration.datasets) | set(network2.integration.datasets)
+    shared_datasets = set(network1.integration.datasets) & set(network2.integration.datasets)
+    net1_datasets = set(network1.integration.datasets) - shared_datasets
+    net2_datasets = set(network2.integration.datasets) - shared_datasets
+
+    jaccard = pd.DataFrame(np.NaN,
+                           index=pd.Index(network1.ordered_community_names, name=name1),
+                           columns=pd.Index(network2.ordered_community_names, name=name2))
+    for net1_comm, net1_nodes in network1.communities.items():
+        for net2_comm, net2_nodes in network2.communities.items():
+            
+            intersection = len(net2_nodes & net1_nodes)
+            if subset_to_shared_datasets:
+                # jaccard is calculated based on shared datasets only
+                union = len(set(n for n in (net1_nodes | net2_nodes) if node_to_program(n)[0] in shared_datasets))
+            else:
+                union = len(net1_nodes | net2_nodes)
+            jaccard.loc[net1_comm, net2_comm] = intersection / union
+
+    jaccard = jaccard[jaccard.idxmax(0).astype(int).sort_values().index]
+
+    return jaccard
