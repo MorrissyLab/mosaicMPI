@@ -1659,7 +1659,6 @@ def plot_compare_integrations(name1: str, network1: Network, name2: str, network
     :type colors: Colors
     :param figsize: (width, height), defaults to None
     :type figsize: Optional[Collection[float]], optional
-    :raises ValueError: raised if not exactly 2 networks are provided
     :return: figure
     :rtype: Figure
     """

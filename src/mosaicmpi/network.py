@@ -925,12 +925,17 @@ class Network():
 
 
 def compare_community_jaccard_similarity(name1: str, network1: Network, name2: str, network2: Network, subset_to_shared_datasets: bool = True):
-    """_summary_
+    """Calculates the jaccard similarity of communities between two networks with overlapping nodes. One use case is to compare integrations
+    after adding new datasets; the other is to compare integrations at different community resolutions.
 
-    :param network1: _description_
-    :type network1: Network
-    :param network2: network object
-    :type network2: Network
+    :param name1: name of first network
+    :type name1: str
+    :param network1: first network
+    :type network1: :class:`mosaicmpi.Network`
+    :param name2: name of second network
+    :type name2: str
+    :param network2: second network
+    :type network2: :class:`mosaicmpi.Network`
     :param subset_to_shared_datasets: calculate jaccard similarity over shared datasets only, defaults to True
     :type subset_to_shared_datasets: bool, optional
     """
