@@ -486,7 +486,12 @@ class Network():
             layout = nx.spring_layout(self.program_graph, weight="community_weight", **kwargs)
             layout = {node: list(coords) for node, coords in layout.items()}
         elif algorithm == "umap":
-            import umap
+            try:
+                import umap
+            except ImportError:
+                raise ImportError("umap-learn is not installed. Please install using:\n\n\t"
+                            "conda install -c conda-forge umap-learn"
+                            )
             from sklearn.preprocessing import StandardScaler, RobustScaler
 
             programs = {}
