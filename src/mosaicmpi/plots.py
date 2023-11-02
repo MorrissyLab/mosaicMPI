@@ -30,7 +30,7 @@ import networkx as nx
 def plot_feature_missingness(dataset: Dataset, ax: Optional[Axes] = None, proportion=False):
         
     if ax is None:
-        fig, ax_plot = plt.subplots(figsize=[10, 3], layout="constrained")
+        fig, ax_plot = plt.subplots(figsize=[10, 4], layout="constrained")
     else:
         ax_plot = ax
 
@@ -39,8 +39,12 @@ def plot_feature_missingness(dataset: Dataset, ax: Optional[Axes] = None, propor
     else:
         stat = "missing_values"
 
-    missingness = dataset.adata.var[stat]
-    missingness.value_counts().sort_index().plot.bar(width=0.9, color="k", ax=ax_plot)
+    if proportion:
+        missingness = dataset.adata.var["missingness"]
+        missingness.plot.hist(bins=100, color="k", ax=ax_plot)
+    else:
+        missing_values = dataset.adata.var["missing_values"]
+        missing_values.value_counts().sort_index().plot.bar(width=0.9, color="k", ax=ax_plot)
     ax_plot.set_ylabel("Features")
     ax_plot.set_xlabel(stat)
 
@@ -48,17 +52,28 @@ def plot_feature_missingness(dataset: Dataset, ax: Optional[Axes] = None, propor
         return fig
 
 
-
 def plot_feature_dispersion(dataset: Dataset,
                             show_selected: bool = False,
                             show_model_curve: bool = True,
                             y_unit: Literal["log_variance", "odscore", "log_odscore", "vscore", "log_vscore"] = "log_variance",
-                            modelled_features_only: bool = True,
+                            modelled_features: bool = True,
+                            unmodelled_features: bool = False,
                             ax: Optional[Axes] = None):
+
+    
     df = dataset.adata.var
-    if modelled_features_only:
-        df = df[~df["odscore_excluded"]]
     df = df.sort_values("mean")
+    model_curve_data = df.copy()
+
+    if not modelled_features and not unmodelled_features:
+        raise ValueError("at least one of modelled_features and unmodelled_features must be True.")
+    elif modelled_features and not unmodelled_features:
+        df = df[~df["odscore_excluded"]]
+    elif not modelled_features and unmodelled_features:
+        df = df[df["odscore_excluded"]]
+    elif modelled_features and unmodelled_features:
+        pass
+
     if "log_odscore" not in df.columns:  # required for compatibility with older h5ad files which do not have this column
         df["log_odscore"] = np.log10(df["odscore"])
         df["log_vscore"] = np.log10(df["vscore"])
@@ -82,7 +97,7 @@ def plot_feature_dispersion(dataset: Dataset,
     # Show the model curve from the GAM
     if show_model_curve:
         if y_unit == "log_variance":
-            ax_plot.plot(df["log_mean"], df["gam_fittedvalues"], color="green")
+            ax_plot.plot(model_curve_data["log_mean"], model_curve_data["gam_fittedvalues"], color="green")
         elif y_unit == "odscore":
             ax_plot.axhline(1)
         elif y_unit == "log_odscore":
@@ -106,8 +121,6 @@ def plot_feature_dispersion(dataset: Dataset,
     if ax is None:
         return fig
 
-
-   
 
 def plot_feature_overdispersion_histogram(dataset: Dataset,
                                           show_selected: bool = False,
@@ -261,9 +274,9 @@ def annotated_heatmap(
     plt.colorbar(im_heatmap, ax=ax, location="top", label=cbar_label)
     return fig
 
-def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors, subset_metadata = None, subset_samples = None, title = None, cluster_programs = False, cluster_samples = True, show_sample_labels = True):
+def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors: Colors, normalize_usage: bool = True, subset_metadata = None, subset_samples = None, title: str = None, cluster_programs = False, cluster_samples = True, show_sample_labels = True):
     assert dataset.has_cnmf_results
-    df = dataset.get_usages(k=k)
+    df = dataset.get_usages(k=k, normalize=normalize_usage)
     if subset_samples is not None:
         df = df.loc[subset_samples]
     samples = df.index.to_series()
@@ -271,7 +284,6 @@ def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors, subset_metada
     if subset_metadata is not None:
         metadata = metadata.loc[:, subset_metadata]
     metadata_colors = {col: colors.get_metadata_colors(col) for col in metadata.columns}
-    df = df.div(df.sum(axis=1), axis=0)
     fig = annotated_heatmap(data=df, metadata=metadata,
                             metadata_colors=metadata_colors, 
                             missing_data_color=colors.missing_data_color, 

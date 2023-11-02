@@ -199,12 +199,14 @@ class Network():
         """
         df = self.integration.get_category_overrepresentation(layer=layer,
                                                               subset_datasets=subset_datasets,
-                                                              truncate_negative=truncate_negative,
+                                                              truncate_negative=False,
                                                               subset_categories=subset_categories)
         mapper = {tuple([program.split("|")[0], int(program.split("|")[1]), int(program.split("|")[2])]): comm for program, comm in self.program_communities.items()}
         df.columns = df.columns.map(mapper)
         df = df.T.groupby(level=0).mean().T
         df = df.reindex(self.ordered_community_names, axis=1)
+        if truncate_negative:
+            df = df.clip(lower=0)
         return df
     
     def get_community_metadata_correlation(self,

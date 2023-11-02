@@ -22,7 +22,7 @@ If expression and annotation data is in text files, this utility can combine the
 mosaicmpi txt-to-h5ad --data_file counts.txt --metadata metadata.txt -o dataset.h5ad
 ```
 
-If no counts data is available and the dataset is normalized(eg., for non-count based assays), you can also specify `--is_normalized` to prevent mosaicMPI from performing a TPM normalization step for the purposes of overdispersed gene selection. If `--is_normalized` is specified, the input matrix is used both fore overdispersed gene selection and for factorization.
+If no counts data is available and the dataset is normalized (eg., for non-count based assays), you can also specify `--is_normalized` to prevent mosaicMPI from performing a TPM normalization step for the purposes of overdispersed gene selection. If `--is_normalized` is specified, the input matrix is used both for overdispersed gene selection and for factorization.
 
 By default, text files are tab-separated, although other characters can be specified using `--data-delimiter` and `--metadata-delimiter`.
 
@@ -31,12 +31,16 @@ By default, Expression data must be indexed as follows.
   - Columns are genes/features; the first row must be feature names
 If your data is in the opposite orientation, specify `--transpose`.
 
+Values must be numerical, but missing values are permitted. For text inputs, these must be 'empty' cells, rather than "NA" or "NaN" text values. When missing values are included in the inputs, you must run `mosaicmpi impute-knn` or `mosaicmpi impute-zeros` prior to feature selection and factorization.
+
 Metadata must be indexed as follows:
 
   - The first column must be sample/cell/spot IDs
   - Other columns are metadata 'layers' and must be labelled. Values can be numerical, boolean, or categorical types.
       > Note: if any values in a column are not numerical, the entire column will be treated as categorical. This can have implications for annotated heatmaps where numerical data is usually presented as a continuous color scale, not a set of distinct colors. If a column is numerical with missing values, then these should be empty values (not "NA", "NaN", etc.)
   - Missing values are acceptable. For categorical data, these will be plotted in an "Other" category. For numerical data, these will be ignored.
+
+Additionally 
 
 ### 2. Check existing h5ad files for unfactorizable genes.
 
@@ -94,12 +98,12 @@ Factorize the input data. While parameters can be provided which allow for custo
 mosaicmpi factorize --name example_run
 ```
 
-For submitting jobs to the SLURM job scheduler, you can download a sample job submission script [here](https://github.com/MorrissyLab/mosaicMPI/tree/main/scripts/slurm.sh).
+For submitting jobs to the SLURM job scheduler, you can download a sample job submission script [here](https://github.com/MorrissyLab/mosaicMPI/tree/main/scripts/slurm_factorize.sh).
 
 After editing the script to ensure it is suitable for your HPC cluster, mosaicMPI will submit jobs using SLURM's `sbatch` command to parallelize factorization.
 
 ```bash
-mosaicmpi factorize --name example_run --slurm_script /path/to/slurm.sh
+mosaicmpi factorize --name example_run --slurm_script /path/to/slurm_factorize.sh
 ```
 
 ### 6. Postprocessing
@@ -109,6 +113,15 @@ This step will check to ensure that all factorizations completed successfully, a
 ```bash
 mosaicmpi postprocess --name example_run
 ```
+
+To submit as a job to the SLURM job scheduler, you can download a sample job submission script [here](https://github.com/MorrissyLab/mosaicMPI/tree/main/scripts/slurm_postprocess.sh).
+
+After editing the script to ensure it is suitable for your HPC cluster, mosaicMPI will submit jobs using SLURM's `sbatch` command to parallelize factorization.
+
+```bash
+mosaicmpi factorize --name example_run --slurm_script /path/to/slurm_postprocess.sh
+```
+
 
 For downstream analyses, the input data and cNMF programs are all contained in `example_run/example_run.h5ad`.
 

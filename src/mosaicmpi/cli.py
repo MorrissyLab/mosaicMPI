@@ -53,6 +53,9 @@ def cli():
     "-m", "--metadata", type=click.Path(dir_okay=False, exists=True), required=False,
     help="Optional delimited text file with metadata for samples/cells with one row each. Columns are annotation layers.")
 @click.option(
+    "-f", "--feature_metadata", type=click.Path(dir_okay=False, exists=True), required=False,
+    help="Optional delimited text file with metadata for features with one row each. Columns are annotation layers.")
+@click.option(
     "--sparsify", is_flag=True,
     help="Save resulting data in sparse format. Recommended to increase performance for sparse datasets such as scRNA-Seq, scATAC-Seq, and 10X Visium, but not for bulk expression data.")
 @click.option(
@@ -63,11 +66,11 @@ def cli():
     help="Delimiter for data file, defaults to tab-delimited.")
 @click.option(
     "--metadata_delimiter", type=str, default="\t",
-    help="Delimiter for metadata file, defaults to tab-delimited.")
+    help="Delimiter for metadata files, defaults to tab-delimited.")
 @click.option(
     "-o", '--output', type=click.Path(dir_okay=False, exists=False), required=True,
     help="Path to output .h5ad file.")
-def cmd_txt_to_h5ad(data_file, is_normalized, metadata, output, transpose, sparsify, data_delimiter, metadata_delimiter):
+def cmd_txt_to_h5ad(data_file, is_normalized, metadata, feature_metadata, output, transpose, sparsify, data_delimiter, metadata_delimiter):
     """
     Create .h5ad file with data and metadata (`adata.obs`).
     """
@@ -76,13 +79,17 @@ def cmd_txt_to_h5ad(data_file, is_normalized, metadata, output, transpose, spars
     if transpose:
         df = df.T
     if metadata:
-        metadata_df = pd.read_table(metadata, index_col=0, sep=metadata_delimiter).dropna(axis=1, how="all")
+        sample_metadata_df = pd.read_table(metadata, index_col=0, sep=metadata_delimiter).dropna(axis=1, how="all")
     else:
-        metadata_df = None
-    dataset = Dataset.from_df(data=df, obs=metadata_df, sparsify=sparsify, is_normalized=is_normalized)
-    logging.info(dataset.get_metadata_type_summary())
+        sample_metadata_df = None
+    if feature_metadata:
+        feature_metadata_df = pd.read_table(feature_metadata, index_col=0, sep=metadata_delimiter).dropna(axis=1, how="all")
+    else:
+        feature_metadata_df = None
+    dataset = Dataset.from_df(data=df, obs=sample_metadata_df, var=feature_metadata_df, sparsify=sparsify, is_normalized=is_normalized)
+    logging.info(dataset.get_printable_metadata_type_summary())
     dataset.write_h5ad(output)
-    logging.info("Completed successfully.")
+    logging.info("All tasks completed successfully.")
 
 @click.command(name="update-h5ad-metadata")
 @click.option(
@@ -99,9 +106,9 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
     dataset = Dataset.from_h5ad(input_h5ad)
     metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
     dataset.update_obs(metadata_df)
-    logging.info(dataset.get_metadata_type_summary())
+    logging.info(dataset.get_printable_metadata_type_summary())
     dataset.write_h5ad(input_h5ad)
-    logging.info("Completed successfully.")
+    logging.info("All tasks completed successfully.")
 
 @click.command(name="impute-zeros")
 @click.option(
@@ -110,17 +117,21 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
 @click.option(
     "-o", "--output", type=click.Path(dir_okay=False, exists=False), required=True,
     help="Output .h5ad file.")
-def cmd_impute_zeros(input, output):
+@click.option(
+    "-n", "--n_folds", type=int, default=100,
+    help="Number of folds for k-fold cross-validation. 0 disables cross-validation.")
+
+def cmd_impute_zeros(input, output, n_folds):
     """
     Impute missing values with zeros.
     """
     utils.start_logging()
     dataset = Dataset.from_h5ad(input)
-    dataset.impute_zeros()
+    dataset.impute_zeros(n_folds=n_folds)
     # Save output to new h5ad file
     dataset.write_h5ad(output)
     
-    logging.info("Completed successfully.")
+    logging.info("All tasks completed successfully.")
 
 @click.command(name="impute-knn")
 @click.option(
@@ -146,17 +157,20 @@ def cmd_impute_zeros(input, output):
             .
             """
 )
-def cmd_impute_knn(input, output, n_neighbors, weights):
+@click.option(
+    "-n", "--n_folds", type=int, default=100,
+    help="Number of folds for k-fold cross-validation. 0 disables cross-validation.")
+def cmd_impute_knn(input, output, n_neighbors, weights, n_folds):
     """
     k-Nearest Neighbour (KNN) imputation of missing values.
     """
     utils.start_logging()
     dataset = Dataset.from_h5ad(input)
-    dataset.impute_knn(n_neighbors = n_neighbors, weights = weights)
+    dataset.impute_knn(n_neighbors = n_neighbors, weights = weights, n_folds=n_folds)
     # Save output to new h5ad file
     dataset.write_h5ad(output)
     
-    logging.info("Completed successfully.")
+    logging.info("All tasks completed successfully.")
 
 
 @click.command(name="check-h5ad")
@@ -182,7 +196,7 @@ def cmd_check_h5ad(input, output):
     if output is not None:
         dataset.write_h5ad(output)
 
-    logging.info("Completed successfully.")
+    logging.info("All tasks completed successfully.")
 
 
 @click.command(name="model-odg")
@@ -240,10 +254,20 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, m
 
     # create mean vs variance plots
     fig = plot_feature_dispersion(dataset, show_selected=False)
-    fig.savefig(os.path.join(output_dir, name, "odgenes.pdf"), facecolor='white')
-    fig.savefig(os.path.join(output_dir, name, "odgenes.png"), dpi=400, facecolor='white')
+    fig.savefig(os.path.join(output_dir, name, "feature_meanvar.pdf"), facecolor='white')
+    fig.savefig(os.path.join(output_dir, name, "feature_meanvar.png"), dpi=400, facecolor='white')
     
-    logging.info("Completed successfully.")
+
+    if dataset.is_imputed:
+        logging.info("Creating plots for imputed data")
+
+        fig = plot_feature_missingness(dataset, proportion=True)
+        fig.savefig(os.path.join(output_dir, name, "missingness_histogram.pdf"), facecolor='white')
+        fig.savefig(os.path.join(output_dir, name, "missingness_histogram.png"), dpi=400, facecolor='white')
+
+        fig = plot_feature_dispersion(dataset)
+
+    logging.info("All tasks completed successfully.")
 
 
 @click.command(name="set-parameters")
@@ -361,7 +385,7 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
     # output dataset with new information on overdispersed genes and cNMF parameters
     dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     
-    logging.info("Completed successfully.")
+    logging.info("All tasks completed successfully.")
     
 
 @click.command(name="factorize")
@@ -416,36 +440,58 @@ def cmd_factorize(name, output_dir, worker_index, total_workers, slurm_script):
 @click.option(
     '--force_h5ad_update', is_flag=True,
     help="If specified, overwrites cNMF results already saved to the .h5ad file.")
-def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neighborhood_size, skip_missing_iterations, force_h5ad_update):
+@click.option(
+    '--slurm_script', type=click.Path(dir_okay=False, exists=True),
+    help="Submit jobs to SLURM scheduler using this job submission script. Sample script is located in `scripts/slurm_postprocess.sh`.")
+def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neighborhood_size, skip_missing_iterations, force_h5ad_update, slurm_script):
     """
     Perform post-processing routines on cNMF after factorization. This includes checking factorization outputs for completeness, combining individual
-    iterations, calculating consensus programs and usage matrices, and creating the k-selection and annotated usage plots.
+    iterations, calculating consensus programs and usage matrices, and creating the k-selection plot.
     """
-    cnmf_obj = cNMF(output_dir=output_dir, name=name)
-    utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
-    cnmf_obj.postprocess(cpus=cpus,
-                         local_density_threshold=local_density_threshold,
-                         local_neighborhood_size=local_neighborhood_size,
-                         skip_missing_iterations=skip_missing_iterations)
-    h5ad_path = os.path.join(output_dir, name, name + ".h5ad")
-    dataset = Dataset.from_h5ad(h5ad_path)
-    
-    cnmf_data_loaded =  "cnmf_usage" in dataset.adata.obsm or\
-                        "cnmf_gep_score" in dataset.adata.varm or\
-                        "cnmf_gep_tpm" in dataset.adata.varm or\
-                        "cnmf_gep_raw" in dataset.adata.varm
-    if cnmf_data_loaded and not force_h5ad_update:
-        logging.error(f"Error: AnnData already contains cNMF results. Use --force_h5ad_update to overwrite.")
-        sys.exit(1)
 
-    dataset.add_cnmf_results(cnmf_output_dir=output_dir,
-                             cnmf_name=name,
-                             local_density_threshold=local_density_threshold,
-                             local_neighborhood_size=local_neighborhood_size
-                             )
-    dataset.write_h5ad(h5ad_path)
-    
-    logging.info("Completed successfully.")
+    if slurm_script is not None:
+        flags = ""
+        if skip_missing_iterations:
+            flags += "--skip_missing_iterations "
+        if force_h5ad_update:
+            flags += "--force_h5ad_update "
+
+        subprocess.Popen(['sbatch', slurm_script,
+                          os.getcwd(),
+                          output_dir,
+                          name,
+                          cpus,
+                          local_density_threshold,
+                          local_neighborhood_size,
+                          skip_missing_iterations,
+                          force_h5ad_update])
+    else:
+        cnmf_obj = cNMF(output_dir=output_dir, name=name)
+        utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
+        cnmf_obj.postprocess(cpus=cpus,
+                            local_density_threshold=local_density_threshold,
+                            local_neighborhood_size=local_neighborhood_size,
+                            skip_missing_iterations=skip_missing_iterations)
+        h5ad_path = os.path.join(output_dir, name, name + ".h5ad")
+        dataset = Dataset.from_h5ad(h5ad_path)
+        
+        cnmf_data_loaded =  "cnmf_usage" in dataset.adata.obsm or\
+                            "cnmf_gep_score" in dataset.adata.varm or\
+                            "cnmf_gep_tpm" in dataset.adata.varm or\
+                            "cnmf_gep_raw" in dataset.adata.varm
+        if cnmf_data_loaded and not force_h5ad_update:
+            logging.error(f"Error: AnnData already contains cNMF results. Use --force_h5ad_update to overwrite.")
+            sys.exit(1)
+
+        dataset.add_cnmf_results(cnmf_output_dir=output_dir,
+                                cnmf_name=name,
+                                local_density_threshold=local_density_threshold,
+                                local_neighborhood_size=local_neighborhood_size
+                                )
+        dataset.write_h5ad(h5ad_path)
+        
+        logging.info("All tasks completed successfully.")
+
     
 @click.command("annotated-heatmap")
 @click.option(
@@ -505,7 +551,7 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
             cluster_samples=True, cluster_programs=False, show_sample_labels=(not hide_sample_labels))
         fig.savefig(filename, transparent=False, bbox_inches = "tight")
     
-    logging.info("Completed successfully.")
+    logging.info("All tasks completed successfully.")
 
 
 @click.command(name="create-config")
@@ -569,7 +615,7 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
         if "patient_id_col" in dsparams:
             dataset.patient_id_col = dsparams["patient_id_col"]
         datasets[dsname] = dataset
-        
+
     # gets k-values from config
     has_k_subset = {dsname: ("k_subset" in dsparams) for dsname, dsparams in config.datasets.items()}
     if all(list(has_k_subset.values())):
@@ -847,8 +893,8 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
             layer_str = layer.replace("\\", "_").replace("/", "_")
             fig = plot_metadata_correlation_program_network(network, colors, layer=layer, subset_datasets=dataset_name)   
             utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name, layer_str), target_dpi=600, formats=config.plot_formats)
-    
-    logging.info("Completed successfully.")
+
+    logging.info("All tasks completed successfully.")
     
 @click.command(name="ssgsea")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
@@ -921,7 +967,7 @@ def cmd_ssgsea(output_dir, pkl_file, h5ad_file, gene_sets, min_intersection, max
     else:
         logging.error("mosaicmpi ssgsea requires either a factorized dataset (.h5ad) file or a network_integration.pkl file to run ssGSEA on programs.")
         sys.exit(1)
-    logging.info("Completed successfully.")
+    logging.info("All tasks completed successfully.")
     
 @click.command(name="compare-integrations")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
@@ -970,7 +1016,7 @@ def cmd_compare_integrations(output_dir, name1, pkl1, name2, pkl2, colors_toml):
 
     fig = plot_compare_integrations(name1, network1, name2, network2, colors=colors)
     utils.save_fig(fig, os.path.join(output_dir, "jaccard_heatmap"))
-    logging.info("Completed successfully.")
+    logging.info("All tasks completed successfully.")
 
 @click.command(name="transfer-labels")
 @click.option("-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
@@ -1021,7 +1067,7 @@ def cmd_transfer_labels(output_dir, pkl_file, source, dest, layer, annotate, met
             cgrid = plot_metadata_transfer(network=network, source=s, dest=d, layer=l, annotate=annotate, colors=colors)
             cgrid.fig.suptitle(f"source: {s}, dest: {d}, layer: {l}")
             cgrid.savefig(os.path.join(output_dir, f"s.{s}_d.{d}_l.{l}.pdf"))
-    logging.info("Completed successfully.")
+    logging.info("All tasks completed successfully.")
 
 cli.add_command(cmd_txt_to_h5ad)
 cli.add_command(cmd_update_h5ad_metadata)

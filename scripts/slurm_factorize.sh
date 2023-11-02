@@ -3,9 +3,9 @@
 #SBATCH --mem=140G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40 
-#SBATCH --array=0-19
-#SBATCH --time=05:00:00
+#SBATCH --cpus-per-task=40
+#SBATCH --array=0-39
+#SBATCH --time=7-00:00:00
 #SBATCH --job-name=mosaicmpi
 #SBATCH --output=%x_%A_%a.out
 

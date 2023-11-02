@@ -18,6 +18,7 @@ import pandas as pd
 import numpy as np
 from sklearn.impute import KNNImputer, SimpleImputer
 from statsmodels.gam.api import GLMGam, BSplines
+from tqdm import tqdm
 
 class Dataset():
     
@@ -182,6 +183,15 @@ class Dataset():
         self.adata.uns["is_normalized"] = value
     
     @property
+    def is_imputed(self):
+        """Outputs the imputation status of the dataset.
+
+        :return: True if dataset contains normalized data, False if it is raw data.
+        :rtype: bool
+        """
+        return "imputation" in self.adata.uns
+
+    @property
     def patient_id_col(self):
         """Outputs the normalization status of the dataset.
 
@@ -263,17 +273,18 @@ class Dataset():
         self.adata.obs = obs.reindex(self.adata.obs.index)
         self.append_to_history(f"metadata (adata.obs) updated.")
     
-    def get_metadata_type_summary(self):
-        """Return a printable summary of metadata and value types for each metadata layer.
+    def get_printable_metadata_type_summary(self):
+        """Return a printable summary of metadata and the types.
 
         :return: Summary of metadata
         :rtype: str
         """
-        msg = "Data types for non-missing values in each layer of metadata:\n"
+        msg = "Summary of metadata types\n\n    Sample metadata:\n"
         for col in self.adata.obs.columns:
-            msg += "    Column: " + col + "\n"
-            for value_type, count in self.adata.obs[col].dropna().map(type).value_counts().items():
-                msg += f"        {value_type}: {count}\n"
+            msg += "        " + col + ": " + self.adata.obs[col].dtype.name + "\n"
+        msg += "    Feature metadata:\n"
+        for col in self.adata.var.columns:
+            msg += "        " + col + ": " + self.adata.var[col].dtype.name + "\n"
         return msg
     
     def write_h5ad(self,
@@ -287,7 +298,7 @@ class Dataset():
         logging.info(f"Writing to {filename}")
         self.append_to_history("Writing to {filename}")
         self.adata.write_h5ad(filename)
-        logging.info(f"Done")
+        logging.info(f"Write completed.")
     
     def to_df(self,
               normalized: bool = False):
@@ -326,11 +337,55 @@ class Dataset():
         genes_to_keep = (~genes_with_missingvalues) & (~zerovargenes)
         self.adata = self.adata[:,genes_to_keep].copy()
 
-    def impute_knn(self, n_neighbors: int = 5, weights: Literal["distance", "uniform"] = "distance"):
+    def cross_validate_imputation(self, imputer: Union[KNNImputer, SimpleImputer], n_folds: int = 100):
+        """Perform k-fold cross validation of imputation on the dataset without modifying the data.
+
+        :param imputer: imputer object from scikit-learn
+        :type imputer: Union[KNNImputer, SimpleImputer]
+        :param n_folds: number of folds, defaults to 100
+        :type n_folds: int, optional
+        :return: Datafram with statistics for each gene, including preimputation log-mean and log-variance, and NRMSD mean and variance across all folds.
+        :rtype: :class:`pandas.DataFrame`
+        """
+        logging.info(f"Performing k-fold cross-validation, with {n_folds} folds")
+        # k-fold cross-validation
+        rmsd_folds = []   # store gene-wise rmsd
+        data = self.adata.to_df()
+        random_numbers = np.random.random(data.shape)  # used to assign each data point to a fold
+        bins = np.linspace(0, 1, n_folds + 1)
+        for fold in tqdm(range(n_folds), unit="fold"):
+            lower, upper = bins[fold:fold + 2]
+            mask = (random_numbers >= lower) & (random_numbers < upper)
+            test = data.mask(~mask)
+            training = data.mask(mask)
+            imputed = imputer.fit_transform(training)
+            imputed = pd.DataFrame(imputed, index=data.index, columns=data.columns)
+            resid = (imputed - test)
+            rmsd = np.sqrt((resid ** 2).sum() / resid.notnull().sum())
+            rmsd_folds.append(rmsd)
+        rmsd_folds = pd.concat(rmsd_folds, axis=1)
+        nrmsd_folds = rmsd_folds.div(data.mean(), axis=0)
+        
+        # record stats in adata.var
+        cvstats = pd.DataFrame({
+            "log_mean_preimputation": np.log10(data.mean()),
+            "log_variance_preimputation": np.log10(data.var()),
+            "imputation_nrmsd_mean": nrmsd_folds.mean(axis=1),
+            "imputation_nrmsd_var": nrmsd_folds.mean(axis=1)
+        })
+
+        return cvstats
+
+    def impute_knn(self,
+                   n_neighbors: int = 5,
+                   weights: Literal["distance", "uniform"] = "distance",
+                   cross_validate: bool = True,
+                   n_folds: int = 100):
+        
         """Imputation for completing missing values using k-Nearest Neighbors.
            Each sample's missing values are imputed using the mean value from
            `n_neighbors` nearest neighbors. Two samples are
-           close if the features that neither is missing are close.
+           close if the features that neither is missing are close. 
 
         :param n_neighbors: Number of neighboring samples to use for imputation, defaults to 5
         :type n_neighbors: int, optional
@@ -341,18 +396,57 @@ class Dataset():
             in this case, closer neighbors of a query point will have a
             greater influence than neighbors which are further away.
         :type weights: Literal[&quot;distance&quot;, &quot;uniform&quot;], optional
+        :param cross_validate: perform k-fold cross-validation, defaults to True
+        :type cross_validate: bool, optional
+        :param n_folds: number of folds for k-fold cross-validation, defaults to 100
+        :type n_folds: int, optional
         """
 
-        self.adata.X = KNNImputer(n_neighbors=n_neighbors, weights=weights, keep_empty_features=True).fit_transform(self.adata.X)
+        logging.info(f"Imputing data with k-Nearest Neighbors, k={n_neighbors}, {weights} weights")
+
+        imputer = KNNImputer(n_neighbors=n_neighbors, weights=weights, keep_empty_features=True)
+        if n_folds < 2:
+            logging.warning(f"n_folds = {n_folds} is less than 2. Skipping cross-validation.")
+            cross_validate = False
+        if cross_validate:
+            cvstats = self.cross_validate_imputation(imputer=imputer, n_folds=n_folds)
+            self.adata.var = self.adata.var.join(cvstats, validate="1:1")
+            
+        self.adata.X = imputer.fit_transform(self.adata.X)
         self.append_to_history(f"KNN Imputation: n_neighbors = {n_neighbors}, weights = {weights}")
+        self.adata.uns["imputation"] = {"method": "knn",
+                                        "n_neighbors": n_neighbors,
+                                        "weights": weights,
+                                        "cross_validation": cross_validate}
+        if cross_validate:
+            self.adata.uns["imputation"]["n_folds"] = n_folds
 
-    def impute_zeros(self):
-        """Imputation for completing missing values using zeros.
+    def impute_zeros(self,
+                     cross_validate: bool = True,
+                     n_folds: int = 100):
+
+        """Imputation by filling missing values with zeros.
+
+        :param cross_validate: perform k-fold cross-validation, defaults to True
+        :type cross_validate: bool, optional
+        :param n_folds: number of folds for k-fold cross-validation, defaults to 100
+        :type n_folds: int, optional
         """
-
-        self.adata.X = SimpleImputer(strategy="constant", fill_value=0.0, keep_empty_features=True).fit_transform(self.adata.X)
-        self.append_to_history(f"Zero Imputation")
-
+        logging.info(f"Imputing data with zeros")
+        
+        imputer = SimpleImputer(strategy="constant", fill_value=0.0, keep_empty_features=True)
+        if n_folds < 2:
+            logging.warning(f"n_folds = {n_folds} is less than 2. Skipping cross-validation.")
+            cross_validate = False
+        if cross_validate:
+            cvstats = self.cross_validate_imputation(imputer=imputer, n_folds=n_folds)
+            self.adata.var = self.adata.var.join(cvstats, validate="1:1")
+        self.adata.X = imputer.fit_transform(self.adata.X)
+        self.append_to_history(f"Zero imputation")
+        self.adata.uns["imputation"] = {"method": "zero",
+                                        "cross_validation": cross_validate}
+        if cross_validate:
+            self.adata.uns["imputation"]["n_folds"] = n_folds
 
     def model_overdispersed_genes(self, odg_default_spline_degree: int = 3, odg_default_dof: int = 8, max_missingness: float = 0.5):
         """
@@ -668,7 +762,7 @@ class Dataset():
             df = pd.concat(discretized).T        
         if k is not None:
             df = df.loc[:, k]
-        df = df.sort_index(axis=0).sort_index(axis=1)   
+        df = df.sort_index(axis=1)   
         return df
 
     def get_programs(self,
