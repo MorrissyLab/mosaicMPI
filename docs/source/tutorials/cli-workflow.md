@@ -119,7 +119,7 @@ To submit as a job to the SLURM job scheduler, you can download a sample job sub
 After editing the script to ensure it is suitable for your HPC cluster, mosaicMPI will submit jobs using SLURM's `sbatch` command to parallelize factorization.
 
 ```bash
-mosaicmpi factorize --name example_run --slurm_script /path/to/slurm_postprocess.sh
+mosaicmpi postprocess --name example_run --slurm_script /path/to/slurm_postprocess.sh
 ```
 
 
@@ -133,7 +133,7 @@ This step will create annotated heatmaps of program usages from mosaicMPI output
 mosaicmpi annotated-heatmap --output_dir example_run -i example_run/example_run.h5ad
 ```
 
-To provide custom colors for the metadata layers, you can specify a TOML-formatted file with a `metadata_colors` section
+To provide custom colors for the metadata layers, you can specify a `metadata_colors.toml` file.
 
 ## Part II: Integration of multiple datasets
 

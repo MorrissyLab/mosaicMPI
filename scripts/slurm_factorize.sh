@@ -14,4 +14,4 @@
 # mosaicmpi uses $1 as the working directory, $2 as the output_directory relative to the working directory, and $3 as the cnmf run name
 echo $1 "/" $2 "/" $3   
 cd "$1"
-mosaicmpi factorize --output_dir $2 --name $3 --total_workers 20 --worker_index $SLURM_ARRAY_TASK_ID
+mosaicmpi factorize --output_dir $2 --name $3 --total_workers 40 --worker_index $SLURM_ARRAY_TASK_ID
