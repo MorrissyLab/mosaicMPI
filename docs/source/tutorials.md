@@ -10,4 +10,5 @@ For a quick introduction to `MosaicMPI`, check out `Getting Started with MosaicM
 tutorials/getting-started.ipynb
 tutorials/cli-workflow.md
 tutorials/configtoml.md
+tutorials/rank.md
 ```

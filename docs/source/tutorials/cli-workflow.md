@@ -82,7 +82,7 @@ In many cases, you will want to factorize a wider range of values using the `--k
 ```bash
 mosaicmpi set-parameters --name example_run --k_range 2 60 1
 ```
-This will factorize from k = 2 - 60. A more complex range of k values can also be set up. For example, to perform cNMF using a range of k values from 5 to 100, with a step of 5 (ie.: 5, 10, 15, ... 100), you would specify `--k_range 5 100 5`.
+This will factorize from k = 2 - 60. A more complex range of k values can also be set up. For example, to perform cNMF using a range of k values from 5 to 100, with a step of 5 (ie.: 5, 10, 15, ... 100), you would specify `--k_range 5 100 5`. Note that you can also factorize over all ranks and choose a subset at the integration step later, if this is not known in advance.
 
 Although programs discovered using cNMF contain all features, factorization is directed by a set of overdispersed genes. The default behaviour is to select overdispersed genes using an od-score > 1.0. You can also choose from a number of different methods for selecting overdispersed_genes using the `-m` and `-p` parameters:
 
@@ -121,7 +121,6 @@ After editing the script to ensure it is suitable for your HPC cluster, mosaicMP
 ```bash
 mosaicmpi postprocess --name example_run --slurm_script /path/to/slurm_postprocess.sh
 ```
-
 
 For downstream analyses, the input data and cNMF programs are all contained in `example_run/example_run.h5ad`.
 

@@ -719,7 +719,6 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
 #   Helper functions for circle bar plots #
 ###########################################
 
-
 def draw_circle_bar_plot(position, enrichments, colors, size, ax, scale_factor: float=1, draw_labels: bool=False, label_font_size: float=1):
 
     x, y = position
@@ -828,7 +827,7 @@ def plot_overrepresentation_program_network(network: Network,
         draw_circle_bar_plot(
             position=(0, 0.5),
             enrichments=pd.Series(max_or, index=overrepresentation.index),
-            colors=color_list,
+            colors=overrepresentation.index.map(colors.get_metadata_colors(layer)),
             scale_factor=scale_factor,
             size=legend_pie_size,
             draw_labels=True,
@@ -1251,7 +1250,7 @@ def plot_overrepresentation_community_network(network: Network,
         # Add legends
         draw_circle_bar_plot(
             position=(0, 0.5),
-            enrichments=pd.Series(max_or, index=comm_or.index.sort_values().unique()),
+            enrichments=pd.Series(max_or, index=overrepresentation.index),
             colors=overrepresentation.index.map(colors.get_metadata_colors(layer)),
             scale_factor=scale_factor,
             size=legend_pie_size,
