@@ -67,7 +67,7 @@ To produce plots to guide selection of overdispersed genes, run the following co
 mosaicmpi model-odg --name example_run --input file_filtered.h5ad
 ```
 
-This command will create a directory with the name of the run inside the output directory (defaults to current working directory).
+This command will create a directory with the name of the run inside the output directory (defaults to current working directory). It will also create a file called `feature_meanvar.pdf` which shows the relationship between feature mean and variance, as well as the model (green line). If the green line is a good approximation of this relationship, the selected (or default) parameters are good, and no changes need to be made. If the curve is not a good fit adjusting the parameters can result in a better selection of overdispersed features.
 
 ### 4. Select overdispersed genes and parameters for factorization
 

@@ -627,11 +627,9 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
     :rtype: _type_
     """
 
-
-
     marker_style = {
         1: ("s", 30),  # 1 factor: square markers, size 30
-        2: (2, 30)     # 2 factors: marker #2 (up tick), size 30
+        2: (2, 30),     # 2 factors: marker #2 (up tick), size 30
         }
 
     if highlight_central_program:
@@ -648,11 +646,18 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
             raise ValueError(f"{orientation} is not a valid orientation. Please choose from `horizontal` or `vertical`")
 
     if orientation == "horizontal":
-        fig, axes = plt.subplots(1, n_datasets+1, figsize=figsize, sharex=True, sharey=True, layout="tight")
+        fig, axes = plt.subplots(1, n_datasets+1, figsize=figsize, sharex=False, sharey=True, layout="tight")
     elif orientation == "vertical":
-        fig, axes = plt.subplots(n_datasets+1, 1, figsize=figsize, sharex=True, sharey=True, layout="tight")
+        fig, axes = plt.subplots(n_datasets+1, 1, figsize=figsize, sharex=False, sharey=True, layout="tight")
     
+    all_k_values = set()
+    for selected_k_values in network.integration.selected_k.values():
+        all_k_values |= set(selected_k_values)
+    all_k_values = sorted(list(all_k_values))
+
     for dataset, ax in zip(network.integration.datasets, axes):
+        selected_k_values = network.integration.selected_k[dataset]
+        x_positions = [all_k_values.index(k) for k in selected_k_values]
         for y, community in enumerate(network.ordered_community_names):
             members = network.communities[community]
             counts = pd.Series([m.rpartition("|")[0] for m in members]).value_counts()
@@ -660,7 +665,7 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
             # plot line if any factors are present
             line_x = []
             line_y = []
-            for x, rank in enumerate(network.integration.selected_k[dataset]):
+            for x, rank in zip(x_positions, selected_k_values):
                 line_x.append(x)
                 if f"{dataset}|{rank}" in counts.index:
                     line_y.append(y)
@@ -672,22 +677,19 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
                 # plot different markers depending on how many factors are present:
                 scatter_x = []
                 scatter_y = []
-                for x, rank in enumerate(network.integration.selected_k[dataset]):
+                for x, rank in zip(x_positions, selected_k_values):
                     factor_prefix = f"{dataset}|{rank}"
                     if factor_prefix in counts.index and counts[factor_prefix] == count:
                         scatter_x.append(x)
                         scatter_y.append(y)
                 ax.scatter(scatter_x, scatter_y, color=colors.dataset_colors[dataset], marker=style[0], s=style[1])
-            
+
             if highlight_central_program and (community, dataset) in central_ranks:
-                x = network.integration.selected_k[dataset].index(central_ranks[(community, dataset)])
+                x = all_k_values.index(central_ranks[(community, dataset)])
                 ax.add_patch(Rectangle((x - 0.4, y-0.4), width = 0.8, height = 0.8, edgecolor="k", facecolor='none'))
-
-        ax.set_yticks(list(range(len(network.ordered_community_names))))
-        ax.set_yticklabels(network.ordered_community_names)
-        ax.set_xticks(list(range(len(network.integration.selected_k[dataset]))))
-        ax.set_xticklabels(network.integration.selected_k[dataset])
-
+        ax.set_yticks(list(range(len(network.ordered_community_names))), labels=network.ordered_community_names)
+        ax.set_xticks(x_positions, labels=selected_k_values)
+        ax.set_xlim(-0.6, len(all_k_values) - 0.4)
 
         if orientation == "vertical":
             ax.set_ylabel("Community")
@@ -700,8 +702,6 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
                 ax.set_ylabel("Community")
 
         ax.set_title(dataset)
-   
-
 
     # Add legend
     cbdrlegend = []
