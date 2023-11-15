@@ -1667,7 +1667,7 @@ def plot_compare_integrations(name1: str, network1: Network, name2: str, network
     :param network2: second network
     :type network2: :class:`mosaicmpi.Network`
     :param colors: colors object with a color for each dataset from both networks.
-    :type colors: Colors
+    :type colors: :class:`mosaicmpi.Colors`
     :param figsize: (width, height), defaults to None
     :type figsize: Optional[Collection[float]], optional
     :return: figure
