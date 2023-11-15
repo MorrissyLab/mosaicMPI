@@ -460,11 +460,10 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
                           os.getcwd(),
                           output_dir,
                           name,
-                          cpus,
-                          local_density_threshold,
-                          local_neighborhood_size,
-                          skip_missing_iterations,
-                          force_h5ad_update])
+                          str(cpus),
+                          str(local_density_threshold),
+                          str(local_neighborhood_size),
+                          flags])
     else:
         cnmf_obj = cNMF(output_dir=output_dir, name=name)
         utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))

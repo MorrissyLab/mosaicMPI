@@ -16,4 +16,4 @@
 
 echo $1 "/" $2 "/" $3   
 cd "$1"
-mosaicmpi postprocess --output_dir $2 --name $3 --cpus $4 --local_density_threshold $5 --local_neighborhood_size $6 $7
+mosaicmpi postprocess --output_dir $2 --name $3 --cpus $4 --local_density_threshold $5 --local_neighborhood_size 
