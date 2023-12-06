@@ -40,8 +40,6 @@ Metadata must be indexed as follows:
       > Note: if any values in a column are not numerical, the entire column will be treated as categorical. This can have implications for annotated heatmaps where numerical data is usually presented as a continuous color scale, not a set of distinct colors. If a column is numerical with missing values, then these should be empty values (not "NA", "NaN", etc.)
   - Missing values are acceptable. For categorical data, these will be plotted in an "Other" category. For numerical data, these will be ignored.
 
-Additionally 
-
 ### 2. Check existing h5ad files for unfactorizable genes.
 
 Check h5ad objects for rows or columns which have missing values, negative values, or variance of 0.
@@ -138,7 +136,18 @@ To provide custom colors for the metadata layers, you can specify a `metadata_co
 
 One you have run `mosaicmpi postprocess` on each of your datasets, they can be used as input for integration.
 
-### 1. Create a configuration file with input datasets
+### 1. (Optional) Mapping datasets to a common set of identifiers
+
+Integrating datasets requires feature overlap between datasets, since communities of programs are discovered based on the correlation of programs across datasets.
+mosaicMPI can integrate the most common types of IDs using the Ensembl database, from and to either gene names or ensemble gene IDs.
+
+For example, to convert human gene names to mouse Ensembl IDs (beginning with ENSMUSG):
+
+```bash
+mosaicmpi map-gene-ids -i dataset1.h5ad -o dataset1_mouse.h5ad --source_species hsapiens --dest_species mmusculus --source_ids gene_name --dest_ids ensembl_gene
+```
+
+### 2. Create a configuration file with input datasets
 
 A [TOML](https://toml.io/en/) configuration file is the most flexible way to configure mosaicMPI. This is generated using the command:
 
@@ -147,7 +156,7 @@ mosaicmpi create-config -i dataset1.h5ad -i dataset2.h5ad -i dataset3.h5ad -o co
 ```
 This will output a config.toml file in the current directory, which contains the datasets to be integrated as well as default parameters for the integration, which can be modified prior to running `mosaicmpi integrate`. For more information, see the [tutorial on editing config.toml files](configtoml.md).
 
-### 2. Integrating datasets
+### 3. Integrating datasets
 
 To integrate one or more datasets using mosaicMPI, run:
 

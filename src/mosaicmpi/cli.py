@@ -553,6 +553,39 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
     logging.info("All tasks completed successfully.")
 
 
+@click.command(name="map-gene-ids")
+@click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), required=True, help="Input .h5ad file")
+@click.option('-o', '--output_h5ad', type=click.Path(exists=False, dir_okay=False), required=True, help="Output .h5ad file with mapped gene identifiers.")
+@click.option('--source_ids', type=click.Choice(["ensembl_gene", "gene_name"]), default="gene_name",
+              help="Whether the source feature IDs are gene names (eg., EGFR), or Ensembl genes (eg., ENSG00000146648)")
+@click.option('--dest_ids', type=click.Choice(["ensembl_gene", "gene_name"]), default="gene_name",
+              help="Whether the dest feature IDs are gene names (eg., EGFR), or Ensembl genes (eg., ENSG00000146648)")
+@click.option('--source_species', type=click.Choice(["hsapiens", "mmusculus", "rnorvegicus", "sscrofa", "dmelanogaster", "drerio", "celegans"]), required=True,
+              help="Species of source feature IDs")
+@click.option('--dest_species', type=click.Choice(["hsapiens", "mmusculus", "rnorvegicus", "sscrofa", "dmelanogaster", "drerio", "celegans"]), required=True,
+              help="Species of dest feature IDs")
+@click.option('--unmapped_prefix', type=str, default="unmapped_", help="String to prefix unmapped feature/gene IDs")
+@click.option('--one_to_many', is_flag=True, help="Map one-to-many relationships, duplicating features to accommodate.")
+def cmd_map_gene_ids(input_h5ad, output_h5ad, source_ids, dest_ids, source_species, dest_species, unmapped_prefix, one_to_many):
+    """
+    Map gene IDs for a dataset. Retains mapped and unmapped IDs. By default, only one-to-one relationships are mapped.
+    """
+    utils.start_logging()
+    dataset = Dataset.from_h5ad(input_h5ad)
+    dataset.map_gene_ids(source_species=source_species,
+                         dest_species=dest_species,
+                         source_ids=source_ids,
+                         dest_ids=dest_ids,
+                         unmapped_prefix=unmapped_prefix,
+                         one_to_many=one_to_many
+                         )
+    message = "Feature counts by mapping relationship:"
+    for mapping_type, count in dataset.adata.var["mapping_relationship"].value_counts().items():
+        message += f"\n\t{mapping_type}: {count}"
+    logging.info(message)
+    dataset.write_h5ad(output_h5ad)
+    logging.info("All tasks completed successfully.")
+
 @click.command(name="create-config")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help=".h5ad file with cNMF results. Can be used multiple times to specify one or more datasets from which to create a config.toml file.")
 @click.option('-o', '--output_toml', type=click.Path(exists=False, dir_okay=False), required=False, help="Output .toml file for configuring integration.")
@@ -1078,6 +1111,7 @@ cli.add_command(cmd_set_parameters)
 cli.add_command(cmd_factorize)
 cli.add_command(cmd_postprocess)
 cli.add_command(cmd_annotated_heatmap)
+cli.add_command(cmd_map_gene_ids)
 cli.add_command(cmd_create_config)
 cli.add_command(cmd_integrate)
 cli.add_command(cmd_ssgsea)

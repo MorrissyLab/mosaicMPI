@@ -1,5 +1,5 @@
 
-from . import utils, cnmf, __version__
+from . import utils, cnmf, biomart, __version__
 
 import numpy as np
 import pandas as pd
@@ -9,9 +9,10 @@ import sys
 from typing import Union, Optional, Literal
 from collections.abc import Iterable, Collection
 import os
+from io import StringIO
 from glob import glob
 
-import scipy as sp
+import scipy.sparse as sp
 import scanpy as sc
 import anndata as ad
 import pandas as pd
@@ -254,7 +255,127 @@ class Dataset():
     def mosaicmpi_version(self, value: bool):
         self.adata.uns["mosaicmpi_version"] = value
 
-        
+    def map_gene_ids(self,
+                        source_species: Literal["hsapiens", "mmusculus", "rnorvegicus", "sscrofa", "dmelanogaster", "drerio", "celegans"],
+                        dest_species: Literal["hsapiens", "mmusculus", "rnorvegicus", "sscrofa", "dmelanogaster", "drerio", "celegans"],
+                        source_ids: Literal["ensembl_gene", "gene_name"],
+                        dest_ids: Literal["ensembl_gene", "gene_name"],
+                        one_to_one: bool = True,
+                        one_to_many: Literal[False, "duplicate", "divide"] = False,
+                        many_to_one: Literal[False, "mean", "sum"] = False,
+                        many_to_many: Literal[False, "mean", "sum"] = False,
+                        unmapped_prefix: str = "unmapped_",
+                        biomart_url: str = "http://www.ensembl.org:80/biomart/martservice"):
+        """Map the feature IDs in place for a dataset. Mapping occurs from a source to the dest species, and can be gene names or ensembl gene IDs (eg., ENSG..., ENSMUSG...).
+
+        :param source_species: Species name for IDs in the dataset.
+        :type source_species: Literal["hsapiens", "mmusculus", "rnorvegicus", "sscrofa", "dmelanogaster", "drerio", "celegans"]
+        :param dest_species: Species name for IDs after mapping
+        :type dest_species: Literal["hsapiens", "mmusculus", "rnorvegicus", "sscrofa", "dmelanogaster", "drerio", "celegans"]
+        :param source_ids: Whether the IDs are gene names (eg., EGFR), or Ensembl genes (eg., ENSG00000146648)
+        :type source_ids: Literal["ensembl_gene", "gene_name"]
+        :param dest_ids: Whether the IDs should be mapped to gene names (eg., EGFR), or Ensembl genes (eg., ENSG00000146648)
+        :type dest_ids: Literal["ensembl_gene", "gene_name"]
+        :param one_to_one: Whether to map genes that have a one-to-one mapping, defaults to True
+        :type one_to_one: bool, optional
+        :param one_to_many: Whether to map genes that have a one-to-many mapping, defaults to False
+        :type one_to_many: Literal[False, "duplicate", "divide"], optional
+        :param many_to_one: Whether and how to map genes that have a many-to-one mapping, defaults to False
+        :type many_to_one: Literal[False, "mean", "sum"], optional
+        :param many_to_many: Whether and how to map genes that have a many-to-many mapping, defaults to False
+        :type many_to_many: Literal[False, "mean", "sum"], optional
+        :param unmapped_prefix: For unmapped features, prepend this text to their ID, defaults to "unmapped_"
+        :type unmapped_prefix: str, optional
+        :param biomart_url: URL to connect to the Biomart web server, defaults to "http://www.ensembl.org:80/biomart/martservice"
+        :type biomart_url: str, optional
+        :raises NotImplementedError: for features net yet implemented, including many-to-one and many-to-many gene mappings
+        """
+        logging.info("Downloading gene ID table from Ensembl Biomart")
+        gene_dataset = biomart.BiomartServer(url=biomart_url).datasets[f"{source_species}_gene_ensembl"]
+        result = gene_dataset.search(params={"attributes": ["external_gene_name",
+                                                        "ensembl_gene_id",
+                                                        f"{dest_species}_homolog_associated_gene_name",
+                                                        f"{dest_species}_homolog_ensembl_gene"]})
+        logging.info("Mapping gene IDs")
+        columns=['source_gene_name','source_ensembl_gene', 'dest_gene_name', 'dest_ensembl_gene']
+        result = pd.read_csv(StringIO(result.text), sep="\t", header=None, names=columns)
+
+        source_col = f"source_{source_ids}"
+        dest_col = f"dest_{dest_ids}"
+        id_mapping = result.groupby([source_col, dest_col]).apply(lambda x : x.count()).iloc[:,0]
+        id_mapping = pd.DataFrame(id_mapping.rename("path_counts"))
+        assert id_mapping.index.is_unique
+        source_id_counts = id_mapping.index.get_level_values(0).value_counts()
+        dest_id_counts = id_mapping.index.get_level_values(1).value_counts()
+        id_mapping["source_id_count"] = id_mapping.index.get_level_values(0).map(source_id_counts)
+        id_mapping["dest_id_count"] = id_mapping.index.get_level_values(1).map(dest_id_counts)
+
+        o2o = id_mapping[(id_mapping["source_id_count"] == 1) & (id_mapping["dest_id_count"] == 1)]
+        o2m = id_mapping[(id_mapping["source_id_count"] > 1) & (id_mapping["dest_id_count"] == 1)]
+        m2o = id_mapping[(id_mapping["source_id_count"] == 1) & (id_mapping["dest_id_count"] > 1)]
+        m2m = id_mapping[(id_mapping["source_id_count"] > 1) & (id_mapping["dest_id_count"] > 1)]
+
+        source_id_list = []
+        dest_id_list= []
+        mapping_relationship = []
+
+        # IDs with a one-to-one match
+        ids_to_map = self.adata.var_names.intersection(o2o.index.unique(level=0))
+        source_id_list.extend(o2o.loc[ids_to_map].index.get_level_values(0))
+        if one_to_one:
+            dest_id_list.extend(o2o.loc[ids_to_map].index.get_level_values(1))
+        else:
+            dest_id_list.extend(unmapped_prefix + o2o.loc[ids_to_map].index.get_level_values(0))
+        mapping_relationship.extend(o2o.loc[ids_to_map].shape[0] * ["one-to-one"])
+
+        # IDs that are not found in the ID mapping table
+        ids_to_map = self.adata.var_names.difference(id_mapping.index.unique(level=0))
+        source_id_list.extend(ids_to_map)
+        dest_id_list.extend(unmapped_prefix + ids_to_map)
+        mapping_relationship.extend(len(ids_to_map) * ["one-to-none"])
+
+        # IDs with a one-to-many relationship
+        ids_to_map = self.adata.var_names.intersection(o2m.index.unique(level=0))
+        if one_to_many:
+            source_id_list.extend(o2m.loc[ids_to_map].index.get_level_values(0))
+            dest_id_list.extend(o2m.loc[ids_to_map].index.get_level_values(1))
+            mapping_relationship.extend(o2m.loc[ids_to_map].shape[0] * ["one-to-many"])
+        else:
+            source_id_list.extend(ids_to_map)
+            dest_id_list.extend(unmapped_prefix + ids_to_map)
+            mapping_relationship.extend(len(ids_to_map) * ["one-to-many"])
+
+        # IDs with a many-to-one relationship
+        ids_to_map = self.adata.var_names.intersection(m2o.index.unique(level=0))
+        source_id_list.extend(m2o.loc[ids_to_map].index.get_level_values(0))
+        if many_to_one:
+            raise NotImplementedError("Many-to-one gene ID mapping is not yet supported in mosaicMPI")
+            dest_id_list.extend(m2o.loc[ids_to_map].index.get_level_values(1))  # leads to duplicate IDs, which need to be resolved/summarized
+        else:
+            dest_id_list.extend(unmapped_prefix + m2o.loc[ids_to_map].index.get_level_values(0))
+        mapping_relationship.extend(m2o.loc[ids_to_map].shape[0] * ["many-to-one"])
+
+        # IDs with a many-to-many relationship
+        ids_to_map = self.adata.var_names.intersection(m2m.index.unique(level=0))
+        if many_to_many:
+            raise NotImplementedError("Many-to-many gene ID mapping is not yet supported in mosaicMPI")
+            source_id_list.extend(m2m.loc[ids_to_map].index.get_level_values(0))
+            dest_id_list.extend(m2m.loc[ids_to_map].index.get_level_values(1))  # leads to duplicate IDs, which need to be resolved/summarized
+            mapping_relationship.extend(m2m.loc[ids_to_map].shape[0] * ["many-to-many"])
+        else:
+            source_id_list.extend(ids_to_map)
+            dest_id_list.extend(unmapped_prefix + ids_to_map)
+            mapping_relationship.extend(len(ids_to_map) * ["many-to-many"])
+
+        new_adata = self.adata[:, source_id_list]
+        new_adata.var_names = dest_id_list
+        new_adata.var["source_id"] = source_id_list
+        new_adata.var["mapping_relationship"] = mapping_relationship
+        new_adata.var["mapping_relationship"] = new_adata.var["mapping_relationship"].astype("category")
+        self.adata = new_adata
+        self.append_to_history(f"Mapped feature IDs. source species={source_species}, source_ids={source_ids}, dest_species={dest_species}, dest_ids={dest_ids}, "
+                               f"one_to_one={one_to_one}, one_to_many={one_to_many}, many_to_one={many_to_one}, many_to_many={many_to_many}, unmapped_prefix={unmapped_prefix}")
+
     def update_obs(self, obs):
         """Update the observation metadata with a new metadata matrix
 
@@ -395,7 +516,7 @@ class Dataset():
             - 'distance' : weight points by the inverse of their distance.
             in this case, closer neighbors of a query point will have a
             greater influence than neighbors which are further away.
-        :type weights: Literal[&quot;distance&quot;, &quot;uniform&quot;], optional
+        :type weights: Literal["distance", "uniform"], optional
         :param cross_validate: perform k-fold cross-validation, defaults to True
         :type cross_validate: bool, optional
         :param n_folds: number of folds for k-fold cross-validation, defaults to 100
