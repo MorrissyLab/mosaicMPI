@@ -434,9 +434,25 @@ class Dataset():
         if normalized and not self.is_normalized:
             df = df.div(df.sum(axis=1), axis=0) * 1e6  # TPM normalization
         return df
+
+    def remove_unfactorizable_observations(self):
+        """Removes observations with all zeros from the data matrix.
+        """
+        df = self.to_df(normalized=False)
+        # Check for observations with all zeros
+        obs_zeros = (df.T == 0).all()
+        n_obs_zeros = obs_zeros.sum()
+        logging.info(f"{n_obs_zeros} of {self.adata.n_obs} observations are all zeros.")
+        if n_obs_zeros:
+            logging.warning(f"Subsetting observations to those with at least 1 positive value.")
+            msg_string = repr(obs_zeros[obs_zeros].index.to_list())
+            self.append_to_history(f"Removing observations with only zeros: {msg_string}")
         
+        self.adata = self.adata[~obs_zeros,:].copy()
+
+
     def remove_unfactorizable_features(self):
-        """Removes genes with missing values or zero variance from the data matrix.
+        """Removes features with missing values or zero variance from the data matrix.
         """
         df = self.to_df(normalized=False)
         # Check for features with missing values
@@ -446,15 +462,16 @@ class Dataset():
         logging.info(f"{n_missing} of {self.adata.n_vars} features are missing values.")
         if n_missing:
             logging.warning(f"Subsetting features to those with no missing values.")
-            self.append_to_history(f"Removing features with missing values: {genes_with_missingvalues}")
+            msg_string = repr(genes_with_missingvalues[genes_with_missingvalues].index.to_list())
+            self.append_to_history(f"Removing features with missing values: {msg_string}")
         # Check for genes with zero variance
         zerovargenes = (df.var() == 0)
         n_zerovar = zerovargenes.sum()
         logging.info(f"{n_zerovar} of {self.adata.n_vars} features have a variance of zero.")
         if n_zerovar:
             logging.warning(f"Subsetting features to those with nonzero variance.")
-            self.append_to_history(f"Removing features with zero variance: {zerovargenes}")
-        
+            msg_string = repr(zerovargenes[zerovargenes].index.to_list())
+            self.append_to_history(f"Removing features with zero variance: {msg_string}")
         genes_to_keep = (~genes_with_missingvalues) & (~zerovargenes)
         self.adata = self.adata[:,genes_to_keep].copy()
 
@@ -745,7 +762,7 @@ class Dataset():
         # Subset out high-variance genes
         norm_counts = self.adata[:, overdispersed_genes]
         ## Scale genes to unit variance
-        if sp.sparse.issparse(tpm.X):
+        if sp.issparse(tpm.X):
             sc.pp.scale(norm_counts, zero_center=False)
             if np.isnan(norm_counts.X.data).sum() > 0:
                 raise ValueError('NaNs in normalized counts matrix')                       

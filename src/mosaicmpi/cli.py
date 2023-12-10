@@ -190,6 +190,7 @@ def cmd_check_h5ad(input, output):
     """
     utils.start_logging()
     dataset = Dataset.from_h5ad(input)
+    dataset.remove_unfactorizable_observations()
     dataset.remove_unfactorizable_features()
     
     # Save output to new h5ad file
