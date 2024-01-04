@@ -286,7 +286,8 @@ class Dataset():
         :type many_to_many: Literal[False, "mean", "sum"], optional
         :param unmapped_prefix: For unmapped features, prepend this text to their ID, defaults to "unmapped_"
         :type unmapped_prefix: str, optional
-        :param biomart_url: URL to connect to the Biomart web server, defaults to "http://www.ensembl.org:80/biomart/martservice"
+        :param biomart_url: URL to connect to the Biomart web server, defaults to
+                            "http://www.ensembl.org:80/biomart/martservice"
         :type biomart_url: str, optional
         :raises NotImplementedError: for features net yet implemented, including many-to-one and many-to-many gene mappings
         """
@@ -311,8 +312,8 @@ class Dataset():
         id_mapping["dest_id_count"] = id_mapping.index.get_level_values(1).map(dest_id_counts)
 
         o2o = id_mapping[(id_mapping["source_id_count"] == 1) & (id_mapping["dest_id_count"] == 1)]
-        o2m = id_mapping[(id_mapping["source_id_count"] > 1) & (id_mapping["dest_id_count"] == 1)]
-        m2o = id_mapping[(id_mapping["source_id_count"] == 1) & (id_mapping["dest_id_count"] > 1)]
+        o2m = id_mapping[(id_mapping["source_id_count"] == 1) & (id_mapping["dest_id_count"] > 1)]
+        m2o = id_mapping[(id_mapping["source_id_count"] > 1) & (id_mapping["dest_id_count"] == 1)]
         m2m = id_mapping[(id_mapping["source_id_count"] > 1) & (id_mapping["dest_id_count"] > 1)]
 
         source_id_list = []
@@ -321,12 +322,12 @@ class Dataset():
 
         # IDs with a one-to-one match
         ids_to_map = self.adata.var_names.intersection(o2o.index.unique(level=0))
-        source_id_list.extend(o2o.loc[ids_to_map].index.get_level_values(0))
+        source_id_list.extend(ids_to_map)
         if one_to_one:
             dest_id_list.extend(o2o.loc[ids_to_map].index.get_level_values(1))
         else:
-            dest_id_list.extend(unmapped_prefix + o2o.loc[ids_to_map].index.get_level_values(0))
-        mapping_relationship.extend(o2o.loc[ids_to_map].shape[0] * ["one-to-one"])
+            dest_id_list.extend(unmapped_prefix + ids_to_map)
+        mapping_relationship.extend(len(ids_to_map) * ["one-to-one"])
 
         # IDs that are not found in the ID mapping table
         ids_to_map = self.adata.var_names.difference(id_mapping.index.unique(level=0))
@@ -346,17 +347,19 @@ class Dataset():
             mapping_relationship.extend(len(ids_to_map) * ["one-to-many"])
 
         # IDs with a many-to-one relationship
-        ids_to_map = self.adata.var_names.intersection(m2o.index.unique(level=0))
-        source_id_list.extend(m2o.loc[ids_to_map].index.get_level_values(0))
+        ids_to_map = self.adata.var_names.intersection(m2o.index.unique(level=0).difference(m2m.index.unique(level=0)))
         if many_to_one:
             raise NotImplementedError("Many-to-one gene ID mapping is not yet supported in mosaicMPI")
+            source_id_list.extend(m2o.loc[ids_to_map].index.get_level_values(0))
             dest_id_list.extend(m2o.loc[ids_to_map].index.get_level_values(1))  # leads to duplicate IDs, which need to be resolved/summarized
+            mapping_relationship.extend(m2o.loc[ids_to_map].shape[0] * ["many-to-one"])
         else:
-            dest_id_list.extend(unmapped_prefix + m2o.loc[ids_to_map].index.get_level_values(0))
-        mapping_relationship.extend(m2o.loc[ids_to_map].shape[0] * ["many-to-one"])
+            source_id_list.extend(ids_to_map)
+            dest_id_list.extend(unmapped_prefix + ids_to_map)
+            mapping_relationship.extend(len(ids_to_map) * ["many-to-one"])
 
         # IDs with a many-to-many relationship
-        ids_to_map = self.adata.var_names.intersection(m2m.index.unique(level=0))
+        ids_to_map = self.adata.var_names.intersection(m2m.index.unique(level=0).difference(m2o.index.unique(level=0)))
         if many_to_many:
             raise NotImplementedError("Many-to-many gene ID mapping is not yet supported in mosaicMPI")
             source_id_list.extend(m2m.loc[ids_to_map].index.get_level_values(0))
@@ -366,6 +369,23 @@ class Dataset():
             source_id_list.extend(ids_to_map)
             dest_id_list.extend(unmapped_prefix + ids_to_map)
             mapping_relationship.extend(len(ids_to_map) * ["many-to-many"])
+
+        # IDs with both many-to-many and many-to-one relationship
+        ids_to_map = self.adata.var_names.intersection(m2m.index.unique(level=0).intersection(m2o.index.unique(level=0)))
+        if many_to_many and not many_to_one:
+            raise NotImplementedError("Many-to-many gene ID mapping is not yet supported in mosaicMPI")
+            source_id_list.extend(m2m.loc[ids_to_map].index.get_level_values(0))
+            dest_id_list.extend(m2m.loc[ids_to_map].index.get_level_values(1))  # leads to duplicate IDs, which need to be resolved/summarized
+            mapping_relationship.extend(m2m.loc[ids_to_map].shape[0] * ["many-to-many; many-to-one"])
+        elif many_to_one and not many_to_many:
+            raise NotImplementedError("Many-to-one gene ID mapping is not yet supported in mosaicMPI")
+            source_id_list.extend(m2o.loc[ids_to_map].index.get_level_values(0))
+            dest_id_list.extend(m2o.loc[ids_to_map].index.get_level_values(1))  # leads to duplicate IDs, which need to be resolved/summarized
+            mapping_relationship.extend(m2o.loc[ids_to_map].shape[0] * ["many-to-many; many-to-one"])
+        else:
+            source_id_list.extend(ids_to_map)
+            dest_id_list.extend(unmapped_prefix + ids_to_map)
+            mapping_relationship.extend(len(ids_to_map) * ["many-to-many; many-to-one"])
 
         new_adata = self.adata[:, source_id_list]
         new_adata.var_names = dest_id_list
