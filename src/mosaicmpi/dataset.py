@@ -248,7 +248,7 @@ class Dataset():
         :return: gene list
         :rtype: list
         """
-        return self.adata.uns["gene_list"]
+        return self.adata.var[self.adata.var["selected"]].index
 
 
     @mosaicmpi_version.setter
@@ -265,6 +265,7 @@ class Dataset():
                         many_to_one: Literal[False, "mean", "sum"] = False,
                         many_to_many: Literal[False, "mean", "sum"] = False,
                         unmapped_prefix: str = "unmapped_",
+                        case_sensitive: bool = False,
                         biomart_url: str = "http://www.ensembl.org:80/biomart/martservice"):
         """Map the feature IDs in place for a dataset. Mapping occurs from a source to the dest species, and can be gene names or ensembl gene IDs (eg., ENSG..., ENSMUSG...).
 
@@ -286,6 +287,8 @@ class Dataset():
         :type many_to_many: Literal[False, "mean", "sum"], optional
         :param unmapped_prefix: For unmapped features, prepend this text to their ID, defaults to "unmapped_"
         :type unmapped_prefix: str, optional
+        :param case_sensitive: Case-sensitive ID matching, defaults to False
+        :type case_sensitive: bool, optional
         :param biomart_url: URL to connect to the Biomart web server, defaults to
                             "http://www.ensembl.org:80/biomart/martservice"
         :type biomart_url: str, optional
@@ -293,16 +296,28 @@ class Dataset():
         """
         logging.info("Downloading gene ID table from Ensembl Biomart")
         gene_dataset = biomart.BiomartServer(url=biomart_url).datasets[f"{source_species}_gene_ensembl"]
-        result = gene_dataset.search(params={"attributes": ["external_gene_name",
-                                                        "ensembl_gene_id",
-                                                        f"{dest_species}_homolog_associated_gene_name",
-                                                        f"{dest_species}_homolog_ensembl_gene"]})
-        logging.info("Mapping gene IDs")
-        columns=['source_gene_name','source_ensembl_gene', 'dest_gene_name', 'dest_ensembl_gene']
-        result = pd.read_csv(StringIO(result.text), sep="\t", header=None, names=columns)
+        if source_species == dest_species:
+            result = gene_dataset.search(params={"attributes": ["external_gene_name",
+                                                                "ensembl_gene_id"]})
+            columns=['source_gene_name','source_ensembl_gene']
+            result = pd.read_csv(StringIO(result.text), sep="\t", header=None, names=columns)
+            source_col = f"source_{source_ids}"
+            dest_col = f"source_{dest_ids}"
+        else:
+            result = gene_dataset.search(params={"attributes": ["external_gene_name",
+                                                            "ensembl_gene_id",
+                                                            f"{dest_species}_homolog_associated_gene_name",
+                                                            f"{dest_species}_homolog_ensembl_gene"]})
+            columns=['source_gene_name','source_ensembl_gene', 'dest_gene_name', 'dest_ensembl_gene']
+            result = pd.read_csv(StringIO(result.text), sep="\t", header=None, names=columns)
+            source_col = f"source_{source_ids}"
+            dest_col = f"dest_{dest_ids}"
 
-        source_col = f"source_{source_ids}"
-        dest_col = f"dest_{dest_ids}"
+        logging.info("Mapping gene IDs")
+
+        if not case_sensitive:
+            result[source_col] = result[source_col].str.casefold()
+
         id_mapping = result.groupby([source_col, dest_col]).apply(lambda x : x.count()).iloc[:,0]
         id_mapping = pd.DataFrame(id_mapping.rename("path_counts"))
         assert id_mapping.index.is_unique
@@ -311,82 +326,112 @@ class Dataset():
         id_mapping["source_id_count"] = id_mapping.index.get_level_values(0).map(source_id_counts)
         id_mapping["dest_id_count"] = id_mapping.index.get_level_values(1).map(dest_id_counts)
 
-        o2o = id_mapping[(id_mapping["source_id_count"] == 1) & (id_mapping["dest_id_count"] == 1)]
-        o2m = id_mapping[(id_mapping["source_id_count"] == 1) & (id_mapping["dest_id_count"] > 1)]
-        m2o = id_mapping[(id_mapping["source_id_count"] > 1) & (id_mapping["dest_id_count"] == 1)]
-        m2m = id_mapping[(id_mapping["source_id_count"] > 1) & (id_mapping["dest_id_count"] > 1)]
-
+        # create ordered lists of the IDs for indexing the anndata object
         source_id_list = []
         dest_id_list= []
         mapping_relationship = []
 
-        # IDs with a one-to-one match
-        ids_to_map = self.adata.var_names.intersection(o2o.index.unique(level=0))
-        source_id_list.extend(ids_to_map)
+        # One-to-none: IDs that are not found in the ID mapping table
+        if case_sensitive:
+            id_idx = ~self.adata.var_names.isin(id_mapping.index.get_level_values(0))
+        else:
+            id_idx = ~self.adata.var_names.str.casefold().isin(id_mapping.index.get_level_values(0))
+        src_ids = self.adata.var_names[id_idx]
+        dest_ids = unmapped_prefix + src_ids
+        source_id_list.extend(src_ids)
+        dest_id_list.extend(unmapped_prefix + src_ids)
+        mapping_relationship.extend(len(src_ids) * ["one-to-none"])
+
+        # One-to-one
+        o2o = id_mapping[(id_mapping["source_id_count"] == 1) & (id_mapping["dest_id_count"] == 1)]
+        if case_sensitive:
+            id_idx = self.adata.var_names.isin(o2o.index.get_level_values(0))
+            ids_to_map = self.adata.var_names[id_idx]
+        else:
+            id_idx = self.adata.var_names.str.casefold().isin(o2o.index.get_level_values(0).str.casefold())
+            ids_to_map = self.adata.var_names[id_idx].str.casefold()
+        src_ids = self.adata.var_names[id_idx]
         if one_to_one:
-            dest_id_list.extend(o2o.loc[ids_to_map].index.get_level_values(1))
+            dest_ids = o2o.index.to_frame().reset_index(level=1, drop=True)[dest_col].loc[ids_to_map]
         else:
-            dest_id_list.extend(unmapped_prefix + ids_to_map)
-        mapping_relationship.extend(len(ids_to_map) * ["one-to-one"])
+            dest_ids = unmapped_prefix + src_ids
+        source_id_list.extend(src_ids)
+        dest_id_list.extend(dest_ids)
+        mapping_relationship.extend(len(src_ids) * ["one-to-one"])
 
-        # IDs that are not found in the ID mapping table
-        ids_to_map = self.adata.var_names.difference(id_mapping.index.unique(level=0))
-        source_id_list.extend(ids_to_map)
-        dest_id_list.extend(unmapped_prefix + ids_to_map)
-        mapping_relationship.extend(len(ids_to_map) * ["one-to-none"])
-
-        # IDs with a one-to-many relationship
-        ids_to_map = self.adata.var_names.intersection(o2m.index.unique(level=0))
-        if one_to_many:
-            source_id_list.extend(o2m.loc[ids_to_map].index.get_level_values(0))
-            dest_id_list.extend(o2m.loc[ids_to_map].index.get_level_values(1))
-            mapping_relationship.extend(o2m.loc[ids_to_map].shape[0] * ["one-to-many"])
+        # One-to-many
+        o2m = id_mapping[(id_mapping["source_id_count"] == 1) & (id_mapping["dest_id_count"] > 1)]
+        if case_sensitive:
+            id_idx = self.adata.var_names.isin(o2m.index.get_level_values(0))
+            ids_to_map = self.adata.var_names[id_idx]
         else:
-            source_id_list.extend(ids_to_map)
-            dest_id_list.extend(unmapped_prefix + ids_to_map)
-            mapping_relationship.extend(len(ids_to_map) * ["one-to-many"])
-
-        # IDs with a many-to-one relationship
-        ids_to_map = self.adata.var_names.intersection(m2o.index.unique(level=0).difference(m2m.index.unique(level=0)))
-        if many_to_one:
-            raise NotImplementedError("Many-to-one gene ID mapping is not yet supported in mosaicMPI")
-            source_id_list.extend(m2o.loc[ids_to_map].index.get_level_values(0))
-            dest_id_list.extend(m2o.loc[ids_to_map].index.get_level_values(1))  # leads to duplicate IDs, which need to be resolved/summarized
-            mapping_relationship.extend(m2o.loc[ids_to_map].shape[0] * ["many-to-one"])
+            id_idx = self.adata.var_names.str.casefold().isin(o2m.index.get_level_values(0).str.casefold())
+            ids_to_map = self.adata.var_names[id_idx].str.casefold()
+        src_ids = self.adata.var_names[id_idx]
+        if one_to_many == "duplicate":
+            # duplicates the values of the existing ID for the new multiple IDs
+            for src_id, id_to_map in zip(src_ids, ids_to_map):
+                dest = o2m.loc[id_to_map].index
+                source_id_list.extend(len(dest) * [src_id])
+                dest_id_list.extend(dest)
+                mapping_relationship.extend(len(dest) * ["one-to-many"])
+        elif one_to_many is False:
+            dest_ids = unmapped_prefix + src_ids
+            source_id_list.extend(src_ids)
+            dest_id_list.extend(dest_ids)
+            mapping_relationship.extend(len(src_ids) * ["one-to-many"])
         else:
-            source_id_list.extend(ids_to_map)
-            dest_id_list.extend(unmapped_prefix + ids_to_map)
-            mapping_relationship.extend(len(ids_to_map) * ["many-to-one"])
+            raise NotImplementedError(f"`{one_to_many}` is not currently implemented for one-to-many gene mappings.")
 
-        # IDs with a many-to-many relationship
-        ids_to_map = self.adata.var_names.intersection(m2m.index.unique(level=0).difference(m2o.index.unique(level=0)))
-        if many_to_many:
-            raise NotImplementedError("Many-to-many gene ID mapping is not yet supported in mosaicMPI")
-            source_id_list.extend(m2m.loc[ids_to_map].index.get_level_values(0))
-            dest_id_list.extend(m2m.loc[ids_to_map].index.get_level_values(1))  # leads to duplicate IDs, which need to be resolved/summarized
-            mapping_relationship.extend(m2m.loc[ids_to_map].shape[0] * ["many-to-many"])
+        # Many-to-one only
+        m2o = id_mapping[(id_mapping["source_id_count"] > 1) & (id_mapping["dest_id_count"] == 1)]
+        m2m = id_mapping[(id_mapping["source_id_count"] > 1) & (id_mapping["dest_id_count"] > 1)]
+
+        if case_sensitive:
+            id_idx = self.adata.var_names.isin(m2o.index.get_level_values(0)) & ~self.adata.var_names.isin(m2m.index.get_level_values(0))
+            ids_to_map = self.adata.var_names[id_idx]
         else:
-            source_id_list.extend(ids_to_map)
-            dest_id_list.extend(unmapped_prefix + ids_to_map)
-            mapping_relationship.extend(len(ids_to_map) * ["many-to-many"])
+            id_idx = self.adata.var_names.str.casefold().isin(m2o.index.get_level_values(0).str.casefold()) & ~self.adata.var_names.str.casefold().isin(m2m.index.get_level_values(0).str.casefold())
+            ids_to_map = self.adata.var_names[id_idx].str.casefold()
+        src_ids = self.adata.var_names[id_idx]
+        if many_to_one is False:
+            dest_ids = unmapped_prefix + src_ids
+            source_id_list.extend(src_ids)
+            dest_id_list.extend(dest_ids)
+            mapping_relationship.extend(len(src_ids) * ["many-to-one"])
+        else:
+            raise NotImplementedError(f"`{many_to_one}` is not currently implemented for many-to-one gene mappings.")
+
+        # Many-to-many only
+        if case_sensitive:
+            id_idx = self.adata.var_names.isin(m2m.index.get_level_values(0)) & ~self.adata.var_names.isin(m2o.index.get_level_values(0))
+            ids_to_map = self.adata.var_names[id_idx]
+        else:
+            id_idx = self.adata.var_names.str.casefold().isin(m2m.index.get_level_values(0).str.casefold()) & ~self.adata.var_names.str.casefold().isin(m2o.index.get_level_values(0).str.casefold())
+            ids_to_map = self.adata.var_names[id_idx].str.casefold()
+        src_ids = self.adata.var_names[id_idx]
+        if many_to_many is False:
+            dest_ids = unmapped_prefix + src_ids
+            source_id_list.extend(src_ids)
+            dest_id_list.extend(dest_ids)
+            mapping_relationship.extend(len(src_ids) * ["many-to-many"])
+        else:
+            raise NotImplementedError(f"`{many_to_many}` is not currently implemented for many-to-many gene mappings.")
 
         # IDs with both many-to-many and many-to-one relationship
-        ids_to_map = self.adata.var_names.intersection(m2m.index.unique(level=0).intersection(m2o.index.unique(level=0)))
-        if many_to_many and not many_to_one:
-            raise NotImplementedError("Many-to-many gene ID mapping is not yet supported in mosaicMPI")
-            source_id_list.extend(m2m.loc[ids_to_map].index.get_level_values(0))
-            dest_id_list.extend(m2m.loc[ids_to_map].index.get_level_values(1))  # leads to duplicate IDs, which need to be resolved/summarized
-            mapping_relationship.extend(m2m.loc[ids_to_map].shape[0] * ["many-to-many; many-to-one"])
-        elif many_to_one and not many_to_many:
-            raise NotImplementedError("Many-to-one gene ID mapping is not yet supported in mosaicMPI")
-            source_id_list.extend(m2o.loc[ids_to_map].index.get_level_values(0))
-            dest_id_list.extend(m2o.loc[ids_to_map].index.get_level_values(1))  # leads to duplicate IDs, which need to be resolved/summarized
-            mapping_relationship.extend(m2o.loc[ids_to_map].shape[0] * ["many-to-many; many-to-one"])
+        if case_sensitive:
+            id_idx = self.adata.var_names.isin(m2m.index.get_level_values(0)) & self.adata.var_names.isin(m2o.index.get_level_values(0))
+            ids_to_map = self.adata.var_names[id_idx]
         else:
-            source_id_list.extend(ids_to_map)
-            dest_id_list.extend(unmapped_prefix + ids_to_map)
-            mapping_relationship.extend(len(ids_to_map) * ["many-to-many; many-to-one"])
-
+            id_idx = self.adata.var_names.str.casefold().isin(m2m.index.get_level_values(0).str.casefold()) & self.adata.var_names.str.casefold().isin(m2o.index.get_level_values(0).str.casefold())
+            ids_to_map = self.adata.var_names[id_idx].str.casefold()
+        src_ids = self.adata.var_names[id_idx]
+        dest_ids = unmapped_prefix + src_ids
+        source_id_list.extend(src_ids)
+        dest_id_list.extend(dest_ids)
+        mapping_relationship.extend(len(src_ids) * ["many-to-many; many-to-one"])
+    
+        # create new anndata object
         new_adata = self.adata[:, source_id_list]
         new_adata.var_names = dest_id_list
         new_adata.var["source_id"] = source_id_list

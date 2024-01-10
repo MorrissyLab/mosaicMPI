@@ -578,7 +578,7 @@ def cmd_map_gene_ids(input_h5ad, output_h5ad, source_ids, dest_ids, source_speci
                          source_ids=source_ids,
                          dest_ids=dest_ids,
                          unmapped_prefix=unmapped_prefix,
-                         one_to_many=one_to_many
+                         one_to_many=("duplicate" if one_to_many else False)
                          )
     message = "Feature counts by mapping relationship:"
     for mapping_type, count in dataset.adata.var["mapping_relationship"].value_counts().items():
@@ -647,7 +647,18 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
             
         if "patient_id_col" in dsparams:
             dataset.patient_id_col = dsparams["patient_id_col"]
+
         datasets[dsname] = dataset
+
+    # check datasets for duplicated features
+    datasets_dupfeatures = []
+    for dsname, dataset in datasets.items():
+        if not dataset.adata.var_names.unique:
+            datasets_dupfeatures.append(dsname)
+    if datasets_dupfeatures:
+        logging.error("Datasets with duplicated features cannot be used for integration with other datasets. "
+                      f"These datasets have duplicated features: {(', '.join(datasets_dupfeatures))}")
+        sys.exit(1)
 
     # gets k-values from config
     has_k_subset = {dsname: ("k_subset" in dsparams) for dsname, dsparams in config.datasets.items()}
@@ -669,6 +680,14 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
         k_subset = k_subset
         )
 
+    logging.info("Analyzing feature overlaps")
+    # Features and overdispersed features tables and UpSet plots
+    df = integration.get_overdispersed_features_overlap_table()
+    df.to_csv(os.path.join(output_dir, "overdispersed_features.txt"), sep="\t")
+
+    df = integration.get_features_overlap_table()
+    df.to_csv(os.path.join(output_dir, "features.txt"), sep="\t")
+    
     # save correlation matrix
     corr_path = os.path.join(output_dir, config.corr_method + ".df.npz")
     utils.save_df_to_npz(integration.corr_matrix, corr_path)
@@ -690,14 +709,6 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     fig = plot_pairwise_corr_overlaid(integration)
     utils.save_fig(fig, os.path.join(output_dir, f"pairwise_corr_overlaid"), target_dpi=300, formats=config.plot_formats)
 
-    logging.info("Analyzing feature overlaps")
-    # Features and overdispersed features tables and UpSet plots
-    df = integration.get_overdispersed_features_overlap_table()
-    df.to_csv(os.path.join(output_dir, "overdispersed_features.txt"), sep="\t")
-
-    df = integration.get_features_overlap_table()
-    df.to_csv(os.path.join(output_dir, "features.txt"), sep="\t")
-    
     if integration.n_datasets > 1:
         fig = plot_overdispersed_features_upset(integration)
         utils.save_fig(fig, os.path.join(output_dir, "overdispersed_features_upsetplot"), target_dpi=200, formats=config.plot_formats)
