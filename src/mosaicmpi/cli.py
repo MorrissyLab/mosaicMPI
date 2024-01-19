@@ -19,8 +19,12 @@ from typing import Optional, Mapping
 from tqdm import tqdm
 import click
 import pandas as pd
+import matplotlib
 
+# For CLI, use the Agg background which doesn't support plt.show() and is faster
+matplotlib.use('Agg')
 
+# adds both -h and --help as options
 CONTEXT_SETTINGS = {'help_option_names': ['-h', '--help']}
 
 class _OrderedGroup(click.Group):
@@ -57,7 +61,8 @@ def cli():
     help="Optional delimited text file with metadata for features with one row each. Columns are annotation layers.")
 @click.option(
     "--sparsify", is_flag=True,
-    help="Save resulting data in sparse format. Recommended to increase performance for sparse datasets such as scRNA-Seq, scATAC-Seq, and 10X Visium, but not for bulk expression data.")
+    help="Save resulting data in sparse format. Recommended to increase performance for sparse datasets such as scRNA-Seq, scATAC-Seq, and 10X Visium"
+         ", but not for bulk expression data. [Note that this feature is experimental]")
 @click.option(
     "--transpose", is_flag=True,
     help="Transpose an input data matrix where rows are genes/features and columns are samples/cells into the correct orientation.")
@@ -239,7 +244,8 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, m
         mosaicmpi model-odg -n test -i test.h5ad --default_spline_degree 0 --default_dof 1
     """
     cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
-    utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
+    os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)
+    utils.start_logging(os.path.join(output_dir, name, "logs", "logfile.txt"))
     dataset = Dataset.from_h5ad(input)
     
     # Create gene stats table and save h5ad file
@@ -255,18 +261,13 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, m
 
     # create mean vs variance plots
     fig = plot_feature_dispersion(dataset, show_selected=False)
-    fig.savefig(os.path.join(output_dir, name, "feature_meanvar.pdf"), facecolor='white')
-    fig.savefig(os.path.join(output_dir, name, "feature_meanvar.png"), dpi=400, facecolor='white')
+    utils.save_fig(fig, os.path.join(output_dir, name, "feature_meanvar"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
     
-
     if dataset.is_imputed:
         logging.info("Creating plots for imputed data")
 
         fig = plot_feature_missingness(dataset, proportion=True)
-        fig.savefig(os.path.join(output_dir, name, "missingness_histogram.pdf"), facecolor='white')
-        fig.savefig(os.path.join(output_dir, name, "missingness_histogram.png"), dpi=400, facecolor='white')
-
-        fig = plot_feature_dispersion(dataset)
+        utils.save_fig(fig, os.path.join(output_dir, name, "missingness_histogram"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
 
     logging.info("All tasks completed successfully.")
 
@@ -336,8 +337,8 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
         # input a gene list from text file
         mosaicmpi set_parameters -n test -m genes_file -p path/to/genesfile.txt
     """
-    os.makedirs(os.path.join(output_dir, name), exist_ok=True)
-    utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
+    os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)
+    utils.start_logging(os.path.join(output_dir, name, "logs", "logfile.txt"))
     dataset = Dataset.from_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
 
     if odg_method == "genes_file":
@@ -369,8 +370,7 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
 
     # create mean vs variance plot, updated with selected genes
     fig = plot_feature_dispersion(dataset, show_selected=True)
-    fig.savefig(os.path.join(output_dir, name, "odgenes.pdf"), facecolor='white')
-    fig.savefig(os.path.join(output_dir, name, "odgenes.png"), dpi=400, facecolor='white')
+    utils.save_fig(fig, os.path.join(output_dir, name, "odgenes"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
 
     # output table with gene overdispersion measures
     dataset.adata.var.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
@@ -410,7 +410,8 @@ def cmd_factorize(name, output_dir, worker_index, total_workers, slurm_script):
     Performs factorization according to parameters specified using `mosaicmpi set-parameters`.
     """
     cnmf_obj = cNMF(output_dir=output_dir, name=name)
-    utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
+    os.makedirs(os.path.join(output_dir, name, "logs", "factorize"), exist_ok=True)
+    utils.start_logging(os.path.join(output_dir, name, "logs", "factorize", f"logfile_{worker_index}.txt"))
     
     run_params = utils.load_df_from_npz(cnmf_obj.paths['nmf_replicate_parameters'])
     if run_params.shape[0] == 0:
@@ -467,7 +468,8 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
                           flags])
     else:
         cnmf_obj = cNMF(output_dir=output_dir, name=name)
-        utils.start_logging(os.path.join(output_dir, name, "logfile.txt"))
+        os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)
+        utils.start_logging(os.path.join(output_dir, name, "logs", "logfile.txt"))
         cnmf_obj.postprocess(cpus=cpus,
                             local_density_threshold=local_density_threshold,
                             local_neighborhood_size=local_neighborhood_size,
@@ -527,8 +529,8 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
     
     # plot legend
     fig = colors.plot_metadata_colors_legend()
-    fig.savefig(os.path.join(output_dir, f"metadata_legend.pdf"))
-    
+    utils.save_fig(fig, os.path.join(output_dir, "metadata_legend"),)
+
     # filter metadata layers with too many categories
     if max_categories_per_layer is not None:
         subset_columns = dataset.get_metadata_df(include_numerical=False).apply(lambda x: len(x.cat.categories)) <= max_categories_per_layer
@@ -550,6 +552,7 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
             dataset=dataset, k=k, subset_metadata=subset_columns, colors=colors, title=title,
             cluster_samples=True, cluster_programs=False, show_sample_labels=(not hide_sample_labels))
         fig.savefig(filename, transparent=False, bbox_inches = "tight")
+        plt.close(fig)
     
     logging.info("All tasks completed successfully.")
 
@@ -569,7 +572,7 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
 @click.option('--one_to_many', is_flag=True, help="Map one-to-many relationships, duplicating features to accommodate.")
 def cmd_map_gene_ids(input_h5ad, output_h5ad, source_ids, dest_ids, source_species, dest_species, unmapped_prefix, one_to_many):
     """
-    Map gene IDs for a dataset. Retains mapped and unmapped IDs. By default, only one-to-one relationships are mapped.
+    Map gene IDs for a dataset, keeping both mapped and unmapped IDs. By default, only one-to-one relationships are mapped.
     """
     utils.start_logging()
     dataset = Dataset.from_h5ad(input_h5ad)

@@ -131,7 +131,7 @@ def get_adjusted_dpi(fig: Figure, target_dpi: float = 200) -> float:
     max_dpi = (2**16 - 1)/(fig.get_size_inches().max())
     return min(max_dpi, target_dpi)
 
-def save_fig(fig: Figure, filepath_no_ext: str, target_dpi: Optional[float] = 200, formats: Union[str, Collection[str]] = "pdf", close: bool = True):
+def save_fig(fig: Figure, filepath_no_ext: str, target_dpi: Optional[float] = 200, formats: Union[str, Collection[str]] = "pdf", close: bool = True, **kwargs):
     """Save figure to one or more files with the same basename. Directories are created as needed.
 
     :param fig: figure
@@ -156,6 +156,6 @@ def save_fig(fig: Figure, filepath_no_ext: str, target_dpi: Optional[float] = 20
     
     os.makedirs(os.path.dirname(filepath_no_ext), exist_ok=True)
     for format in formats:
-        fig.savefig(fname = filepath_no_ext + "." + format, dpi=dpi)
+        fig.savefig(fname = filepath_no_ext + "." + format, dpi=dpi, **kwargs)
     plt.close(fig)
     
