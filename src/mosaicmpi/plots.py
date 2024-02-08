@@ -1596,7 +1596,7 @@ def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str,
 
     transfer_df = network.transfer_labels(source=source, dest=dest, layer=layer)
     if annotate is not None:
-        metadata = network.integration.datasets[dest].get_metadata_df()[annotations].copy()
+        metadata = network.integration.datasets[dest].get_metadata_df().loc[:, annotations].copy()
         for annotation_layer in annotations:
             mapper = colors.get_metadata_colors(annotation_layer)
             color_vec = metadata[annotation_layer].map(mapper)
@@ -1741,3 +1741,39 @@ def plot_compare_integrations(name1: str, network1: Network, name2: str, network
     axes[0,0].legend(handles=legend_handles, loc = "center", ncols = 3)
     
     return fig
+     
+def plot_geneset_pval_heatmap(df: pd.DataFrame,
+                              ax: Optional[Axes] = None,
+                              axlegend: Optional[Axes] = None,
+                              cmap: str = "Blues",
+                              vmin: float = 0.,
+                              vmax: float = 10.) -> Optional[Figure]:
+
+    if ax is None:
+        fig, ax_plot = plt.subplots(figsize=[0.5 + df.shape[1]/4, 8], layout="constrained")
+    else:
+        ax_plot = ax
+        
+    if axlegend is None:
+        figlegend, axlegend_plot = plt.subplots(figsize=[1, 3], layout="constrained")
+    else:
+        axlegend_plot = axlegend
+    
+    if df.shape[0] > 0:    
+        sns.heatmap(df, cmap=cmap, vmin=vmin, vmax=vmax, ax=ax_plot, cbar_ax = axlegend_plot, yticklabels=False)
+        ax_plot.tick_params(top=False,
+                            bottom=True,
+                            left=False,
+                            right=False,
+                            labelleft=False,
+                            labelright=False,
+                            labeltop= False,
+                            labelbottom=True)
+
+        ax_plot.set_xlabel("")
+        ax_plot.set_ylabel("")
+        for _, spine in ax_plot.spines.items():
+            spine.set_visible(True)
+            spine.set_color('#aaaaaa')
+    if ax is None and axlegend is None:
+        return fig, figlegend

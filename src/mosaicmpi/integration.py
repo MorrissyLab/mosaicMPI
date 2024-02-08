@@ -58,7 +58,7 @@ class Integration():
             kvals = dataset.adata.uns["kvals"].copy()
             kvals["cNMF result"] = True
             combined[dataset_name] = kvals
-        self.k_table = pd.concat(combined, axis=1).rename_axis("k", axis=0)
+        self.k_table = pd.concat(combined, axis=1).rename_axis(index="k")
         # compute correlations
         self.compute_corr(method=self.corr_method)
         # rank-reduction for highly autocorrelated GEPs 
@@ -323,8 +323,7 @@ class Integration():
                     results[dataset_name] = subdf.shape[0]
                 nodetable[(node_filter, edge_filter)] = results
 
-        nodetable = pd.DataFrame(nodetable)
-        nodetable.columns.rename(["Node filter", "Edge Filter"], inplace=True)
+        nodetable = pd.DataFrame(nodetable).rename_axis(columns=["Node filter", "Edge Filter"])
         return nodetable
     
     def get_metadata_df(self,

@@ -973,7 +973,7 @@ class Dataset():
                  type="cnmf_gep_score"
                  ) -> pd.DataFrame:
         """
-        Get GEPs.
+        Get feature scores for programs.
 
         :param k: If an integer or list of integers, returns GEPs only for specified ranks. Otherwise, returns GEPs from all ranks. Defaults to None
         :type k: Union[int, Iterable], optional
@@ -987,7 +987,7 @@ class Dataset():
         df.columns = df.columns.set_levels([l.astype("int") for l in df.columns.levels])
         if isinstance(k, (int, Iterable)):
             df = df.loc[:, k]
-        df = df.sort_index(axis=1)
+        df = df.rename_axis(columns=["k", "program"]).sort_index(axis=1)
         return df
     
     def get_metadata_df(self,
@@ -1023,7 +1023,7 @@ class Dataset():
                                         truncate_negative: bool = True,
                                         subset_categories: Collection[str] = None
                                         ) -> pd.DataFrame:
-        """Calculate Pearson residual of chi-squared test, associating GEPs for each rank (k) to categories of samples/observations. By default, truncates negative values.
+        """Calculate Pearson residual of chi-squared test, associating programs for each rank (k) to categories of samples/observations. By default, truncates negative values.
 
         :param layer: name of categorical data layer
         :type layer: str

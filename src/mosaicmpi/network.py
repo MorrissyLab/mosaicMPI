@@ -407,6 +407,16 @@ class Network():
         community_names = sorted(self.communities.keys(), key = lambda cstr: [int(lvl) for lvl in cstr.split(".")])
         return community_names
     
+    
+    def get_vectorized_community_sort_key(self, community_names: pd.Index) -> pd.Index:
+        """Return a vector of sort_indicesGet community names, ordered numerically after separating clusters and subclusters. For example, this algorithm can properly sort communities labelled 1.1, 1.2, 1.3, 2.1, 2.2, 2.10, 2.15.
+
+        :return: sort indices
+        :rtype: pd.Index
+        """
+        
+        return pd.Index([self.ordered_community_names.index(c) for c in community_names])
+    
     def add_community_weights_to_graph(self, base_weight = 1.0, shared_community_weight = 500, shared_dataset_weight = 1.05):
         """Add attributes to the program graph for generating the community-weighted network. If an edge connects two programs 
 
@@ -662,8 +672,7 @@ class Network():
                         top_program = usages.loc[dataset_name, programs].corrwith(cu.loc[dataset_name, community]).idxmax()
                         selected_programs[top_program] = community
 
-        selected_programs = pd.Series(selected_programs, name="Community")
-        selected_programs.index.rename(("dataset", "k", "program"), inplace=True)
+        selected_programs = pd.Series(selected_programs, name="Community").rename_axis(index=("dataset", "k", "program"))
         selected_programs = selected_programs.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
 
         return selected_programs
@@ -698,13 +707,13 @@ class Network():
         
         :param correlation_axis: axis on which to compute correlations between programs whether correlating the programs or the usages, defaults to "programs"
         :type correlation_axis: int or dict
-        :return: Communities, indexed by the most central program for each dataset
-        :rtype: pd.Series
+        :return: Features × programs matrix
+        :rtype: pd.DataFrame
         """
         rep_programs_ids = self.get_representative_program_ids(correlation_axis=correlation_axis)
         rep_programs = self.integration.get_programs()[rep_programs_ids.index]
         rep_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["Community", "dataset", "k", "Program"])
-        return rep_programs
+        return rep_programs  # TODO: Check return types
 
     def get_lowest_rank_programs(self,
                                 min_k: Optional[Union[int, Dict[str, int]]] = None,
@@ -742,7 +751,7 @@ class Network():
                 selected_programs.append(min_rank_programs)
         selected_programs = pd.concat(selected_programs)
         selected_programs = selected_programs.sort_index().sort_values(key=lambda x: x.map(self.ordered_community_names.index))
-        return selected_programs
+        return selected_programs  # TODO: Check return types
 
     def count_intracommunity_edges(self):
         """Counts edges within each community that are within and between datasets.

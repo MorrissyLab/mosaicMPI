@@ -9,6 +9,7 @@ from .plots import *
 from . import utils, __version__, cpus_available
 
 import os
+import json
 import logging
 import subprocess
 import collections
@@ -944,7 +945,7 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     logging.info("All tasks completed successfully.")
     
 @click.command(name="ssgsea")
-@click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
+@click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, show_default=True,
     help="Output directory for ssgsea results")
 @click.option('-n', '--pkl_file', type=click.Path(exists=True, dir_okay=False),
     help="Path to network_integration.pkl.gz file from `mosaicmpi integrate` step")
@@ -952,9 +953,9 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     help="Path to .h5ad file from `mosaicmpi postprocess`")
 @click.option('-g', '--gene_sets', type=str, required=True, 
     help="Path to GMT file with gene sets or Enrichr Library name.")
-@click.option("--min_intersection", type=int, default=5, 
+@click.option("--min_intersection", type=int, default=5, show_default=True, 
     help="Minimum intersection size for gene sets")
-@click.option("--max_intersection", type=int, default=500, 
+@click.option("--max_intersection", type=int, default=500, show_default=True, 
     help="Minimum intersection size for gene sets")
 @click.option('--cpus', type=int, default=cpus_available, show_default=True,
     help="Number of CPUs for MP-enabled tasks")
@@ -988,7 +989,7 @@ def cmd_ssgsea(output_dir, pkl_file, h5ad_file, gene_sets, min_intersection, max
 
     if h5ad_file and not pkl_file:
         # run ssGSEA on all programs from a .h5ad file
-        dataset = Dataset.from_h5ad("rna.h5ad")
+        dataset = Dataset.from_h5ad(h5ad_file)
         programs = dataset.get_programs()
         result = gseapy.ssgsea(data=programs, gene_sets=gene_sets, min_size=min_intersection, max_size=max_intersection, threads=cpus)
         prog_nes = result.res2d.pivot(index="Term", columns="Name", values="NES")
@@ -1016,6 +1017,162 @@ def cmd_ssgsea(output_dir, pkl_file, h5ad_file, gene_sets, min_intersection, max
         sys.exit(1)
     logging.info("All tasks completed successfully.")
     
+    
+@click.command(name="gprofiler")
+@click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, show_default=True,
+    help="Output directory for gprofiler results")
+@click.option('-n', '--pkl_file', type=click.Path(exists=True, dir_okay=False),
+    help="Path to network_integration.pkl.gz file from `mosaicmpi integrate` step")
+@click.option('-i', '--h5ad_file', type=click.Path(exists=True, dir_okay=False),
+    help="Path to .h5ad file from `mosaicmpi postprocess`")
+@click.option('-g', '--gene_sets',
+              type = click.Choice(["GO:MF", "GO:CC", "GO:BP", "KEGG", "REAC", "WP", "TF", "MIRNA", "HPA", "CORUM", "HP"
+                                   ]),
+              multiple=True, default=[],
+    help="Source for gene sets from g:Profiler. Defaults to all sources. "
+    "Use multiple times to specify multiple sources, e.g.: -g GO:CC -g GO:BP")
+@click.option('-s', '--species', type=click.Choice(["hsapiens", "mmusculus"]), required=True,
+    help="Species for gene name IDs")
+@click.option("--min_intersection", type=int, default=5, show_default=True, 
+    help="Minimum intersection size for gene sets")
+@click.option("--max_intersection", type=int, default=500, show_default=True, 
+    help="Minimum intersection size for gene sets")
+@click.option("--n_hsg", type=int, default=1000, show_default=True)
+@click.option("--cmap", type=str, default="Blues",
+              help="matplotlib colormap name for heatmap plots.")
+@click.option("--vmin", type=float, default=0,
+              help="minimum -log10(pval) for heatmap plots")
+@click.option("--vmax", type=float, default=10,
+              help="maximum -log10(pval) for heatmap plots")
+@click.option("--no_plot", is_flag=True,
+              help="Skip plotting geneset significance heatmaps")
+
+def cmd_gprofiler(output_dir, pkl_file, h5ad_file, gene_sets, species, min_intersection, max_intersection, n_hsg, cmap, vmin, vmax, no_plot):
+    """
+    Perform gProfiler gene set analysis of highly-scoring genes from mosaicMPI programs. If a network_integration.pkl file
+    is provided, gProfiler is performed on reprepresentative programs from an integration. If a .h5ad file is provided, gProfiler
+    is performed on all programs.
+    """
+    utils.start_logging()  # allows warning messages to be printed even though logfile hasn't been made yet
+
+    try:
+        from .gprofiler import program_gprofiler, order_genesets
+    except ImportError:
+        logging.error("gprofiler-official is not installed. Please install using:\n\n\t"
+                      "conda install -c bioconda gprofiler-official"
+                      )
+        sys.exit(1)
+
+    # create directory structure, warn if not empty
+    output_dir = os.path.normpath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    if os.listdir(output_dir):
+        logging.warning(f"{output_dir} is not empty. Files may be overwritten.")
+
+    # write to log file
+    utils.start_logging(os.path.join(output_dir, "logfile.txt"))
+
+    if h5ad_file and not pkl_file:
+        # run gProfiler on all programs from a .h5ad file
+        dataset = Dataset.from_h5ad(h5ad_file)
+        programs = dataset.get_programs()
+        
+        logging.info(f"Querying g:Profiler...")
+        result = program_gprofiler(program_df=programs, species=species, n_hsg=n_hsg,
+                                   gene_sets=gene_sets, min_intersection=min_intersection, max_intersection=max_intersection)
+
+        # write background genes
+        with open(os.path.join(output_dir, f"background.txt"), "w") as f:  # gProfiler input format for web version
+            f.write(f">background\n")
+            f.write(" ".join(result.background) + "\n")
+
+        # write query genes
+        with open(os.path.join(output_dir, "query.txt"), "w") as f:   # gProfiler input format for web version
+            for name, querylist in result.query.items():
+                f.write(f">{name}\n")
+                f.write(" ".join(querylist) + "\n")
+
+        # write gProfiler output
+        result.gprofiler_output.to_csv(os.path.join(output_dir, "result.full.txt"), sep="\t")
+        result.summary.to_csv(os.path.join(output_dir, "result.txt"), sep="\t")
+
+        # create p-value heatmaps separately for each k
+        max_k = dataset.adata.uns["kvals"].index.max()
+        for k in tqdm(dataset.adata.uns["kvals"].index, total=max_k, unit="k", desc="Creating heatmaps"):
+            df = result.summary["-log10pval"][k].dropna(how="all").fillna(0)
+            df = order_genesets(df)
+            df.to_csv(os.path.join(output_dir, f"ordered_genesets_k{k}.txt"), sep="\t")
+            if not no_plot:
+                fig, figlegend = plot_geneset_pval_heatmap(df=df)
+                ax = fig.axes[0]
+                ax.set_title("g:Profiler pathways\n" + ",".join(gene_sets))
+                ax.set_xlabel("")
+                ax.set_ylabel("")
+                for _, spine in ax.spines.items():
+                    spine.set_visible(True)
+                    spine.set_color('#aaaaaa') 
+                ax.set_xlabel(f"Program (k={k})")
+                figlegend.savefig(os.path.join(output_dir, f"ordered_genesets_k{k}.legend.pdf"))
+                fig.savefig(os.path.join(output_dir, f"ordered_genesets_k{k}.pdf"))
+                plt.close(fig)
+                plt.close(figlegend)
+
+
+    elif pkl_file and not h5ad_file:
+        # run gProfiler on representative programs for each dataset in a network_integration.pkl file
+        network = Network.from_pkl(pkl_file)
+        rep_programs = network.get_representative_programs()
+        for dataset_name in network.integration.datasets.keys():
+            programs = rep_programs.xs(dataset_name, axis=1, level=1).dropna()
+            programs = programs.sort_index(axis=1, level=0, key=network.get_vectorized_community_sort_key).droplevel(axis=1, level=[1, 2])
+
+            logging.info(f"Querying g:Profiler...")
+            result = program_gprofiler(program_df=programs, species=species, n_hsg=n_hsg,
+                                    gene_sets=gene_sets, min_intersection=min_intersection, max_intersection=max_intersection)
+
+            # write background genes
+            os.makedirs(os.path.join(output_dir, dataset_name), exist_ok=True)
+            with open(os.path.join(output_dir, dataset_name, f"background.txt"), "w") as f:  # gProfiler input format for web version
+                f.write(f">background\n")
+                f.write(" ".join(result.background) + "\n")
+
+            # write query genes
+            with open(os.path.join(output_dir, dataset_name, "query.txt"), "w") as f:   # gProfiler input format for web version
+                for name, querylist in result.query.items():
+                    f.write(f">{name}\n")
+                    f.write(" ".join(querylist) + "\n")
+
+            # write gProfiler output
+            result.gprofiler_output.to_csv(os.path.join(output_dir, dataset_name, "result.full.txt"), sep="\t")
+            result.summary.to_csv(os.path.join(output_dir, dataset_name, "result.txt"), sep="\t")
+            
+            # ordered pathways
+            df = result.summary["-log10pval"].dropna(how="all").fillna(0)
+            df = order_genesets(df)
+            df.to_csv(os.path.join(output_dir, dataset_name, f"ordered_genesets.txt"), sep="\t")
+
+            if not no_plot:
+                fig, figlegend = plot_geneset_pval_heatmap(df=df)
+                ax = fig.axes[0]
+                ax.set_title("g:Profiler pathways\n" + ",".join(gene_sets))
+                ax.set_xlabel("")
+                ax.set_ylabel("")
+                for _, spine in ax.spines.items():
+                    spine.set_visible(True)
+                    spine.set_color('#aaaaaa') 
+                ax.set_xlabel(f"Community\n(Representative Program)")
+                figlegend.savefig(os.path.join(output_dir, dataset_name, f"ordered_genesets.legend.pdf"))
+                fig.savefig(os.path.join(output_dir, dataset_name, f"ordered_genesets.pdf"))
+                plt.close(fig)
+                plt.close(figlegend)
+        
+    else:
+        logging.error("mosaicmpi gprofiler requires either a factorized dataset (.h5ad) file or "
+                      "a network_integration.pkl.gz file to run g:Profiler on programs.")
+        sys.exit(1)
+    logging.info("All tasks completed successfully.")
+
+
 @click.command(name="compare-integrations")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True,
     help="Output directory for results")
@@ -1130,5 +1287,6 @@ cli.add_command(cmd_map_gene_ids)
 cli.add_command(cmd_create_config)
 cli.add_command(cmd_integrate)
 cli.add_command(cmd_ssgsea)
+cli.add_command(cmd_gprofiler)
 cli.add_command(cmd_compare_integrations)
 cli.add_command(cmd_transfer_labels)
