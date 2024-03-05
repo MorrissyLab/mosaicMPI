@@ -285,7 +285,7 @@ class Dataset():
         :type many_to_one: Literal[False, "mean", "sum"], optional
         :param many_to_many: Whether and how to map genes that have a many-to-many mapping, defaults to False
         :type many_to_many: Literal[False, "mean", "sum"], optional
-        :param unmapped_prefix: For unmapped features, prepend this text to their ID, defaults to "unmapped_"
+        :param unmapped_prefix: For unmapped features, prepend this text to their ID, defaults to "unmapped\_"
         :type unmapped_prefix: str, optional
         :param case_sensitive: Case-sensitive ID matching, defaults to False
         :type case_sensitive: bool, optional
