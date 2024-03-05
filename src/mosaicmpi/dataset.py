@@ -706,7 +706,7 @@ class Dataset():
         :param min_mean: minimum gene expression for genes to be counted as overdispersed, defaults to 0
         :type min_mean: int, optional
         """
-        self.adata.var["selected"] = self.adata.var.index.isin(genes) & self.adata.var["mean_counts"] >= min_mean
+        self.adata.var["selected"] = self.adata.var.index.isin(genes) & (self.adata.var["mean_counts"] >= min_mean)
         self.adata.uns["odg"]["overdispersion_metric"] = ""
         self.adata.uns["odg"]["min_mean"] = min_mean
         self.adata.uns["odg"]["min_score"] = ""
@@ -985,9 +985,12 @@ class Dataset():
         df = self.adata.varm[type].copy()
         df.columns = pd.MultiIndex.from_tuples(df.columns.str.split(".").to_list())
         df.columns = df.columns.set_levels([l.astype("int") for l in df.columns.levels])
-        if isinstance(k, (int, Iterable)):
+        if isinstance(k, int):
             df = df.loc[:, k]
-        df = df.rename_axis(columns=["k", "program"]).sort_index(axis=1)
+            df = df.rename_axis(columns=["program"]).sort_index(axis=1)
+        elif isinstance(k, Iterable):
+            df = df.loc[:, k]
+            df = df.rename_axis(columns=["k", "program"]).sort_index(axis=1)
         return df
     
     def get_metadata_df(self,
