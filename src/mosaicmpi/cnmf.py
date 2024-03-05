@@ -27,7 +27,6 @@ from sklearn.metrics.pairwise import euclidean_distances
 from fastcluster import linkage
 from scipy.cluster.hierarchy import leaves_list
 import matplotlib.pyplot as plt
-import scanpy as sc
 
 
 
@@ -316,7 +315,7 @@ class cNMF():
         :type verbose: bool, optional
         """
         run_params = utils.load_df_from_npz(self.paths['nmf_replicate_parameters'])
-        norm_counts = sc.read(self.paths['normalized_counts'])
+        norm_counts = ad.read_h5ad(self.paths['normalized_counts'])
         _nmf_kwargs = yaml.load(open(self.paths['nmf_run_parameters']), Loader=yaml.FullLoader)
 
         jobs_for_this_worker = _worker_filter(range(len(run_params)), worker_i, total_workers)
@@ -409,7 +408,7 @@ class cNMF():
                   skip_density_and_return_after_stats = False, close_clustergram_fig=False,
                   refit_usage=True):
         merged_spectra = utils.load_df_from_npz(self.paths['merged_spectra']%k)
-        norm_counts = sc.read(self.paths['normalized_counts'])
+        norm_counts = ad.read_h5ad(self.paths['normalized_counts'])
 
         density_threshold_str = str(density_threshold)
         if skip_density_and_return_after_stats:
@@ -485,7 +484,7 @@ class cNMF():
         
         # Convert spectra to TPM units, and obtain results for all genes by running last step of NMF
         # with usages fixed and TPM as the input matrix
-        tpm = sc.read(self.paths['tpm'])
+        tpm = ad.read_h5ad(self.paths['tpm'])
         tpm_stats = utils.load_df_from_npz(self.paths['tpm_stats'])
         norm_usages = norm_usages.fillna(0).astype(np.float32)  # replaces NaN usages for samples that have 0 HVG counts
         spectra_tpm = self.refit_spectra(tpm.X, norm_usages)
@@ -508,7 +507,7 @@ class cNMF():
             hvgs = open(self.paths['nmf_genes_list']).read().split('\n')
             norm_tpm = tpm[:, hvgs]
             if sp.issparse(norm_tpm.X):
-                sc.pp.scale(norm_tpm, zero_center=False)                       
+                raise NotImplementedError("Sparse functions not implemented in mosaicMPI yet")                   
             else:
                 norm_tpm.X /= norm_tpm.X.std(axis=0, ddof=1)
                 

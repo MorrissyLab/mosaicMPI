@@ -13,7 +13,6 @@ from io import StringIO
 from glob import glob
 
 import scipy.sparse as sp
-import scanpy as sc
 import anndata as ad
 import pandas as pd
 import numpy as np
@@ -828,9 +827,10 @@ class Dataset():
         norm_counts = self.adata[:, overdispersed_genes]
         ## Scale genes to unit variance
         if sp.issparse(tpm.X):
-            sc.pp.scale(norm_counts, zero_center=False)
-            if np.isnan(norm_counts.X.data).sum() > 0:
-                raise ValueError('NaNs in normalized counts matrix')                       
+            raise NotImplementedError("AnnDatas with sparse matrices are not supported by mosaicMPI yet.")
+            # sc.pp.scale(norm_counts, zero_center=False)
+            # if np.isnan(norm_counts.X.data).sum() > 0:
+            #     raise ValueError('NaNs in normalized counts matrix')                       
         else:
             norm_counts.X /= norm_counts.X.std(axis=0, ddof=1)
             if np.isnan(norm_counts.X).sum().sum() > 0:
@@ -842,7 +842,7 @@ class Dataset():
         if norm_counts.X.dtype != np.float64:
             norm_counts.X = norm_counts.X.astype(np.float64)
 
-        sc.write(cnmf_obj.paths['normalized_counts'], norm_counts)
+        norm_counts.write_h5ad(cnmf_obj.paths['normalized_counts'])
 
         # save parameters for factorization step
         cnmf_obj.save_nmf_iter_params(*cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss))
