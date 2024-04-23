@@ -705,14 +705,11 @@ class cNMF():
                 iter_result = self.paths['iter_spectra'] % (row['n_components'], row['iter'])
                 if not os.path.exists(iter_result) or os.path.getsize(iter_result) == 0:
                     failed.append(iter_result)
-            if failed:
-                raise ValueError(
-                    f"{(len(failed))} files from the factorization step are missing or empty:\n  - " + 
-                    "\n  - ".join(failed)
-                )
             if failed and not skip_missing_iterations:
                 raise ValueError(
-                    f"Postprocessing could not proceed. To skip missing iterations, use --skip_missing_iterations."
+                    f"Postprocessing could not proceed. To skip missing iterations, use --skip_missing_iterations." + 
+                    f"\n {(len(failed))} files from the factorization step are missing or empty:\n  - " + 
+                    "\n  - ".join(failed)
                 )
             elif failed and skip_missing_iterations:
                 logging.warning("Missing files will be skipped")
