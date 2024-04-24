@@ -1018,7 +1018,7 @@ class Dataset():
             raise ValueError(f"{unexplained_col_str} metadata columns have unrecognized dtypes.")
         df = self.adata.obs.select_dtypes(include=dtypes)
         df = df.dropna(axis=1, how="all")
-        df = df.replace("nan", np.NaN)
+        df = df.replace("nan", np.NaN)  #TODO: Address error: /home/tbverhey/miniconda3/envs/mosaicmpi/lib/python3.11/site-packages/mosaicmpi/dataset.py:1021: FutureWarning: The behavior of Series.replace (and DataFrame.replace) with CategoricalDtype is deprecated. In a future version, replace will only be used for cases that preserve the categories. To change the categories, use ser.cat.rename_categories instead.
         return df
     
     def get_category_overrepresentation(self,

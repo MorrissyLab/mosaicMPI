@@ -2,7 +2,7 @@
 
 # mosaicMPI: mosaic multi-resolution program integration
 
-![version badge](https://img.shields.io/badge/version-2.4.8-blue)
+![version badge](https://img.shields.io/badge/version-2.4.9-blue)
 [![PyPI Latest Release](https://img.shields.io/pypi/v/mosaicmpi.svg)](https://pypi.org/project/mosaicmpi/)
 [![Conda Latest Release](https://img.shields.io/conda/vn/conda-forge/mosaicmpi)](https://anaconda.org/conda-forge/mosaicmpi/)
 [![Documentation status](https://readthedocs.org/projects/mosaicmpi/badge/?version=latest&style=flat)](https://mosaicmpi.readthedocs.io)
@@ -13,7 +13,7 @@
 
 Authors: [Ted Verhey](https://github.com/verheytb), [Sorana Morrissy](https://github.com/ancasorana)
 
-Contributors: Hyojin Song, Aaron Gillmor, Courtney Hall
+Contributors: Hyojin Song, Aaron Gillmor, Gurveer Gill, Courtney Hall
 
 **mosaicMPI** is a Python package enabling mosaic integration of bulk, single-cell, and spatial expression data through program-level integration.
 Programs are first discovered using consensus non-negative matrix factorization and then integrated using a flexible network-based approach to
