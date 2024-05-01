@@ -284,7 +284,7 @@ class Dataset():
         :type many_to_one: Literal[False, "mean", "sum"], optional
         :param many_to_many: Whether and how to map genes that have a many-to-many mapping, defaults to False
         :type many_to_many: Literal[False, "mean", "sum"], optional
-        :param unmapped_prefix: For unmapped features, prepend this text to their ID, defaults to "unmapped\_"
+        :param unmapped_prefix: For unmapped features, prepend this text to their ID, defaults to "unmapped\\_"
         :type unmapped_prefix: str, optional
         :param case_sensitive: Case-sensitive ID matching, defaults to False
         :type case_sensitive: bool, optional
@@ -982,10 +982,11 @@ class Dataset():
         :return: features × GEP matrix
         :rtype: pd.DataFrame
         """
+        assert self.has_cnmf_results
         df = self.adata.varm[type].copy()
         df.columns = pd.MultiIndex.from_tuples(df.columns.str.split(".").to_list())
         df.columns = df.columns.set_levels([l.astype("int") for l in df.columns.levels])
-        if isinstance(k, int):
+        if isinstance(k, (int, np.integer)):
             df = df.loc[:, k]
             df = df.rename_axis(columns=["program"]).sort_index(axis=1)
         elif isinstance(k, Iterable):
@@ -993,6 +994,90 @@ class Dataset():
             df = df.rename_axis(columns=["k", "program"]).sort_index(axis=1)
         return df
     
+    def get_approximation(self,
+                          k: Optional[int] = None,
+                          program_type: Literal["cnmf_gep_tpm", "cnmf_gep_raw"] = "cnmf_gep_tpm"
+                         ) -> pd.DataFrame:
+        """Return the approximated data by multiplying the programs and usage matrices for a given rank (k). Defaults to the highest rank available.
+
+        :param k: rank, defaults to None
+        :type k: int, optional
+        :return: Approximation of dataset based on programs and usages
+        :rtype: pd.DataFrame
+        """
+        assert self.has_cnmf_results
+        if k is None:
+            k = self.adata.uns["kvals"].index.max()
+        
+        approximation = (self.get_usages(k=k)  @ self.get_programs(type=program_type, k=k).T)
+
+        return approximation
+        
+    def calculate_cnmf_prediction_error(self,
+                                       k: Optional[Union[int, Iterable]] = None):
+        
+
+        from sklearn.decomposition import non_negative_factorization
+
+
+        if k is None:
+            kvals = self.adata.uns["kvals"].index
+        elif isinstance(k, Iterable):
+            kvals = k
+        elif isinstance(k, (int, np.integer)):
+            kvals = [k]
+        else:
+            raise ValueError
+        
+        norm_counts = self.adata.to_df().loc[:, self.adata.var["selected"]]
+        norm_counts /= norm_counts.std(axis=0, ddof=1)
+
+        pred_error = pd.Series(index=kvals, name="cNMF prediction_error")
+        for kval in kvals:
+            # obtain reconstructed normalized counts matrix by re-fitting usage and computing dot product: usage.dot(spectra)
+            median_spectra = self.get_programs(k=kval, type="cnmf_gep_raw").dropna()
+            rf_usages, rf_spectra, niter = non_negative_factorization(X=norm_counts.values,
+                                                    alpha_H=0.0, alpha_W=0.0, beta_loss="kullback-leibler", init="random",
+                                                    l1_ratio=0.0, max_iter=1000, solver="mu", tol=0.0001, n_components=kval, H=median_spectra.T.values, update_H=False)
+
+            rf_usages = pd.DataFrame(rf_usages, index=norm_counts.index, columns=median_spectra.T.index)
+            rf_pred_norm_counts = rf_usages.dot(median_spectra.T)
+            pred_error[kval] = ((norm_counts - rf_pred_norm_counts)**2).sum().sum()
+
+        if isinstance(k, (int, np.integer)):
+            return pred_error[k]
+        else:
+            return pred_error
+
+    def validate_cnmf_prediction_errors(self, tolerance: float = 1e-8) -> pd.DataFrame:
+        """Validate the dataset and cNMF solutions for each rank by comparing the
+        prediction error values stored in the object [self.adata.uns.kvals] to those calculated from the
+        dataset's data matrices [based on self.adata.X and self.adata.varm['cnmf_gep_raw']]. This can be a quick and sensitive way to assess
+        that the dataset and the cNMF solutions have not been altered.
+
+        :param tolerance: maximum relative error for any k when computing the prediction error, defaults to 0.0001
+        :type tolerance: float, optional
+        :raises ValueError: if the maximum relative error exceeds the tolerance
+        :return: DataFrame with stored and computed prediction error, and relative error for each rank
+        :rtype: pd.DataFrame
+        """
+ 
+        pred_error = pd.Series()
+        for k in self.adata.uns['kvals'].index:
+            pred_error[k] = self.calculate_cnmf_prediction_error(k=k)
+        # validate error of the solutions matches cNMF's stored error values
+        df = pd.DataFrame({"stored": self.adata.uns['kvals']["prediction_error"],
+                           "computed": pred_error})
+        df["relative_error"] = (df["computed"] - df["stored"]).abs() / df["stored"]
+        
+        if (df["relative_error"] > tolerance).any():
+            raise ValueError(f"Dataset validation failed using cNMF prediction error tolerance of {tolerance}. "
+                             "This can occur when dataset objects are unintentionally altered and the matrices "
+                             "are not consistent with the original ones used for factorization.")
+
+        return df
+        
+
     def get_metadata_df(self,
                         include_categorical: bool = True,
                         include_numerical: bool = True
