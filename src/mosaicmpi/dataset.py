@@ -740,7 +740,7 @@ class Dataset():
             if overdispersion_metric in ("odscore", "vscore"):
                 raise ValueError(
                     f"{overdispersion_metric} has not been calculated for this dataset. "
-                    "Ensure that you call the `Dataset.compute_gene_stats()` first."
+                    "Ensure that you call the `Dataset.model_overdispersed_genes()` first."
                     )
             else:
                 raise ValueError(
@@ -998,6 +998,7 @@ class Dataset():
                           k: Optional[int] = None,
                           program_type: Literal["cnmf_gep_tpm", "cnmf_gep_raw"] = "cnmf_gep_tpm"
                          ) -> pd.DataFrame:
+        
         """Return the approximated data by multiplying the programs and usage matrices for a given rank (k). Defaults to the highest rank available.
 
         :param k: rank, defaults to None
@@ -1014,8 +1015,15 @@ class Dataset():
         return approximation
         
     def calculate_cnmf_prediction_error(self,
-                                       k: Optional[Union[int, Iterable]] = None):
-        
+                                       k: Optional[Union[int, Iterable]] = None) -> Union[float, pd.Series]:
+        """Calculate cNMF prediction error using the method in the original cNMF package.
+
+        :param k: Specify one or more k values to calculate prediction error. Specify None to calculate for all available k. defaults to None
+        :type k: Optional[Union[int, Iterable]], optional
+        :raises ValueError: if invalid k is specified
+        :return: scalar or vector
+        :rtype: _type_
+        """
 
         from sklearn.decomposition import non_negative_factorization
 
@@ -1036,9 +1044,9 @@ class Dataset():
         for kval in kvals:
             # obtain reconstructed normalized counts matrix by re-fitting usage and computing dot product: usage.dot(spectra)
             median_spectra = self.get_programs(k=kval, type="cnmf_gep_raw").dropna()
-            rf_usages, rf_spectra, niter = non_negative_factorization(X=norm_counts.values,
+            rf_usages, rf_spectra, niter = non_negative_factorization(X=norm_counts.values.astype(np.float64),
                                                     alpha_H=0.0, alpha_W=0.0, beta_loss="kullback-leibler", init="random",
-                                                    l1_ratio=0.0, max_iter=1000, solver="mu", tol=0.0001, n_components=kval, H=median_spectra.T.values, update_H=False)
+                                                    l1_ratio=0.0, max_iter=1000, solver="mu", tol=0.0001, n_components=kval, H=median_spectra.T.values.astype(np.float64), update_H=False)
 
             rf_usages = pd.DataFrame(rf_usages, index=norm_counts.index, columns=median_spectra.T.index)
             rf_pred_norm_counts = rf_usages.dot(median_spectra.T)
@@ -1049,7 +1057,7 @@ class Dataset():
         else:
             return pred_error
 
-    def validate_cnmf_prediction_errors(self, tolerance: float = 1e-8) -> pd.DataFrame:
+    def validate_cnmf_prediction_errors(self, tolerance: float = 1e-4) -> pd.DataFrame:
         """Validate the dataset and cNMF solutions for each rank by comparing the
         prediction error values stored in the object [self.adata.uns.kvals] to those calculated from the
         dataset's data matrices [based on self.adata.X and self.adata.varm['cnmf_gep_raw']]. This can be a quick and sensitive way to assess

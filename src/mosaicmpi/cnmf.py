@@ -507,7 +507,7 @@ class cNMF():
             hvgs = open(self.paths['nmf_genes_list']).read().split('\n')
             norm_tpm = tpm[:, hvgs]
             if sp.issparse(norm_tpm.X):
-                raise NotImplementedError("Sparse functions not implemented in mosaicMPI yet")                   
+                raise NotImplementedError("Sparse functions not implemented in mosaicMPI yet")
             else:
                 norm_tpm.X /= norm_tpm.X.std(axis=0, ddof=1)
                 
