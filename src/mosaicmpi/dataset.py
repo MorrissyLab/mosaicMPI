@@ -824,7 +824,7 @@ class Dataset():
         overdispersed_genes = self.adata.var["selected"][self.adata.var["selected"]].index
 
         # Subset out high-variance genes
-        norm_counts = self.adata[:, overdispersed_genes]
+        norm_counts = self.adata[:, overdispersed_genes].copy()  # copy to prevent overwrite
         ## Scale genes to unit variance
         if sp.issparse(tpm.X):
             raise NotImplementedError("AnnDatas with sparse matrices are not supported by mosaicMPI yet.")
