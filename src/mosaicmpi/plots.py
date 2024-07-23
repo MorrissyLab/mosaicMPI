@@ -240,15 +240,17 @@ def annotated_heatmap(
         for i, (track, annot) in enumerate(metadata.items()):
             ax = fig.add_subplot(gs2[i], sharex=ax_heatmap)
             ax.set_facecolor(missing_data_color)
-            if pd.api.types.is_categorical_dtype(annot) or pd.api.types.is_object_dtype(annot):
+            if pd.api.types.is_categorical_dtype(annot):
+                # convert categorical to object dtype to make mapping to colors easier
+                annot = annot.iloc[xind].astype("object")
+
+            if pd.api.types.is_object_dtype(annot):
                 ordered_rgb = annot.iloc[xind]
-                ordered_rgb[~ordered_rgb.isin(metadata_colors[track])] = np.NaN
+                ordered_rgb[~ordered_rgb.isin(metadata_colors[track])] = np.NaN  # omit samples for which no color exists
                 ordered_rgb = ordered_rgb.replace(metadata_colors[track])
                 if ordered_rgb.isnull().any():
-                    if pd.api.types.is_categorical_dtype(annot) and missing_data_color not in ordered_rgb.cat.categories:
-                        ordered_rgb = ordered_rgb.cat.add_categories(missing_data_color)
                     ordered_rgb = ordered_rgb.fillna(missing_data_color)
-                ordered_rgb = ordered_rgb.astype("object").map(mpl.colors.to_rgb)
+                ordered_rgb = ordered_rgb.map(mpl.colors.to_rgb)
                 ordered_rgb = np.array([list(rgb) for rgb in ordered_rgb])
                 ax.imshow(np.stack([ordered_rgb, ordered_rgb]), aspect='auto', extent=[xmin,xmax,0,1], interpolation='none')
             else:
@@ -1569,7 +1571,7 @@ def plot_sample_entropy(network: Network,
 ########################
 
 
-def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str, figsize: Collection[float, float] = None, annotate: Optional[Union[str, Collection[str]]] = None, colors: Colors = None) -> Figure:
+def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str, figsize: Collection[float, float] = None, annotate: Optional[Union[str, Collection[str]]] = None, colors: Colors = None, ax: Axes = None) -> Figure:
     """Plot heatmap of metadata transfer scores
 
     :param network: network through which to propagate labels
@@ -1600,7 +1602,7 @@ def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str,
         for annotation_layer in annotations:
             mapper = colors.get_metadata_colors(annotation_layer)
             color_vec = metadata[annotation_layer].map(mapper)
-            if colors.missing_data_color not in color_vec.cat.categories:
+            if color_vec.dtype == "category" and colors.missing_data_color not in color_vec.cat.categories:  # TODO: checking for color_vec dtype is a bandaid solution - we need consistent handling of NaNs in categorical metadata
                 color_vec = color_vec.cat.add_categories(colors.missing_data_color)
             color_vec = color_vec.fillna(colors.missing_data_color)
             metadata[annotation_layer] = color_vec
@@ -1610,7 +1612,8 @@ def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str,
     if figsize is None:
         figsize = [8, 1 + transfer_df.shape[0] * 0.2 + len(annotations) * 0.3]
 
-    fig = sns.clustermap(data = transfer_df, col_colors=col_colors, figsize=figsize, row_cluster=False, xticklabels=False, yticklabels=True, cmap="Blues")
+    fig = sns.clustermap(data = transfer_df, col_colors=col_colors, figsize=figsize, row_cluster=False, xticklabels=False, yticklabels=True, cmap="Blues", colors_ratio=0.08)
+    
     return fig
 
 

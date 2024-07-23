@@ -221,3 +221,23 @@ Once the command has completed, outputs in the output directory will include:
 - community bar plots:
   - `annotated_communities/overrepresentation_bar/<dataset>/<annotation_layer>.pdf`: plots overrepresentation of each category for each community for categorical metadata
   - `annotated_communities/correlation_bar/<dataset>/<annotation_layer>.pdf`: plots correlation of numerical metadata to program usage across samples for each community
+
+### 4. Label transfer between datasets
+
+After integration, sample types can be predicted using `mosaicmpi transfer-labels`. Using an existing integration (`.pkl[.gz]` file), specify the source and destination datasets, as well as the variable you want to predict (`layer_name`). You can optionally provide the name of a data layer from the destination dataset as an annotation for the heatmap.
+
+```bash
+mosaicmpi transfer-labels -o output_directory -n network_integration.pkl.gz -l layer_name -s Dataset1 -d Dataset2 -a annotation_layer
+```
+
+Additional customization can be achieved using:
+  - `-m colors.toml`: a color scheme sample/cell labels (metadata) that provides consistency across plots
+
+Once the command has completed, outputs in the output directory will include:
+
+- files enabling downstream analysis:
+  - `transfer_score.txt`: tab-separated file with the transfer scores for all label transfers.
+  
+- transfer score for each sample in the destination dataset
+  - `s.<source>_d.<dest>_l.<layer>.pdf`: clustered heatmap of the transfer scores for each sample in the destination dataset. Multiple figures if multiple datasets or layers are specified.
+  - `legend.png`, `legend.pdf`: legend for heatmap annotation tracks

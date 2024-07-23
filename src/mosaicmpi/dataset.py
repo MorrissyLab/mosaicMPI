@@ -1085,6 +1085,35 @@ class Dataset():
 
         return df
         
+    def validate_feature_stats(self, tolerance: float = 1e-4) -> pd.DataFrame:
+        """Validate the dataset and cNMF solutions for each rank by comparing the
+        calculated feature statistics (mean, SD, variance) stored in the object [self.adata.var] to those calculated from the
+        dataset's data matrices [based on self.adata.X]. This can be a quick and sensitive way to assess
+        that the dataset's underlying data has not been altered.
+
+        :param tolerance: maximum relative error for any k when computing the prediction error, defaults to 0.0001
+        :type tolerance: float, optional
+        :raises ValueError: if the maximum relative error exceeds the tolerance
+        :return: DataFrame with relative error for each feature
+        :rtype: pd.DataFrame
+        """
+        X = self.to_df()
+        calc_sd = X.std()
+        calc_var = X.var()
+        calc_mean = X.mean()
+        stored_sd = self.adata.var["sd"]
+        stored_var = self.adata.var["variance"]
+        stored_mean = self.adata.var["mean"]
+
+        df = pd.DataFrame({"sd": (calc_sd - stored_sd) / stored_sd,
+                    "variance": (calc_var - stored_var) / stored_var,
+                    "mean": (calc_mean - stored_mean) / stored_mean})
+
+        if df.abs().max().max() > tolerance:
+            raise ValueError(f"Dataset validation failed using feature-wise SD, variance, and/or mean with a relative error within {tolerance}. "
+                            "This can occur when dataset objects are unintentionally altered and the matrices "
+                            "are not consistent with the original ones used for factorization.")
+        return df
 
     def get_metadata_df(self,
                         include_categorical: bool = True,
@@ -1111,7 +1140,7 @@ class Dataset():
             raise ValueError(f"{unexplained_col_str} metadata columns have unrecognized dtypes.")
         df = self.adata.obs.select_dtypes(include=dtypes)
         df = df.dropna(axis=1, how="all")
-        df = df.replace("nan", np.NaN)  #TODO: Address error: /home/tbverhey/miniconda3/envs/mosaicmpi/lib/python3.11/site-packages/mosaicmpi/dataset.py:1021: FutureWarning: The behavior of Series.replace (and DataFrame.replace) with CategoricalDtype is deprecated. In a future version, replace will only be used for cases that preserve the categories. To change the categories, use ser.cat.rename_categories instead.
+        df[df == "nan"] = np.NaN
         return df
     
     def get_category_overrepresentation(self,

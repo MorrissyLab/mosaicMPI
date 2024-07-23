@@ -313,8 +313,9 @@ class Integration():
                             if (dataset_row, dataset_col) in thresholds.index:
                                 min_corr = thresholds.loc[(dataset_row, dataset_col)]
                                 mask = df_filt.loc[dataset_row, dataset_col] < min_corr
-                                df_filt.loc[dataset_row, dataset_col][~mask] = np.NaN   # TODO: Not compatible with Pandas 3.0 because of setting with chained indexing.
-                                df_filt.dropna(axis=0).dropna(axis=1)
+                                mask = pd.concat({dataset_col: pd.concat({dataset_row: mask})}, axis=1)  # adds the dataset levels back for matched indexes
+                                df_filt[~mask] = np.NaN
+
                 else:
                     df_filt = df
 

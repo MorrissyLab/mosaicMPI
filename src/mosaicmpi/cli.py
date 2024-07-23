@@ -257,8 +257,7 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, m
     
     # output text file
     gene_stats = dataset.adata.var
-    os.makedirs(os.path.normpath(os.path.join(output_dir, name, "odgenes")), exist_ok=True)
-    gene_stats.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
+    gene_stats.to_csv(os.path.join(output_dir, name, "feature_stats.tsv"), sep="\t")
 
     # create mean vs variance plots
     fig = plot_feature_dispersion(dataset, show_selected=False)
@@ -371,10 +370,10 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
 
     # create mean vs variance plot, updated with selected genes
     fig = plot_feature_dispersion(dataset, show_selected=True)
-    utils.save_fig(fig, os.path.join(output_dir, name, "odgenes"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+    utils.save_fig(fig, os.path.join(output_dir, name, "feature_meanvar"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
 
     # output table with gene overdispersion measures
-    dataset.adata.var.to_csv(os.path.join(output_dir, name, "odgenes", "genestats.tsv"), sep="\t")
+    gene_stats.to_csv(os.path.join(output_dir, name, "feature_stats.tsv"), sep="\t")
     
     # process k-value selection inputs
     kvals = set(k)
@@ -1271,6 +1270,17 @@ def cmd_transfer_labels(output_dir, pkl_file, source, dest, layer, annotate, met
             cgrid = plot_metadata_transfer(network=network, source=s, dest=d, layer=l, annotate=annotate, colors=colors)
             cgrid.fig.suptitle(f"source: {s}, dest: {d}, layer: {l}")
             cgrid.savefig(os.path.join(output_dir, f"s.{s}_d.{d}_l.{l}.pdf"))
+
+    if annotate:
+        # create legends for annotation tracks
+        width = 3 * len(annotate)
+        height = max([1 + len(colors.get_metadata_colors(a)) / 4 for a in annotate])
+        fig, axes = plt.subplots(1, len(annotate), figsize=[width, height], layout="constrained")
+        for layer, ax in zip(annotate, axes):
+            colors.plot_metadata_colors_legend(layer=layer, ax=ax)
+        utils.save_fig(fig, os.path.join(output_dir, "legend"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+
+
     logging.info("All tasks completed successfully.")
 
 cli.add_command(cmd_txt_to_h5ad)
