@@ -7,7 +7,7 @@ from . import utils
 
 import logging
 from typing import Optional, Union
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 import matplotlib.pyplot as plt
 from matplotlib import colors as mpl_colors
@@ -17,6 +17,7 @@ from matplotlib.patches import Patch
 import distinctipy
 import tomli
 import tomli_w
+import pandas as pd
 
 class Colors():
     
@@ -70,6 +71,16 @@ class Colors():
         colors = cls()
         colors.add_missing_dataset_colors(datasets=integration, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
         colors.add_missing_metadata_colors(datasets=integration, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
+        return colors
+    
+    @classmethod
+    def from_named_datasets(cls, 
+                     datasets: Mapping[str, Dataset],
+                     pastel_factor=0.3,
+                     colorblind_type=None):
+        colors = cls()
+        colors.add_missing_dataset_colors(datasets=datasets.keys(), pastel_factor=pastel_factor, colorblind_type=colorblind_type)
+        colors.add_missing_metadata_colors(datasets=datasets, pastel_factor=pastel_factor, colorblind_type=colorblind_type)
         return colors
     
     @classmethod
@@ -199,7 +210,7 @@ class Colors():
             return fig
         
     def add_missing_metadata_colors(self,
-                                    datasets: Union[Dataset, Integration],
+                                    datasets: Union[Dataset, Integration, Iterable[Dataset]],
                                     pastel_factor=0.3,
                                     colorblind_type=None):
         """
@@ -209,6 +220,8 @@ class Colors():
         # get categorical data for which colors should match
         if isinstance(datasets, Dataset):
             metadata_df = datasets.get_metadata_df(include_numerical=False)
+        elif isinstance(datasets, Iterable):
+            metadata_df = pd.concat({dataset_name: dataset.get_metadata_df(include_numerical=False) for dataset_name, dataset in datasets.items()})
         elif isinstance(datasets, Integration):
             metadata_df = datasets.get_metadata_df(include_numerical=False, prepend_dataset_column=False)
         else:
