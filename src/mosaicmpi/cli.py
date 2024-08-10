@@ -373,6 +373,7 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
     utils.save_fig(fig, os.path.join(output_dir, name, "feature_meanvar"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
 
     # output table with gene overdispersion measures
+    gene_stats = dataset.adata.var
     gene_stats.to_csv(os.path.join(output_dir, name, "feature_stats.tsv"), sep="\t")
     
     # process k-value selection inputs
