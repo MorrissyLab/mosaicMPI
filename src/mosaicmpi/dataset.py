@@ -336,7 +336,7 @@ class Dataset():
         else:
             id_idx = ~self.adata.var_names.str.casefold().isin(id_mapping.index.get_level_values(0))
         src_ids = self.adata.var_names[id_idx]
-        dest_ids = unmapped_prefix + src_ids
+        dst_ids = unmapped_prefix + src_ids
         source_id_list.extend(src_ids)
         dest_id_list.extend(unmapped_prefix + src_ids)
         mapping_relationship.extend(len(src_ids) * ["one-to-none"])
@@ -351,11 +351,11 @@ class Dataset():
             ids_to_map = self.adata.var_names[id_idx].str.casefold()
         src_ids = self.adata.var_names[id_idx]
         if one_to_one:
-            dest_ids = o2o.index.to_frame().reset_index(level=1, drop=True)[dest_col].loc[ids_to_map]
+            dst_ids = o2o.index.to_frame().reset_index(level=1, drop=True)[f"dest_{dest_ids}"].loc[ids_to_map]
         else:
-            dest_ids = unmapped_prefix + src_ids
+            dst_ids = unmapped_prefix + src_ids
         source_id_list.extend(src_ids)
-        dest_id_list.extend(dest_ids)
+        dest_id_list.extend(dst_ids)
         mapping_relationship.extend(len(src_ids) * ["one-to-one"])
 
         # One-to-many
@@ -375,9 +375,9 @@ class Dataset():
                 dest_id_list.extend(dest)
                 mapping_relationship.extend(len(dest) * ["one-to-many"])
         elif one_to_many is False:
-            dest_ids = unmapped_prefix + src_ids
+            dst_ids = unmapped_prefix + src_ids
             source_id_list.extend(src_ids)
-            dest_id_list.extend(dest_ids)
+            dest_id_list.extend(dst_ids)
             mapping_relationship.extend(len(src_ids) * ["one-to-many"])
         else:
             raise NotImplementedError(f"`{one_to_many}` is not currently implemented for one-to-many gene mappings.")
@@ -394,9 +394,9 @@ class Dataset():
             ids_to_map = self.adata.var_names[id_idx].str.casefold()
         src_ids = self.adata.var_names[id_idx]
         if many_to_one is False:
-            dest_ids = unmapped_prefix + src_ids
+            dst_ids = unmapped_prefix + src_ids
             source_id_list.extend(src_ids)
-            dest_id_list.extend(dest_ids)
+            dest_id_list.extend(dst_ids)
             mapping_relationship.extend(len(src_ids) * ["many-to-one"])
         else:
             raise NotImplementedError(f"`{many_to_one}` is not currently implemented for many-to-one gene mappings.")
@@ -410,9 +410,9 @@ class Dataset():
             ids_to_map = self.adata.var_names[id_idx].str.casefold()
         src_ids = self.adata.var_names[id_idx]
         if many_to_many is False:
-            dest_ids = unmapped_prefix + src_ids
+            dst_ids = unmapped_prefix + src_ids
             source_id_list.extend(src_ids)
-            dest_id_list.extend(dest_ids)
+            dest_id_list.extend(dst_ids)
             mapping_relationship.extend(len(src_ids) * ["many-to-many"])
         else:
             raise NotImplementedError(f"`{many_to_many}` is not currently implemented for many-to-many gene mappings.")
@@ -425,9 +425,9 @@ class Dataset():
             id_idx = self.adata.var_names.str.casefold().isin(m2m.index.get_level_values(0).str.casefold()) & self.adata.var_names.str.casefold().isin(m2o.index.get_level_values(0).str.casefold())
             ids_to_map = self.adata.var_names[id_idx].str.casefold()
         src_ids = self.adata.var_names[id_idx]
-        dest_ids = unmapped_prefix + src_ids
+        dst_ids = unmapped_prefix + src_ids
         source_id_list.extend(src_ids)
-        dest_id_list.extend(dest_ids)
+        dest_id_list.extend(dst_ids)
         mapping_relationship.extend(len(src_ids) * ["many-to-many; many-to-one"])
 
         # create new anndata object
