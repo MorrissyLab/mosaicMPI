@@ -256,8 +256,7 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, m
     dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     
     # output text file
-    gene_stats = dataset.adata.var
-    gene_stats.to_csv(os.path.join(output_dir, name, "feature_stats.tsv"), sep="\t")
+    dataset.adata.var.to_csv(os.path.join(output_dir, name, "feature_stats.tsv"), sep="\t")
 
     # create mean vs variance plots
     fig = plot_feature_dispersion(dataset, show_selected=False)
@@ -373,7 +372,7 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
     utils.save_fig(fig, os.path.join(output_dir, name, "feature_meanvar"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
 
     # output table with gene overdispersion measures
-    gene_stats.to_csv(os.path.join(output_dir, name, "feature_stats.tsv"), sep="\t")
+    dataset.adata.var.to_csv(os.path.join(output_dir, name, "feature_stats.tsv"), sep="\t")
     
     # process k-value selection inputs
     kvals = set(k)

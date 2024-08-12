@@ -300,8 +300,10 @@ class Dataset():
                                                                 "ensembl_gene_id"]})
             columns=['source_gene_name','source_ensembl_gene']
             result = pd.read_csv(StringIO(result.text), sep="\t", header=None, names=columns)
-            source_col = f"source_{source_ids}"
-            dest_col = f"source_{dest_ids}"
+            result_dest = result.copy()
+            result_dest.columns = ["dest_gene_name", "dest_ensembl_gene"]
+            result = pd.concat([result, result_dest], axis=1)
+
         else:
             result = gene_dataset.search(params={"attributes": ["external_gene_name",
                                                             "ensembl_gene_id",
@@ -309,15 +311,13 @@ class Dataset():
                                                             f"{dest_species}_homolog_ensembl_gene"]})
             columns=['source_gene_name','source_ensembl_gene', 'dest_gene_name', 'dest_ensembl_gene']
             result = pd.read_csv(StringIO(result.text), sep="\t", header=None, names=columns)
-            source_col = f"source_{source_ids}"
-            dest_col = f"dest_{dest_ids}"
 
         logging.info("Mapping gene IDs")
 
         if not case_sensitive:
-            result[source_col] = result[source_col].str.casefold()
+            result[f"source_{source_ids}"] = result[f"source_{source_ids}"].str.casefold()
 
-        id_mapping = result.groupby([source_col, dest_col]).apply(lambda x : x.count()).iloc[:,0]
+        id_mapping = result.groupby([f"source_{source_ids}", f"dest_{dest_ids}"]).apply(lambda x : x.count()).iloc[:,0]
         id_mapping = pd.DataFrame(id_mapping.rename("path_counts"))
         assert id_mapping.index.is_unique
         source_id_counts = id_mapping.index.get_level_values(0).value_counts()
@@ -429,7 +429,7 @@ class Dataset():
         source_id_list.extend(src_ids)
         dest_id_list.extend(dest_ids)
         mapping_relationship.extend(len(src_ids) * ["many-to-many; many-to-one"])
-    
+
         # create new anndata object
         new_adata = self.adata[:, source_id_list]
         new_adata.var_names = dest_id_list
