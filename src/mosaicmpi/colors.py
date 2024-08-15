@@ -151,7 +151,7 @@ class Colors():
         invalid_colors = [name for name, color in self.community_colors.items()
                           if not mpl_colors.is_color_like(color)]
         if invalid_colors:
-            raise ValueError(f"Communitieswere given these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
+            raise ValueError(f"Communities were given these invalid colors: {invalid_colors}. Please use valid matplotlib colors in named, hex, or RGB formats.")
 
         # fill in missing values with random colors distinct from existing colors
         uncolored_communities = set(communities) - self.community_colors.keys()
