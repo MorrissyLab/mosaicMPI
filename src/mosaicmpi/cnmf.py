@@ -623,7 +623,7 @@ class cNMF():
                 plt.close(fig)
 
     def get_and_check_consensus(self, k, local_density_threshold, local_neighborhood_size):
-        logging.info(f"Creating consensus GEPs and usages for k={k}")
+        logging.info(f"Creating consensus programs and usages for k={k}")
         self.consensus(k, density_threshold=local_density_threshold,
             local_neighborhood_size=local_neighborhood_size,
             show_clustering=True,
@@ -722,8 +722,8 @@ class cNMF():
                 self.combine_nmf(k, skip_missing_files=skip_missing_iterations)
         else:
             logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
-        # calculate consensus GEPs and usages
-        logging.info(f"Creating consensus GEPs and usages using {cpus} CPUs")
+        # calculate consensus programs and usages
+        logging.info(f"Creating consensus programs and usages using {cpus} CPUs")
         call_consensus = partial(
             self.get_and_check_consensus,
             local_density_threshold=local_density_threshold,

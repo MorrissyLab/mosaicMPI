@@ -861,7 +861,7 @@ class Dataset():
         :type cnmf_output_dir: str
         :param cnmf_name: Name of the cNMF results. Files will be output to [cnmf_output_dir]/[cnmf_name]/
         :type cnmf_name: str
-        :param local_density_threshold: Threshold for the local density filtering prior to GEP consensus. Acceptable thresholds are > 0 and <= 2 (2.0 is no filtering). Defaults to None.
+        :param local_density_threshold: Threshold for the local density filtering prior to program consensus. Acceptable thresholds are > 0 and <= 2 (2.0 is no filtering). Defaults to None.
         :type local_density_threshold: float, optional
         :param local_neighborhood_size: Fraction of the number of replicates to use as nearest neighbors for local density filtering. Defaults to None
         :type local_neighborhood_size: float, optional
@@ -887,21 +887,21 @@ class Dataset():
         self.adata.uns["ldt"] = ldt
         self.adata.uns["lns"] = local_neighborhood_size
             
-        # Import GEPs
+        # Import programs
         result_types = {
             "gene_spectra_score": "cnmf_gep_score",
             "gene_spectra_tpm": "cnmf_gep_tpm",
             "spectra": "cnmf_gep_raw"
             }
         for matchstr, result_type in result_types.items():
-            logging.info(f"Importing GEPs: {matchstr}")  
+            logging.info(f"Importing programs: {matchstr}")  
             meta_w = []
             for fn in glob(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}*.{matchstr}.k_*.{ldt_str}.*txt")):
                 k = int(os.path.basename(fn).removeprefix(f"{cnmf_name}.{matchstr}.").split(".")[0].replace("k_", ""))
                 w = pd.read_table(fn, index_col=0)
                 w.index = str(k) + "." + w.index.astype(str)
                 meta_w.append(w)
-            meta_w = pd.concat(meta_w, axis=0).T.reindex(self.adata.var.index).rename_axis(["k.gep"], axis=1)
+            meta_w = pd.concat(meta_w, axis=0).T.reindex(self.adata.var.index).rename_axis(["k.program"], axis=1)
             self.adata.varm[result_type] = meta_w
 
         # Import Usages
@@ -912,7 +912,7 @@ class Dataset():
             h = pd.read_table(fn, index_col=0)
             h.columns = str(k) + "." + h.columns.astype(str)
             usage.append(h)
-        self.adata.obsm["cnmf_usage"] = pd.concat(usage, axis=1).sort_index(axis=1).rename_axis(["k.gep"], axis=1)
+        self.adata.obsm["cnmf_usage"] = pd.concat(usage, axis=1).sort_index(axis=1).rename_axis(["k.program"], axis=1)
         
         # Import gene list used for factorization
         with open(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}.overdispersed_genes.txt")) as f:
@@ -939,15 +939,15 @@ class Dataset():
                    normalize: bool = False
                    ) -> pd.DataFrame:
         """
-        Calculate usage of each GEP in each sample/observation.
+        Generate dataframe of program usage.
 
-        :param k: If an integer or list of integers, returns usages only for specified ranks. Otherwise, returns usage of all GEPs across ranks. Defaults to None
+        :param k: If an integer or list of integers, returns usages only for specified ranks. Otherwise, returns usage of all programs across ranks. Defaults to None
         :type k: int, optional
-        :param discretize: Discretizes the usage matrix such that for each value of k, each sample has usage of only 1 GEP (the one with the maximum usage). Defaults to False
+        :param discretize: Discretizes the usage matrix such that for each value of k, each sample has usage of only 1 program (the one with the maximum usage). Defaults to False
         :type discretize: bool, optional
-        :param normalize: Normalize the GEP usage matrix such that for each value of k, usage of all GEPs sums to 1. Defaults to False
+        :param normalize: Normalize the program usage matrix such that for each value of k, usage of all programs sums to 1. Defaults to False
         :type normalize: bool, optional
-        :return: observation × GEP matrix
+        :return: observation × program matrix
         :rtype: pd.DataFrame
         """
         df = self.adata.obsm["cnmf_usage"].copy()
@@ -975,11 +975,11 @@ class Dataset():
         """
         Get feature scores for programs.
 
-        :param k: If an integer or list of integers, returns GEPs only for specified ranks. Otherwise, returns GEPs from all ranks. Defaults to None
+        :param k: If an integer or list of integers, returns programs only for specified ranks. Otherwise, returns programs from all ranks. Defaults to None
         :type k: Union[int, Iterable], optional
         :param type: "cnmf_gep_score" or "cnmf_gep_tpm", defaults to "cnmf_gep_score"
         :type type: str, optional
-        :return: features × GEP matrix
+        :return: features × programs matrix
         :rtype: pd.DataFrame
         """
         assert self.has_cnmf_results
@@ -1188,13 +1188,13 @@ class Dataset():
                                  layer: str,
                                  method: str = "pearson"
                                  ) -> pd.Series:
-        """Calculate Pearson correlation of GEP usage to numerical metadata across samples/observations.
+        """Calculate correlation of program usage to numerical metadata across samples/observations.
 
         :param layer: name of numerical data layer
         :type layer: str
         :param method: Correlation method: "pearson", "spearman", or "kendall". Defaults to "pearson"
         :type method: str, optional
-        :return: correlation of GEP to metadata
+        :return: correlation coefficient of program usage with metadata
         :rtype: pd.Series
         """
         usage = self.get_usages().copy()

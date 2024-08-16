@@ -48,8 +48,8 @@ config_defaults = {
         }
     },
     "node_size": 30,
-    "plot_size_gep": [10, 10],
-    "pie_size_gep": 50,
+    "plot_size_program": [10, 10],
+    "pie_size_program": 50,
     "pie_size_community": 50,
     "plot_size_community": [4, 4],
     "max_cells_per_heatmap_dimension": 500,

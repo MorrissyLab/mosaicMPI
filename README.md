@@ -2,7 +2,7 @@
 
 # mosaicMPI: Mosaic Multi-resolution Program Integration
 
-![version badge](https://img.shields.io/badge/version-2.5.5-blue)
+![version badge](https://img.shields.io/badge/version-2.6.0-blue)
 [![PyPI Latest Release](https://img.shields.io/pypi/v/mosaicmpi.svg)](https://pypi.org/project/mosaicmpi/)
 [![Conda Latest Release](https://img.shields.io/conda/vn/conda-forge/mosaicmpi)](https://anaconda.org/conda-forge/mosaicmpi/)
 [![Documentation status](https://readthedocs.org/projects/mosaicmpi/badge/?version=latest&style=flat)](https://mosaicmpi.readthedocs.io)
@@ -31,9 +31,9 @@ Here are just a few of the things that mosaicMPI does well:
   (eg. Microarray, RNA-Seq, Proteomics) or sparsity (eg. single-cell vs. bulk)
 - Metadata transfer across datasets
 
-mosaicMPI is usable via:
-- command-line interface for rapid data exploration and integration
-- python interface for extensibility and flexibility
+mosaicMPI has two interfaces:
+- command-line interface with a standardized workflow for rapid data exploration and integration
+- python API for greatest flexibility and extensibility
 
 ## 🔧 Install
 
@@ -46,8 +46,8 @@ mosaicMPI is usable via:
 Install the package with `conda`:
 ```bash
 # create an environment called mosaic and install
-conda create -n mosaic -c conda-forge mosaicmpi
-conda activate mosaic
+conda create -n mosaicenv -c conda-forge mosaicmpi
+conda activate mosaicenv
 ```
 
 For ssGSEA analysis, you will also need to install GSEApy into the same environment.
@@ -55,7 +55,7 @@ For ssGSEA analysis, you will also need to install GSEApy into the same environm
 ```bash
 # if you have conda (MacOS_x86-64 and Linux only)
 conda install -c bioconda gseapy
-# Windows and MacOS_ARM64 (M1/2-Chip)
+# Windows and macOS (Apple Silicon)
 pip install gseapy
 ```
 

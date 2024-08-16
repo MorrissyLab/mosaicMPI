@@ -27,7 +27,7 @@ class Integration():
         :type datasets: dict[str, :class:`~mosaicmpi.dataset.Dataset`]
         :param corr_method: Correlation method: "pearson", "spearman", or "kendall", defaults to "pearson"
         :type corr_method: str, optional
-        :param max_median_corr: Threshold for rank reduction procedure, relevant only for datasets where GEPs tend to be highly correlated.
+        :param max_median_corr: Threshold for rank reduction procedure, relevant only for datasets where programs tend to be highly correlated.
             This procedure reduces the maximum rank included for a dataset until the median of the correlation distribution is below the threshold. Defaults to 0
         :type max_median_corr: float, optional
         :param negative_corr_quantile: Threshold for network-based integration, between 0 and 1, with 1 resulting in fewer edges in the network. Defaults to 0.95
@@ -61,8 +61,8 @@ class Integration():
         self.k_table = pd.concat(combined, axis=1).rename_axis(index="k")
         # compute correlations
         self.compute_corr(method=self.corr_method)
-        # rank-reduction for highly autocorrelated GEPs 
-        self.filter_geps_rank_reduction(max_median_corr=self.max_median_corr)
+        # rank-reduction for highly autocorrelated programs 
+        self.filter_programs_rank_reduction(max_median_corr=self.max_median_corr)
         # subset k-values for more sparsely separated k-values to reduce network size
         self.select_k_values(k_subset=self.k_subset)
         # use negative correlation quantile to threshold correlations
@@ -121,7 +121,7 @@ class Integration():
         :type selected_k_filter: bool, optional
         :param quantile_transformation: transform correlations using the quantile transformation, defaults to False
         :type quantile_transformation: bool, optional
-        :return: GEP × GEP correlation matrix with diagonal and upper triangle set to NaN
+        :return: program × program correlation matrix with diagonal and upper triangle set to NaN
         :rtype: pd.DataFrame
         """
         mask = np.tril(np.ones(self.corr_matrix.shape), k=-1).astype(bool)
@@ -129,9 +129,9 @@ class Integration():
         
         # get rank filters
         if max_k_filter:
-            maxk_filtered_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if self.k_table.loc[gep[1], (gep[0], "max_k_filter_pass")]])
+            maxk_filtered_index = pd.MultiIndex.from_tuples([program for program in tril.index if self.k_table.loc[program[1], (program[0], "max_k_filter_pass")]])
         if selected_k_filter:
-            selected_k_index = pd.MultiIndex.from_tuples([gep for gep in tril.index if self.k_table.loc[gep[1], (gep[0], "selected_k")]])
+            selected_k_index = pd.MultiIndex.from_tuples([program for program in tril.index if self.k_table.loc[program[1], (program[0], "selected_k")]])
 
         if quantile_transformation:
             # create quantile version of tril where correlations are replaced by quantile of intra-and inter-dataset correlations
@@ -153,26 +153,26 @@ class Integration():
     
     def get_programs(self, type="cnmf_gep_score") -> pd.DataFrame:
         """
-        Get GEPs.
+        Get programs.
 
         :param type: "cnmf_gep_score" or "cnmf_gep_tpm", defaults to "cnmf_gep_score"
         :type type: str, optional
-        :return: features × GEP matrix
+        :return: features × programs matrix
         :rtype: pd.DataFrame
         """
-        gep_matrix = {dataset_name: dataset.get_programs(type=type) for dataset_name, dataset in self.datasets.items()}
-        gep_matrix = pd.concat(gep_matrix, axis=1).sort_index(axis=0).sort_index(axis=1)
-        return gep_matrix
+        program_matrix = {dataset_name: dataset.get_programs(type=type) for dataset_name, dataset in self.datasets.items()}
+        program_matrix = pd.concat(program_matrix, axis=1).sort_index(axis=0).sort_index(axis=1)
+        return program_matrix
 
     def get_usages(self, discretize=False, normalize=False) -> pd.DataFrame:
         """
-        Calculate usage of each GEP in each dataset and sample/observation.
+        Calculate usage of each program in each dataset and sample/observation.
 
-        :param discretize: Discretizes the usage matrix such that for each value of k, each sample has usage of only 1 GEP (the one with the maximum usage). Defaults to False
+        :param discretize: Discretizes the usage matrix such that for each value of k, each sample has usage of only 1 program (the one with the maximum usage). Defaults to False
         :type discretize: bool, optional
-        :param normalize: Normalize the GEP usage matrix such that for each value of k, usage of all GEPs sums to 1. Defaults to False
+        :param normalize: Normalize the program usage matrix such that for each value of k, usage of all programs sums to 1. Defaults to False
         :type normalize: bool, optional
-        :return: category × GEP matrix of overrepresentation values
+        :return: category × programs matrix of overrepresentation values
         :rtype: pd.DataFrame
         """
         usages = {dataset_name: dataset.get_usages(discretize=discretize, normalize=normalize)
@@ -183,7 +183,7 @@ class Integration():
         return usages
     
     def compute_corr(self, method="pearson", cpus=cpus_available):
-        """Computes correlation matrix of all GEPs in the integration from all datasets.
+        """Computes correlation matrix of all programs in the integration from all datasets.
 
         :param method: Correlation method. Values can be "pearson", "spearman", and "kendall". Defaults to "pearson"
         :type method: str, optional
@@ -202,11 +202,11 @@ class Integration():
         
         self.corr_matrix = corr
 
-    def filter_geps_rank_reduction(self,
+    def filter_programs_rank_reduction(self,
                                    max_median_corr: float = 0.0
                                    ) -> None:
         """
-        Filter GEPs using the rank-reduction procedure, relevant only for datasets where GEPs tend to be highly correlated.
+        Filter programs using the rank-reduction procedure, relevant only for datasets where programs tend to be highly correlated.
         This procedure reduces the maximum rank included for a dataset until the median of the correlation distribution is below the max_median_corr threshold.
 
         :param max_median_corr: Threshold, defaults to 0
@@ -268,7 +268,7 @@ class Integration():
     
     def compute_pairwise_thresholds(self, negative_corr_quantile: float = 0.95) -> None:
         """
-        Compute thresholds for each dataset and dataset pair based on the correlation distribution of GEPs. This dynamic thresholding enables integration and balances the influence of each dataset in the network.
+        Compute thresholds for each dataset and dataset pair based on the correlation distribution of programs. This dynamic thresholding enables integration and balances the influence of each dataset in the network.
 
         :param negative_corr_quantile: Threshold for network-based integration, between 0 and 1, with 1 resulting in fewer edges in the network. Defaults to 0.95
         :type negative_corr_quantile: float, optional
@@ -393,7 +393,7 @@ class Integration():
                                         subset_categories: Collection[str] = None
                                         ) -> pd.DataFrame:
         """
-        Calculate Pearson residual of chi-squared test, associating GEPs for each rank (k) to categories of samples/observations. By default, truncates negative values.
+        Calculate Pearson residual of chi-squared test, associating programs for each rank (k) to categories of samples/observations. By default, truncates negative values.
 
         :param layer: name of categorical data layer
         :type layer: str
@@ -403,7 +403,7 @@ class Integration():
         :type truncate_negative: bool, optional
         :param subset_categories: Provide a subset of categories for calculating overrepresentation
         :type subset_categories: Collection[str]
-        :return: category × GEP matrix of overrepresentation values
+        :return: category × programs matrix of overrepresentation values
         :rtype: pd.DataFrame
         """
 
@@ -430,7 +430,7 @@ class Integration():
                                  subset_datasets = None,
                                  method: str = "pearson") -> pd.Series:
         
-        """Calculate Pearson correlation of GEP usage to numerical metadata across samples/observations.
+        """Calculate correlation of programs usage to numerical metadata across samples/observations.
 
         :param layer: name of numerical data layer
         :type layer: str
@@ -438,7 +438,7 @@ class Integration():
         :type subset_datasets: str or Iterable[str], optional
         :param method: Correlation method: "pearson", "spearman", or "kendall". Defaults to "pearson"
         :type method: str, optional
-        :return: correlation of GEP to metadata
+        :return: correlation of programs to metadata
         :rtype: pd.Series
         """
         if subset_datasets is None:
