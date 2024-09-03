@@ -210,7 +210,7 @@ class Colors():
             return fig
         
     def add_missing_metadata_colors(self,
-                                    datasets: Union[Dataset, Integration, Iterable[Dataset]],
+                                    datasets: Union[Dataset, Integration, Mapping[str, Dataset]],
                                     pastel_factor=0.3,
                                     colorblind_type=None):
         """
@@ -220,7 +220,7 @@ class Colors():
         # get categorical data for which colors should match
         if isinstance(datasets, Dataset):
             metadata_df = datasets.get_metadata_df(include_numerical=False)
-        elif isinstance(datasets, Iterable):
+        elif isinstance(datasets, Mapping):
             metadata_df = pd.concat({dataset_name: dataset.get_metadata_df(include_numerical=False) for dataset_name, dataset in datasets.items()})
         elif isinstance(datasets, Integration):
             metadata_df = datasets.get_metadata_df(include_numerical=False, prepend_dataset_column=False)

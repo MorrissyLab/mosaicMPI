@@ -1140,7 +1140,10 @@ class Dataset():
             raise ValueError(f"{unexplained_col_str} metadata columns have unrecognized dtypes.")
         df = self.adata.obs.select_dtypes(include=dtypes)
         df = df.dropna(axis=1, how="all")
-        df[df == "nan"] = np.NaN
+        if include_categorical:
+            for col in df.select_dtypes("category").columns:
+                if "nan" in df[col].cat.categories:
+                    df[col] = df[col].cat.remove_categories("nan")  # replaces category "nan" with actual np.NaN missing values.
         return df
     
     def get_category_overrepresentation(self,
