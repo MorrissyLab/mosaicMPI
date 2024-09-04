@@ -9,6 +9,7 @@ import sys
 from typing import Union, Optional, Literal
 from collections.abc import Iterable, Collection
 import os
+import shutil
 from io import StringIO
 from glob import glob
 
@@ -496,7 +497,7 @@ class Dataset():
             msg = f"Write completed. Moving to {filename}"
             logging.info(msg)
             self.append_to_history(msg)
-            os.rename(temp_filename, filename)
+            shutil.move(temp_filename, filename)
         else:
             logging.info(f"Writing to {filename}")
             self.append_to_history("Writing to {filename}")
