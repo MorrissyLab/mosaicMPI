@@ -473,17 +473,35 @@ class Dataset():
         return msg
     
     def write_h5ad(self,
-                   filename: str):
+                   filename: str,
+                   safe_mode: bool = True):
         """Write dataset to .h5ad file.
 
         :param filename: filepath
         :type filename: str
+        :param safe_mode: If overwriting an existing h5ad file of the same name, then the new file is first written to a temporary file before overwriting.
+            By doing this, errors during writing do not corrupt the existing h5ad file. Only after the file has successfully been written to the temporary file does the original file get overwritten.
+        :type filename: bool, 
         """
         filename = os.path.abspath(filename)
-        logging.info(f"Writing to {filename}")
-        self.append_to_history("Writing to {filename}")
-        self.adata.write_h5ad(filename)
-        logging.info(f"Write completed.")
+        if os.path.exists(filename) and safe_mode:
+            head, tail = os.path.split(filename)
+            temp_filename = os.path.join(head, tail + "." + os.urandom(4).hex() + ".tmp")
+            
+            msg = f"Writing to temporary file {temp_filename}"
+            logging.info(msg)
+            self.append_to_history(msg)
+            self.adata.write_h5ad(temp_filename)
+
+            msg = f"Write completed. Moving to {filename}"
+            logging.info(msg)
+            self.append_to_history(msg)
+            os.rename(temp_filename, filename)
+        else:
+            logging.info(f"Writing to {filename}")
+            self.append_to_history("Writing to {filename}")
+            self.adata.write_h5ad(filename)
+            logging.info(f"Write completed.")
     
     def to_df(self,
               normalized: bool = False):
