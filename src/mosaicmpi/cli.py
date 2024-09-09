@@ -1274,8 +1274,8 @@ def cmd_transfer_labels(output_dir, pkl_file, source, dest, layer, annotate, met
         # create legends for annotation tracks
         width = 3 * len(annotate)
         height = max([1 + len(colors.get_metadata_colors(a)) / 4 for a in annotate])
-        fig, axes = plt.subplots(1, len(annotate), figsize=[width, height], layout="constrained")
-        for layer, ax in zip(annotate, axes):
+        fig, axes = plt.subplots(1, len(annotate), figsize=[width, height], layout="constrained", squeeze=False)
+        for layer, ax in zip(annotate, axes[0]):
             colors.plot_metadata_colors_legend(layer=layer, ax=ax)
         utils.save_fig(fig, os.path.join(output_dir, "legend"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
 
