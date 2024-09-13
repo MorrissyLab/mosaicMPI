@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
+from tqdm import tqdm
 
 def program_gprofiler(program_df: pd.DataFrame,
                       species: Literal["hsapiens", "mmusculus"],
@@ -13,7 +14,9 @@ def program_gprofiler(program_df: pd.DataFrame,
                       gene_sets: Collection[str] = [],
                       no_iea: bool = True,
                       min_intersection: int = 5,
-                      max_intersection: int = 500
+                      max_intersection: int = 500,
+                      batch_size: int = 20,
+                      show_progress_bar: bool = True
                       ) -> SimpleNamespace:
     
     from gprofiler import GProfiler
@@ -33,9 +36,18 @@ def program_gprofiler(program_df: pd.DataFrame,
     result.no_iea = no_iea
 
     gp = GProfiler(return_dataframe=True)
-    result.gprofiler_output = gp.profile(organism=species,
-                                         query=result.query,
-                                         sources=gene_sets, no_iea=no_iea, background=result.background)
+
+    result.gprofiler_output = []
+    batch_query = []
+    for i, query in tqdm(result.query.keys(), total=len(result.query), unit="program", desc="Querying g:Profiler g:GOSt", disable=not show_progress_bar):
+        batch_query.append(query)
+        if i % batch_size == 0 or i + 1 == len(result.query):
+            batch_result = gp.profile(organism=species, query={q: result.query[q] for q in batch_query},
+                                    sources=gene_sets, no_iea=no_iea, background=result.background)
+            result.gprofiler_output.append(batch_result)
+            batch_query = []
+        
+    result.gprofiler_output = pd.concat(result.gprofiler_output)
     result.gprofiler_output["-log10pval"] = -np.log10(result.gprofiler_output["p_value"])
     subset = ((result.gprofiler_output["intersection_size"] <= max_intersection) &
               (result.gprofiler_output["intersection_size"] >= min_intersection))

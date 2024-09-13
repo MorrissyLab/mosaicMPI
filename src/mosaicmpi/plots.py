@@ -1750,10 +1750,17 @@ def plot_geneset_pval_heatmap(df: pd.DataFrame,
                               axlegend: Optional[Axes] = None,
                               cmap: str = "Blues",
                               vmin: float = 0.,
-                              vmax: float = 10.) -> Optional[Figure]:
+                              vmax: float = 10.,
+                              show_geneset_names: bool = False) -> Optional[Figure]:
 
     if ax is None:
-        fig, ax_plot = plt.subplots(figsize=[0.5 + df.shape[1]/4, 8], layout="constrained")
+
+        if show_geneset_names:
+            figsize = [10 + df.shape[1]/4,  0.3 * df.shape[0]]
+        else:
+            figsize = [0.5 + df.shape[1]/4, 8]
+
+        fig, ax_plot = plt.subplots(figsize=figsize, layout="constrained")
     else:
         ax_plot = ax
         
@@ -1763,13 +1770,13 @@ def plot_geneset_pval_heatmap(df: pd.DataFrame,
         axlegend_plot = axlegend
     
     if df.shape[0] > 0:    
-        sns.heatmap(df, cmap=cmap, vmin=vmin, vmax=vmax, ax=ax_plot, cbar_ax = axlegend_plot, yticklabels=False)
+        sns.heatmap(df, cmap=cmap, vmin=vmin, vmax=vmax, ax=ax_plot, cbar_ax = axlegend_plot, yticklabels=show_geneset_names)
         ax_plot.tick_params(top=False,
                             bottom=True,
                             left=False,
                             right=False,
                             labelleft=False,
-                            labelright=False,
+                            labelright=show_geneset_names,
                             labeltop= False,
                             labelbottom=True)
 
