@@ -39,7 +39,7 @@ def program_gprofiler(program_df: pd.DataFrame,
 
     result.gprofiler_output = []
     batch_query = []
-    for i, query in tqdm(result.query.keys(), total=len(result.query), unit="program", desc="Querying g:Profiler g:GOSt", disable=not show_progress_bar):
+    for i, query in enumerate(tqdm(result.query.keys(), total=len(result.query), unit="program", desc="Querying g:Profiler", disable=not show_progress_bar)):
         batch_query.append(query)
         if i % batch_size == 0 or i + 1 == len(result.query):
             batch_result = gp.profile(organism=species, query={q: result.query[q] for q in batch_query},
