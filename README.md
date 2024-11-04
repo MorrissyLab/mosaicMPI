@@ -58,7 +58,7 @@ Some analyses require packages from other channels to be installed in the same e
 conda install -c bioconda gprofiler-official
 ```
 
-- ssGSEA:
+- GSEApy:
 
 ```bash
 # if you have conda (MacOS_x86-64 and Linux only)
