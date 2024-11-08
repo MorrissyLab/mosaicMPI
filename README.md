@@ -45,12 +45,20 @@ mosaicMPI has two interfaces:
 ### ✨ Latest Release
 Install the package with `conda`:
 ```bash
-# create an environment called mosaic and install
+# create an environment called mosaicenv and install
 conda create -n mosaicenv -c conda-forge mosaicmpi
 conda activate mosaicenv
 ```
 
-For ssGSEA analysis, you will also need to install GSEApy into the same environment.
+Some analyses require packages from other channels to be installed in the same environment:
+
+- g:Profiler
+
+```bash
+conda install -c bioconda gprofiler-official
+```
+
+- GSEApy:
 
 ```bash
 # if you have conda (MacOS_x86-64 and Linux only)
