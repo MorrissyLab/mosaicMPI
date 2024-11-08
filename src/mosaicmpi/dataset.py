@@ -498,6 +498,7 @@ class Dataset():
             logging.info(msg)
             self.append_to_history(msg)
             shutil.move(temp_filename, filename)
+            logging.info(f"Move completed.")
         else:
             logging.info(f"Writing to {filename}")
             self.append_to_history("Writing to {filename}")
@@ -869,6 +870,8 @@ class Dataset():
         # save parameters in AnnData object
         self.adata.uns["cnmf"] = cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss)[1]  # dict of cnmf parameters
         
+        # output dataset with new information on overdispersed genes and cNMF parameters
+        self.write_h5ad(os.path.join(cnmf_output_dir, cnmf_name, cnmf_name + ".h5ad"))
         self.append_to_history(f"cNMF parameters added. cNMF inputs initialized in {cnmf_output_dir}/{cnmf_name}")
         return cnmf_obj
     

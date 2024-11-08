@@ -379,11 +379,9 @@ def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_rang
     if k_range is not None:
         kvals |= set(range(k_range[0], k_range[1] + 1, k_range[2]))
     kvals = sorted(list(kvals))
+    
     # prepare cNMF directory for factorization
     dataset.initialize_cnmf(cnmf_output_dir = output_dir, cnmf_name=name, kvals=kvals, n_iter=n_iter, beta_loss=beta_loss, seed=seed)
-    
-    # output dataset with new information on overdispersed genes and cNMF parameters
-    dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     
     logging.info("All tasks completed successfully.")
     

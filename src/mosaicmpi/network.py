@@ -201,7 +201,7 @@ class Network():
                                                               subset_datasets=subset_datasets,
                                                               truncate_negative=False,
                                                               subset_categories=subset_categories)
-        mapper = {tuple([program.split("|")[0], int(program.split("|")[1]), int(program.split("|")[2])]): comm for program, comm in self.program_communities.items()}
+        mapper = {tuple([program.split("|")[0], int(program.split("|")[1]), int(program.split("|")[2])]): comm for program, comm in self.node_to_community.items()}
         df.columns = df.columns.map(mapper)
         df = df.T.groupby(level=0).mean().T
         df = df.reindex(self.ordered_community_names, axis=1)
@@ -227,7 +227,7 @@ class Network():
         """
 
         ser = self.integration.get_metadata_correlation(layer=layer, subset_datasets=subset_datasets, method=method)
-        mapper = {tuple([program.split("|")[0], int(program.split("|")[1]), int(program.split("|")[2])]): comm for program, comm in self.program_communities.items()}
+        mapper = {tuple([program.split("|")[0], int(program.split("|")[1]), int(program.split("|")[2])]): comm for program, comm in self.node_to_community.items()}
         ser.index = ser.index.map(mapper)
         ser = ser.groupby(level=0).mean()
         ser = ser.reindex(self.ordered_community_names)
@@ -331,7 +331,6 @@ class Network():
         communities = {str(k): v for k, v in communities.items()}
 
         self.communities = communities
-        self.program_communities = {program: community for community, programs in communities.items() for program in programs}
 
         # also create a community network with default parameters, so that self.comm_graph is available if needed. However, self.create_community_network can be called again
         self.create_community_network()
@@ -345,7 +344,6 @@ class Network():
         communities = {str(k): v for k, v in communities.items()}
         
         self.communities = communities
-        self.program_communities = {program: community for community, programs in communities.items() for program in programs}
 
         # also create a community network with default parameters, so that self.comm_graph is available if needed. However, self.create_community_network can be called again
         self.create_community_network()
@@ -392,7 +390,6 @@ class Network():
             pruned = renumbered
         
         self.communities = pruned
-        self.program_communities = {program: community for community, programs in self.communities.items() for program in programs}
         self.create_community_network()
         self.program_graph = self.program_graph.subgraph([node for nodes in self.communities.values() for node in nodes])  # removes nodes not in a pruned community
 
@@ -407,7 +404,12 @@ class Network():
         community_names = sorted(self.communities.keys(), key = lambda cstr: [int(lvl) for lvl in cstr.split(".")])
         return community_names
     
-    
+    @property
+    def node_to_community(self) -> Dict[str, str]:
+        dict_of_programs = {program: community for community, programs in self.communities.items() for program in programs}
+        return dict_of_programs
+
+
     def get_vectorized_community_sort_key(self, community_names: pd.Index) -> pd.Index:
         """Return a vector of sort_indicesGet community names, ordered numerically after separating clusters and subclusters. For example, this algorithm can properly sort communities labelled 1.1, 1.2, 1.3, 2.1, 2.2, 2.10, 2.15.
 
@@ -430,8 +432,8 @@ class Network():
         edge_attr = {}
         for edge in self.program_graph.edges:
             weight = base_weight
-            if edge[0] in self.program_communities and edge[1] in self.program_communities:  # nodes might not have communities due to pruning, and so will be treated as if they are in different communities for layout purposes
-                if self.program_communities[edge[0]] == self.program_communities[edge[1]]:
+            if edge[0] in self.node_to_community and edge[1] in self.node_to_community:  # nodes might not have communities due to pruning, and so will be treated as if they are in different communities for layout purposes
+                if self.node_to_community[edge[0]] == self.node_to_community[edge[1]]:
                     weight *= shared_community_weight
             if edge[0].split("|")[0] == edge[1].split("|")[0]:
                 weight *= shared_dataset_weight
@@ -687,7 +689,7 @@ class Network():
         :return: Communities, indexed by the lowest rank program(s) for each dataset
         :rtype: pd.Series
         """
-        programs = pd.Series(self.program_communities, name="Community")
+        programs = pd.Series(self.node_to_community, name="Community")
         programs.index = pd.MultiIndex.from_tuples((node_to_program(node) for node in programs.index), names=["dataset", "k", "program"])
         programs = programs.sort_index()
         if isinstance(k, int):
@@ -726,7 +728,7 @@ class Network():
         :return: Communities, indexed by the lowest rank program(s) for each dataset
         :rtype: pd.Series
         """
-        programs = pd.Series(self.program_communities, name="Community")
+        programs = pd.Series(self.node_to_community, name="Community")
         programs.index = pd.MultiIndex.from_tuples((node_to_program(node) for node in programs.index), names=["dataset", "k", "program"])
         programs = programs.sort_index()
         if isinstance(min_k, int):
@@ -829,7 +831,7 @@ class Network():
         :return: Communities-Datasets × variables consensus matrix
         :rtype: pd.DataFrame
         """
-        program_to_community = {node_to_program(node): community for node, community in self.program_communities.items()}
+        program_to_community = {node_to_program(node): community for node, community in self.node_to_community.items()}
         programs = self.integration.get_programs()
         programs = programs.loc[:, programs.columns.get_level_values(1).astype(int) >= min_k]
         programs.columns = pd.MultiIndex.from_arrays([programs.columns.map(program_to_community),

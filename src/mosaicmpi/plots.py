@@ -976,8 +976,8 @@ def plot_program_network_communities(network: Network,
     
     node_colors = []
     for node in network.program_graph:
-        if node in network.program_communities:
-            node_colors.append(colors.community_colors[network.program_communities[node]])
+        if node in network.node_to_community:
+            node_colors.append(colors.community_colors[network.node_to_community[node]])
         else:
             # if node has been pruned
             node_colors.append("#00000000")
@@ -1751,12 +1751,13 @@ def plot_geneset_pval_heatmap(df: pd.DataFrame,
                               cmap: str = "Blues",
                               vmin: float = 0.,
                               vmax: float = 10.,
-                              show_geneset_names: bool = False) -> Optional[Figure]:
+                              show_geneset_labels: bool = False,
+                              limit_geneset_label_length: int = 200) -> Optional[Figure]:
 
     if ax is None:
 
-        if show_geneset_names:
-            figsize = [10 + df.shape[1]/4,  0.3 * df.shape[0]]
+        if show_geneset_labels:
+            figsize = [10 + df.shape[1]/4,  0.15 * df.shape[0]]
         else:
             figsize = [0.5 + df.shape[1]/4, 8]
 
@@ -1769,16 +1770,22 @@ def plot_geneset_pval_heatmap(df: pd.DataFrame,
     else:
         axlegend_plot = axlegend
     
-    if df.shape[0] > 0:    
-        sns.heatmap(df, cmap=cmap, vmin=vmin, vmax=vmax, ax=ax_plot, cbar_ax = axlegend_plot, yticklabels=show_geneset_names)
+    if df.shape[0] > 0:
+        if show_geneset_labels and limit_geneset_label_length > 0:
+            yticklabels = df.index.str[0:limit_geneset_label_length]
+        else:
+            yticklabels=False
+        sns.heatmap(df, cmap=cmap, vmin=vmin, vmax=vmax, ax=ax_plot, cbar_ax = axlegend_plot, yticklabels=yticklabels)
         ax_plot.tick_params(top=False,
                             bottom=True,
                             left=False,
                             right=False,
                             labelleft=False,
-                            labelright=show_geneset_names,
+                            labelright=show_geneset_labels,
                             labeltop= False,
                             labelbottom=True)
+        if show_geneset_labels:
+            ax_plot.tick_params(axis="y", labelsize=8, labelrotation=0)
 
         ax_plot.set_xlabel("")
         ax_plot.set_ylabel("")

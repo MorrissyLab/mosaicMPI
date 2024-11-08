@@ -275,10 +275,13 @@ class Colors():
                                     layer: str = None,
                                     ax: Axes = None,
                                     char_per_line: int = 20,
+                                    subset = None,
                                     figsize: Iterable = None) -> Optional[Figure]:
         
         if layer is not None and isinstance(ax, Axes):
             color_def = self.metadata_colors[layer]
+            if subset is not None:
+                color_def = {k:v for k, v in color_def.items() if k in subset}
             legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
             ax.legend(handles=legend_elements, loc='upper center')
             ax.set_title(layer)

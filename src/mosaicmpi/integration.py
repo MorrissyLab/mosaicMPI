@@ -361,7 +361,9 @@ class Integration():
         for dataset_name in subset_datasets:
             df[dataset_name] = self.datasets[dataset_name].get_metadata_df(include_categorical=include_categorical,
                                                        include_numerical=include_numerical)
-        df = pd.concat(df, axis=0)
+        if df:
+            df = pd.concat(df, axis=0)
+        
         if prepend_dataset_column:
             df.insert(0, "Dataset", df.index.get_level_values(0))
         return df
