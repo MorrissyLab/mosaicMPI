@@ -246,7 +246,7 @@ def annotated_heatmap(
 
             if pd.api.types.is_object_dtype(annot):
                 ordered_rgb = annot.iloc[xind]
-                ordered_rgb[~ordered_rgb.isin(metadata_colors[track])] = np.NaN  # omit samples for which no color exists
+                ordered_rgb[~ordered_rgb.isin(metadata_colors[track])] = np.nan  # omit samples for which no color exists
                 ordered_rgb = ordered_rgb.replace(metadata_colors[track])
                 if ordered_rgb.isnull().any():
                     ordered_rgb = ordered_rgb.fillna(missing_data_color)
@@ -672,7 +672,7 @@ def plot_community_contribution(network: Network, colors: Colors, figsize: Colle
                 if f"{dataset}|{rank}" in counts.index:
                     line_y.append(y)
                 else:
-                    line_y.append(np.NaN)
+                    line_y.append(np.nan)
             ax.plot(line_x, line_y, color=colors.dataset_colors[dataset], linewidth=2)
             
             for count, style in marker_style.items():
@@ -1685,14 +1685,14 @@ def plot_compare_integrations(name1: str, network1: Network, name2: str, network
 
     jaccard = compare_community_jaccard_similarity(name1=name1, network1=network1, name2=name2, network2=network2)
 
-    net1_bars = pd.DataFrame(np.NaN, index=jaccard.index[::-1], columns=["shared"] + list(net1_datasets))
+    net1_bars = pd.DataFrame(np.nan, index=jaccard.index[::-1], columns=["shared"] + list(net1_datasets))
     for net1_comm in network1.ordered_community_names:
         net1_bars.loc[net1_comm, "shared"] = len(set(n for n in network1.communities[net1_comm] if utils.node_to_program(n)[0] in shared_datasets))
         for d in net1_datasets:
             net1_bars.loc[net1_comm, d] = len(set(n for n in network1.communities[net1_comm] if utils.node_to_program(n)[0] == d))
     net1_bars
 
-    net2_bars = pd.DataFrame(np.NaN, index=jaccard.columns, columns=["shared"] + list(net2_datasets))
+    net2_bars = pd.DataFrame(np.nan, index=jaccard.columns, columns=["shared"] + list(net2_datasets))
     for net2_comm in network2.ordered_community_names:
         net2_bars.loc[net2_comm, "shared"] = len(set(n for n in network2.communities[net2_comm] if utils.node_to_program(n)[0] in shared_datasets))
         for d in net2_datasets:

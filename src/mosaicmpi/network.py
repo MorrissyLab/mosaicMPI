@@ -963,7 +963,7 @@ def compare_community_jaccard_similarity(name1: str, network1: Network, name2: s
     net1_datasets = set(network1.integration.datasets) - shared_datasets
     net2_datasets = set(network2.integration.datasets) - shared_datasets
 
-    jaccard = pd.DataFrame(np.NaN,
+    jaccard = pd.DataFrame(np.nan,
                            index=pd.Index(network1.ordered_community_names, name=name1),
                            columns=pd.Index(network2.ordered_community_names, name=name2))
     for net1_comm, net1_nodes in network1.communities.items():

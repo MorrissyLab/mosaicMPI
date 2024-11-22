@@ -1165,7 +1165,7 @@ class Dataset():
         if include_categorical:
             for col in df.select_dtypes("category").columns:
                 if "nan" in df[col].cat.categories:
-                    df[col] = df[col].cat.remove_categories("nan")  # replaces category "nan" with actual np.NaN missing values.
+                    df[col] = df[col].cat.remove_categories("nan")  # replaces category "nan" with actual np.nan missing values.
         return df
     
     def get_category_overrepresentation(self,
@@ -1187,7 +1187,7 @@ class Dataset():
         usage = self.get_usages(normalize=True).copy()
         sample_to_class = self.get_metadata_df()[layer]
         if subset_categories is not None:
-            sample_to_class[~sample_to_class.isin(subset_categories)] = np.NaN
+            sample_to_class[~sample_to_class.isin(subset_categories)] = np.nan
         usage.index = usage.index.map(sample_to_class)
         observed = usage.groupby(level=0, observed=True).sum()
         observed = observed[observed.sum(axis=1) > 0]
@@ -1197,7 +1197,7 @@ class Dataset():
                 logging.warning(f"Overrepresentation could not be calculated for layer '{layer}', as only {n_categories} categories were found in the data. "
                                 f"Note that empty values in the metadata are not considered a category. "
                                 f"Overrepresentation cannot be calculated with fewer than 2 categories for each layer. ")
-            return pd.DataFrame(np.NaN, index = observed.index, columns=observed.columns)
+            return pd.DataFrame(np.nan, index = observed.index, columns=observed.columns)
         expected = []
         for k, obs_k in observed.T.groupby(level=1):
             exp_k = pd.DataFrame(obs_k.sum(axis=1)) @ pd.DataFrame(obs_k.sum(axis=0)).T / obs_k.sum().sum()
