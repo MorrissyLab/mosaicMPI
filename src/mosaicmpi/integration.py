@@ -314,7 +314,7 @@ class Integration():
                                 min_corr = thresholds.loc[(dataset_row, dataset_col)]
                                 mask = df_filt.loc[dataset_row, dataset_col] < min_corr
                                 mask = pd.concat({dataset_col: pd.concat({dataset_row: mask})}, axis=1)  # adds the dataset levels back for matched indexes
-                                df_filt[~mask] = np.NaN
+                                df_filt[~mask] = np.nan
 
                 else:
                     df_filt = df
