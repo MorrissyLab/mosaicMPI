@@ -670,6 +670,86 @@ class Dataset():
         if cross_validate:
             self.adata.uns["imputation"]["n_folds"] = n_folds
 
+    def select_hvg_default(self,
+                           stratify_by: Optional[str] = None,
+                           gam_spline_degree: int = 0,
+                           gam_dof: int = 20,
+                           max_missingness: float = 0.0,
+                           min_odscore: Optional[float] = None,
+                           top_n: Optional[int] = None,
+                           quantile: Optional[float] = None,
+                           min_mean: float = 0.0):
+        
+        data_raw = self.to_df()
+        data_normalized = self.to_df(normalized=True)
+        
+        # create dataframe of per-gene statistics
+        self.adata.var["mean"] = data_normalized.mean()
+        self.adata.var["rank_mean"] = self.adata.var["mean"].rank()
+        self.adata.var["variance"] = data_normalized.var()
+        self.adata.var["sd"] = data_normalized.std()
+        self.adata.var[["log_mean", "log_variance"]] = np.log10(self.adata.var[["mean", "variance"]])
+        self.adata.var["mean_counts"] = data_raw.mean()
+        self.adata.var["odscore_excluded"] = ((self.adata.var["missingness"] > max_missingness) |
+                                              self.adata.var["log_mean"].isnull() |
+                                              (self.adata.var["mean"] == 0) |
+                                              self.adata.var["log_variance"].isnull())
+
+        # model mean-variance relationship using generalized additive model with smooth components
+        df_model = self.adata.var[~self.adata.var["odscore_excluded"]]
+        bs = BSplines(df_model["mean"], df=gam_dof, degree=gam_spline_degree)
+        gam = GLMGam.from_formula("log_variance ~ log_mean", data=df_model, smoother=bs).fit()
+        self.adata.var["resid_log_variance"] = gam.resid_response
+        self.adata.var["odscore"] = np.sqrt(10 ** self.adata.var["resid_log_variance"])
+        self.adata.var["gam_fittedvalues"] = gam.fittedvalues
+
+        self.adata.uns["hvg"] = {
+            "method": "default",
+            "stratify_by": stratify_by,
+            "gam_spline_degree": gam_spline_degree,
+            "gam_dof": gam_dof,
+            "max_missingness": max_missingness,
+            "min_odscore": min_odscore,
+            "top_n": top_n,
+            "quantile": quantile,
+            "min_mean": min_mean
+        }
+
+
+
+
+
+        # min_mean filter
+        selected_genes = self.adata.var["mean_counts"] >= min_mean
+        # min_score filter
+        if min_score is not None:
+            selected_genes = selected_genes & (self.adata.var[overdispersion_metric] >= min_score)
+        # top_n filter
+        if top_n is not None:
+            genes = self.adata.var[overdispersion_metric].sort_values(ascending=False).head(int(top_n)).index
+            selected_genes = selected_genes & self.adata.var.index.isin(genes)
+        # quantile filter
+        if quantile is not None:
+            n_total_genes = self.adata.var[overdispersion_metric].notnull().sum()
+            genes = self.adata.var[overdispersion_metric].sort_values(ascending=False).head(int(quantile * n_total_genes)).index
+            selected_genes = selected_genes & self.adata.var.index.isin(genes)
+
+        n_selected_genes = selected_genes.sum()
+        logging.info(f"{n_selected_genes} genes selected for factorization")
+        
+        # make changes to Dataset object
+        self.adata.var["selected"] = selected_genes
+        self.adata.obs["hvg_all_0"] = (self.to_df(normalized=True).loc[:, selected_genes].sum(axis=1) == 0).astype("str").astype("category")
+        self.adata.uns["odg"]["overdispersion_metric"] = overdispersion_metric
+        self.adata.uns["odg"]["min_mean"] = min_mean
+        self.adata.uns["odg"]["min_score"] = min_score if min_score is not None else ""
+        self.adata.uns["odg"]["top_n"] = top_n if top_n is not None else ""
+        self.adata.uns["odg"]["quantile"] = quantile if quantile is not None else ""
+        self.append_to_history("Overdispersed genes selected")
+        self.append_to_history("Highly variable genes selected.")
+        
+
+
     def model_overdispersed_genes(self, odg_default_spline_degree: int = 3, odg_default_dof: int = 8, max_missingness: float = 0.5):
         """
         Computes gene statistics and fits two models of mean and variance of genes in the dataset. The first method is the
@@ -807,7 +887,7 @@ class Dataset():
         self.adata.uns["odg"]["top_n"] = top_n if top_n is not None else ""
         self.adata.uns["odg"]["quantile"] = quantile if quantile is not None else ""
         self.append_to_history("Overdispersed genes selected")
-    
+
     def initialize_cnmf(self, cnmf_output_dir: str,
                         cnmf_name: str,
                         kvals: Collection = range(2, 61),

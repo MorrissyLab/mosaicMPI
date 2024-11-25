@@ -9,7 +9,6 @@ from .plots import *
 from . import utils, __version__, cpus_available
 
 import os
-import json
 import logging
 import subprocess
 import collections
@@ -28,6 +27,7 @@ matplotlib.use('Agg')
 # adds both -h and --help as options
 CONTEXT_SETTINGS = {'help_option_names': ['-h', '--help']}
 
+# Orders the commands in the help menus to match the workflow
 class _OrderedGroup(click.Group):
     """
     Overwrites Groups in click to allow ordered commands.
@@ -205,6 +205,124 @@ def cmd_check_h5ad(input, output):
 
     logging.info("All tasks completed successfully.")
 
+@click.group(name="select-hvg", cls=_OrderedGroup)
+def select_hvg():
+    """
+    Select highly variable genes for program identification.
+    """
+
+@click.command(name="stdeconvolve")
+def cmd_select_hvg_stdeconvolve():
+    print("stdeconvolve")
+
+@click.command(name="custom")
+def cmd_select_hvg_custom():
+    print("custom")
+
+@click.command(name="default")
+@click.option(
+    "-n", "--name", type=str, required=True, 
+    help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
+@click.option(
+    "-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
+    help="Output directory. All output will be placed in [output_dir]/[name]/... ")
+@click.option(
+    "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=True,
+    help="h5ad file containing expression data (adata.X=normalized and adata.raw.X = count) as well as any cell/sample metadata (adata.obs).")
+@click.option(
+    "-s", "--stratify_by", type=str, default=None, show_default=True,
+    help="Model gene-variance relationship separately for each class of samples/cells based on the provided metadata field. For example, you could stratify by Sample ID for single-cell datasets."
+)
+@click.option(
+    "--gam_spline_degree", type=int, default=0, show_default=True,
+    help="Degree for BSplines for the Generalized Additive Model. For example, a constant spline would be 0, linear would be 1, and cubic would be 3.")
+@click.option(
+    "--gam_dof", type=int, default=20, show_default=True,
+    help="Degrees of Freedom (number of components) for the Generalized Additive Model.")
+@click.option(
+    "--max_missingness", type=float, default=0.0, show_default=True,
+    help="""Maximum proportion of missing values allowed for each feature prior to modelling the mean-variance relationship.
+            This parameter is helpful for reducing the tendency of kNN- and zero-imputed features to have higher variance 
+            relative to unimputed genes.""")
+@click.option(
+    "--min_odscore",
+    type=float, default=None, show_default=True,
+    help="Specify a minimum OD-score for HVG selection.")
+@click.option(
+    "--top_n",
+    type=int, default=None, show_default=True,
+    help="Specify a number HVGs to identify after ranking by OD-score")
+@click.option(
+    "--quantile",
+    type=float, default=None, show_default=True,
+    help=r"Specify a threshold for quantile-transformed OD-scores for HVG selection. For example, to choose the top 10% of genes, use --quantile ")
+@click.option(
+    "--min_mean", default=0.0, show_default=True,
+    help="Exclude genes from overdispersed gene lists if mean of counts data (or normalized data, if no count data exists) is less than this threshold.")
+def cmd_select_hvg_default(name, output_dir, input, stratify_by, gam_spline_degree, gam_dof, max_missingness, min_odscore, top_n, quantile, min_mean):
+    """
+    Select overdispersed genes based on residual standard deviation after modeling mean-variance dependence. First, a GLM-GAM is used to
+    model the mean-variance relationship as a curve, and then this curve is used as a correction factor to calculate an ODscore metric used for thresholding.
+    Specify one of --min_odscore, --top_n, or --quantile to specify a thresholding method. If multiple methods are selected, the intersection will be used.
+    Examples:
+
+        # use default parameters, suitable for most datasets
+        mosaicmpi select-hvg default -n test -i test.h5ad
+
+        # Explicitly use a linear model instead of a BSpline Generalized Additive Model
+        mosaicmpi select-hvg default -n test -i test.h5ad --spline_degree 0 --gam_dof 1
+
+        # Explicitly use a linear model instead of a BSpline Generalized Additive Model, and then use 
+        mosaicmpi select-hvg default -n test -i test.h5ad --spline_degree 0 --gam_dof 1
+    """
+
+    # warn if multiple thresholding methods are selected
+    selected_methods = []
+    if min_odscore is not None:
+        selected_methods.append("min_odscore")
+    if top_n is not None:
+        selected_methods.append("top_n")
+    if quantile is not None:
+        selected_methods.append("quantile")
+    if len(selected_methods) > 1:
+        methodwarnstr = ", ".join(selected_methods)
+        logging.warning(f"Multiple conflicting overdispersed gene selection criteria have been selected: {methodwarnstr}. "
+                        "Only the intersection of these methods will be selected.")
+    
+    os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)  # creates directories for cNMF
+    utils.start_logging(os.path.join(output_dir, name, "logs", "logfile.txt"))
+    dataset = Dataset.from_h5ad(input)
+    
+    # Create gene stats table and save h5ad file
+    dataset.select_hvg_default(stratify_by=stratify_by,
+                               gam_spline_degree=gam_spline_degree,
+                               gam_dof=gam_dof,
+                               max_missingness=max_missingness,
+                               min_odscore=min_odscore,
+                               top_n=top_n,
+                               quantile=quantile,
+                               min_mean=min_mean)
+    dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
+    
+    # output text file
+    dataset.adata.var.to_csv(os.path.join(output_dir, name, "feature_stats.tsv"), sep="\t")
+
+    # create mean vs variance plots
+    fig = plot_feature_dispersion(dataset, show_selected=False)
+    utils.save_fig(fig, os.path.join(output_dir, name, "feature_meanvar"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+    
+    if dataset.is_imputed:
+        logging.info("Creating plots for imputed data")
+
+        fig = plot_feature_missingness(dataset, proportion=True)
+        utils.save_fig(fig, os.path.join(output_dir, name, "missingness_histogram"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+
+    logging.info("All tasks completed successfully.")
+
+    
+@click.command(name="cnmf")
+def cmd_select_hvg_cnmf():
+    print("cnmf")
 
 @click.command(name="model-odg")
 @click.option(
@@ -231,6 +349,8 @@ def cmd_check_h5ad(input, output):
 )
 def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, max_missingness):
     """
+    [superseded by select-hvg]
+
     Model gene overdispersion and plot calibration plots for selection of overdispersed genes, using two methods:
     
     - `cnmf`: v-score and minimum expression threshold for count data (cNMF method: Kotliar, et al. eLife, 2019) 
@@ -314,6 +434,8 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, m
 
 def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_range, k, n_iter, seed, beta_loss):
     """
+    [superseded by select-hvg]
+    
     Set parameters for factorization, including selecting overdispersed genes.
     
     Overdispersed genes can be modelled using the `default` or `cnmf` models, and thresholds
@@ -479,7 +601,7 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
                             "cnmf_gep_tpm" in dataset.adata.varm or\
                             "cnmf_gep_raw" in dataset.adata.varm
         if cnmf_data_loaded and not force_h5ad_update:
-            logging.error(f"Error: AnnData already contains cNMF results. Use --force_h5ad_update to overwrite.")
+            logging.error(f"AnnData already contains cNMF results. Use --force_h5ad_update to overwrite.")
             sys.exit(1)
 
         dataset.add_cnmf_results(cnmf_output_dir=output_dir,
@@ -756,7 +878,6 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
         network.to_pkl(os.path.join(output_dir, "network_integration.pkl.gz"))
 
     network.write_communities_toml( os.path.join(output_dir, "communities.toml"))
-    pd.DataFrame.from_dict(data=network.program_communities, orient='index').to_csv(os.path.join(output_dir, 'program_communities.txt'), sep="\t", header=False)
     
     # Write representative programs and usages
     logging.info("Writing representative programs")
@@ -1285,6 +1406,7 @@ cli.add_command(cmd_update_h5ad_metadata)
 cli.add_command(cmd_impute_knn)
 cli.add_command(cmd_impute_zeros)
 cli.add_command(cmd_check_h5ad)
+cli.add_command(select_hvg)
 cli.add_command(cmd_model_odg)
 cli.add_command(cmd_set_parameters)
 cli.add_command(cmd_factorize)
@@ -1297,3 +1419,9 @@ cli.add_command(cmd_ssgsea)
 cli.add_command(cmd_gprofiler)
 cli.add_command(cmd_compare_integrations)
 cli.add_command(cmd_transfer_labels)
+
+# select_hvg subcommands
+select_hvg.add_command(cmd_select_hvg_default)
+select_hvg.add_command(cmd_select_hvg_cnmf)
+select_hvg.add_command(cmd_select_hvg_stdeconvolve)
+select_hvg.add_command(cmd_select_hvg_custom)
