@@ -2,7 +2,7 @@
 
 # mosaicMPI: Mosaic Multi-resolution Program Integration
 
-![version badge](https://img.shields.io/badge/version-2.6.4-blue)
+![version badge](https://img.shields.io/badge/version-2.6.6-blue)
 [![PyPI Latest Release](https://img.shields.io/pypi/v/mosaicmpi.svg)](https://pypi.org/project/mosaicmpi/)
 [![Conda Latest Release](https://img.shields.io/conda/vn/conda-forge/mosaicmpi)](https://anaconda.org/conda-forge/mosaicmpi/)
 [![Documentation status](https://readthedocs.org/projects/mosaicmpi/badge/?version=latest&style=flat)](https://mosaicmpi.readthedocs.io)
@@ -19,7 +19,7 @@ Contributors: Hyojin Song, Aaron Gillmor, Gurveer Gill, Courtney Hall
 
 ## ⚡Main Features
 
-Here are just a few of the things that mosaicMPI does well:
+Here are just a few of the things that `mosaicMPI` does well:
 
 - Identifies interpretable, non-negative programs at multiple resolutions
 - Mosaic integration does not require subsetting features/genes to
@@ -27,12 +27,12 @@ Here are just a few of the things that mosaicMPI does well:
 - Multi-omics integration without shared sample IDs
 - Incremental integration (adding datasets one at a time) since
   deconvolution is performed independently on each dataset
-- High performance integration of of datasets with mismatched features
+- High performance integration of datasets with mismatched features
   (eg. Microarray, RNA-Seq, Proteomics) or sparsity (eg. single-cell vs. bulk)
 - Metadata transfer across datasets
 
-mosaicMPI has two interfaces:
-- command-line interface with a standardized workflow for rapid data exploration and integration
+`mosaicMPI` has two interfaces:
+- command-line interface (CLI) with a standardized workflow for rapid data exploration and integration
 - python API for greatest flexibility and extensibility
 
 ## 🔧 Install
@@ -45,20 +45,23 @@ mosaicMPI has two interfaces:
 ### ✨ Latest Release
 Install the package with `conda`:
 ```bash
-# create an environment called mosaicenv and install
+# if using a fresh conda install
+conda init
+
+# create an environment called 'mosaicenv' and install
 conda create -n mosaicenv -c conda-forge mosaicmpi
 conda activate mosaicenv
 ```
 
 Some analyses require packages from other channels to be installed in the same environment:
 
-- g:Profiler
+- [`g:Profiler`](https://biit.cs.ut.ee/gprofiler/page/apis)
 
 ```bash
 conda install -c bioconda gprofiler-official
 ```
 
-- GSEApy:
+- [`GSEApy`](https://github.com/zqfang/GSEApy):
 
 ```bash
 # if you have conda (MacOS_x86-64 and Linux only)
@@ -73,4 +76,4 @@ Read the [documentation](https://mosaicmpi.readthedocs.io/).
 
 ## 💭 Getting Help
 
-For questions arising during use of mosaicMPI, create and browse issues in the [GitHub "issues" tab](https://github.com/MorrissyLab/mosaicMPI/issues).
+For questions arising during use of `mosaicMPI`, create and browse issues in the [GitHub "issues" tab](https://github.com/MorrissyLab/mosaicMPI/issues).
