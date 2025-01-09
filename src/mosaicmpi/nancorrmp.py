@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import multiprocessing as mp
 from typing import *
-from scipy.special import btdtr
+from scipy.special import betainc
 
 shared_variables_dictionary = {}
 
@@ -138,5 +138,5 @@ class NaNCorrMp:
         if ab == 0:
             p_value = 1.0
         else:
-            p_value = 2 * btdtr(ab, ab, 0.5 * (1 - abs(np.float64(corr))))
+            p_value = 2 * betainc(ab, ab, 0.5 * (1 - abs(np.float64(corr))))
         return p_value
