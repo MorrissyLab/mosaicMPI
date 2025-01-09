@@ -50,7 +50,7 @@ Additional customization can be achieved using:
 Once the command has completed, outputs in the output directory will include:
 
 - files enabling downstream analysis:
-  - `network_integration.pkl.gz`: a file that contains all datasets and the network integration information, including correlations, metadata, and input data. This can be used for downstream analysis of a mosaicMPI integration using the [python API](python_integration.ipynb), as well as with some CLI commands.
+  - `network_integration.pkl.gz`: a file that contains all datasets and the network integration information, including correlations, metadata, and input data. This can be used for downstream analysis of a mosaicMPI integration using the [python API](python-integration.ipynb), as well as with some CLI commands.
   - `pearson.df.npz`: pearson correlation matrix of all programs within and between datasets, compatible with [NumPy](https://numpy.org/doc/stable/reference/generated/numpy.load.html).
   - `program_graph.graphml`: GraphML-compatible file containing the nodes and edges of the program graph
   - `community_graph.graphml`: GraphML-compatible file containing the nodes and edges of the community graph
