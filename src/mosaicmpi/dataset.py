@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 import logging
 from datetime import datetime
-import sys
 from typing import Union, Optional, Literal
 from collections.abc import Iterable, Collection
 import os
@@ -18,8 +17,10 @@ import anndata as ad
 import pandas as pd
 import numpy as np
 from sklearn.impute import KNNImputer, SimpleImputer
-from statsmodels.gam.api import GLMGam, BSplines
+from statsmodels.stats.multitest import multipletests
+from scipy.stats import f
 from tqdm import tqdm
+import pygam
 
 class Dataset():
     
@@ -106,7 +107,7 @@ class Dataset():
 
         :param data: An observations × features data
         :type data: pd.DataFrame
-        :param is_normalized: Specify if data is already normalized or whether not. Raw data will be TPM normalized prior to overdispersed gene selection, whereas already normalized data will not.
+        :param is_normalized: Specify if data is already normalized or whether not. Raw data will be TPM normalized prior to HVF selection, whereas already normalized data will not.
         :type is_normalized: bool
         :param sparsify: Store data as a sparse matrix. [Note that this feature is experimental], defaults to False
         :type sparsify: bool, optional
@@ -242,13 +243,13 @@ class Dataset():
         return all(matrix_checks)
         
     @property
-    def overdispersed_genes(self):
-        """Overdispersed gene list used for cNMF
+    def hvf(self):
+        """Highly variable features used for cNMF
 
         :return: gene list
         :rtype: list
         """
-        return self.adata.var[self.adata.var["selected"]].index
+        return list(self.adata.var[self.adata.var["selected"]].index)
 
 
     @mosaicmpi_version.setter
@@ -507,7 +508,7 @@ class Dataset():
     
     def to_df(self,
               normalized: bool = False):
-        """Get data matrix as a `pd.DataFrame`
+        """Get data matrix as a `pd.DataFrame`.
 
         :param normalized: Set true for TPM normalized output, defaults to False
         :type normalized: bool, optional
@@ -670,223 +671,308 @@ class Dataset():
         if cross_validate:
             self.adata.uns["imputation"]["n_folds"] = n_folds
 
-    def select_hvg_default(self,
-                           stratify_by: Optional[str] = None,
-                           gam_spline_degree: int = 0,
-                           gam_dof: int = 20,
-                           max_missingness: float = 0.0,
-                           min_odscore: Optional[float] = None,
-                           top_n: Optional[int] = None,
-                           quantile: Optional[float] = None,
-                           min_mean: float = 0.0):
-        
-        data_raw = self.to_df()
-        data_normalized = self.to_df(normalized=True)
-        
-        # create dataframe of per-gene statistics
-        self.adata.var["mean"] = data_normalized.mean()
-        self.adata.var["rank_mean"] = self.adata.var["mean"].rank()
-        self.adata.var["variance"] = data_normalized.var()
-        self.adata.var["sd"] = data_normalized.std()
-        self.adata.var[["log_mean", "log_variance"]] = np.log10(self.adata.var[["mean", "variance"]])
-        self.adata.var["mean_counts"] = data_raw.mean()
-        self.adata.var["odscore_excluded"] = ((self.adata.var["missingness"] > max_missingness) |
-                                              self.adata.var["log_mean"].isnull() |
-                                              (self.adata.var["mean"] == 0) |
-                                              self.adata.var["log_variance"].isnull())
+    def select_hvf(self,
+                stratify_by: Optional[str] = None,
+                stratify_mode: Literal["intersection", "union"] = "union",
+                use_normalized=True,
+                max_missingness: float = 0.0,
+                max_cells_proportion: float = 1.0,
+                min_cells_proportion: float = 0.0,
+                min_cells_mean: float = 0.0,
+                min_features: int = 0,
+                min_raw_sum: float = 0.0,
+                n_splines: int = 5,
+                spline_order: int = 3,
+                score_type: Literal["vscore", "odscore"] = "odscore",
+                min_score: Optional[float] = None,
+                top_n: Optional[int] = None,
+                top_quantile: Optional[float] = None,
+                alpha: Optional[float] = None,
+                adjust_pvals: bool = True,
+                feature_list: Collection[str] = None,
+                multiple_threshold_mode: Literal["intersection", "union"] = "intersection"
+                ):
+        """Select highly variable features (HVFs) for cNMF factorization.
 
-        # model mean-variance relationship using generalized additive model with smooth components
-        df_model = self.adata.var[~self.adata.var["odscore_excluded"]]
-        bs = BSplines(df_model["mean"], df=gam_dof, degree=gam_spline_degree)
-        gam = GLMGam.from_formula("log_variance ~ log_mean", data=df_model, smoother=bs).fit()
-        self.adata.var["resid_log_variance"] = gam.resid_response
-        self.adata.var["odscore"] = np.sqrt(10 ** self.adata.var["resid_log_variance"])
-        self.adata.var["gam_fittedvalues"] = gam.fittedvalues
-
-        self.adata.uns["hvg"] = {
-            "method": "default",
-            "stratify_by": stratify_by,
-            "gam_spline_degree": gam_spline_degree,
-            "gam_dof": gam_dof,
-            "max_missingness": max_missingness,
-            "min_odscore": min_odscore,
-            "top_n": top_n,
-            "quantile": quantile,
-            "min_mean": min_mean
-        }
-
-
-
-
-
-        # min_mean filter
-        selected_genes = self.adata.var["mean_counts"] >= min_mean
-        # min_score filter
-        if min_score is not None:
-            selected_genes = selected_genes & (self.adata.var[overdispersion_metric] >= min_score)
-        # top_n filter
-        if top_n is not None:
-            genes = self.adata.var[overdispersion_metric].sort_values(ascending=False).head(int(top_n)).index
-            selected_genes = selected_genes & self.adata.var.index.isin(genes)
-        # quantile filter
-        if quantile is not None:
-            n_total_genes = self.adata.var[overdispersion_metric].notnull().sum()
-            genes = self.adata.var[overdispersion_metric].sort_values(ascending=False).head(int(quantile * n_total_genes)).index
-            selected_genes = selected_genes & self.adata.var.index.isin(genes)
-
-        n_selected_genes = selected_genes.sum()
-        logging.info(f"{n_selected_genes} genes selected for factorization")
-        
-        # make changes to Dataset object
-        self.adata.var["selected"] = selected_genes
-        self.adata.obs["hvg_all_0"] = (self.to_df(normalized=True).loc[:, selected_genes].sum(axis=1) == 0).astype("str").astype("category")
-        self.adata.uns["odg"]["overdispersion_metric"] = overdispersion_metric
-        self.adata.uns["odg"]["min_mean"] = min_mean
-        self.adata.uns["odg"]["min_score"] = min_score if min_score is not None else ""
-        self.adata.uns["odg"]["top_n"] = top_n if top_n is not None else ""
-        self.adata.uns["odg"]["quantile"] = quantile if quantile is not None else ""
-        self.append_to_history("Overdispersed genes selected")
-        self.append_to_history("Highly variable genes selected.")
-        
-
-
-    def model_overdispersed_genes(self, odg_default_spline_degree: int = 3, odg_default_dof: int = 8, max_missingness: float = 0.5):
-        """
-        Computes gene statistics and fits two models of mean and variance of genes in the dataset. The first method is the
-        generalized additive model with smooth components (B-splines) to model the relationship of mean and variance
-        between genes in the dataset. It produces an odscore metric for overdispersion. The second is the count-statistics
-        method found in the cNMF package, which produces a modified v-score metric. All gene statistics are stored within the
-        dataset object and are accessible using `dataset.anndata.var`.
-
-        :param odg_default_spline_degree: B-Spline degree for GLM-GAM modelling of mean-variance relationship, defaults to 3
-        :type odg_default_spline_degree: int, optional
-        :param odg_default_dof: Degrees of freedom for GLM-GAM modelling of mean-varance, defaults to 8
-        :type odg_default_dof: int, optional
-        :param max_missingness: Exclude features with high pre-imputation missingness. Value must be between 0 and 1, defaults to 0.5
+        :param stratify_by: model gene-variance relationship separately for each class of samples/cells based on the provided metadata field. For example, you could stratify by Sample ID for single-cell datasets., defaults to None
+        :type stratify_by: str, optional
+        :param stratify_mode: select the union or intersection of gene lists identified from dataset strata, defaults to "union"
+        :type stratify_mode: Literal["intersection", "union"]
+        :param use_normalized: model mean and variance of the normalized (rather than raw/count data, if it exists), defaults to True
+        :type use_normalized: bool
+        :param max_missingness: For datasets imputed using mosaicMPI, exclude features with greater than this proportion of imputed values, defaults to 0.0
         :type max_missingness: float, optional
-        """
-        data_raw = self.to_df()
-        data_normalized = self.to_df(normalized=True)
-        
-        # create dataframe of per-gene statistics
-        self.adata.var["mean"] = data_normalized.mean()
-        self.adata.var["rank_mean"] = self.adata.var["mean"].rank()
-        self.adata.var["variance"] = data_normalized.var()
-        self.adata.var["sd"] = data_normalized.std()
-        self.adata.var[["log_mean", "log_variance"]] = np.log10(self.adata.var[["mean", "variance"]])
-        self.adata.var["mean_counts"] = data_raw.mean()
-        self.adata.var["odscore_excluded"] = ((self.adata.var["missingness"] > max_missingness) |
-                                              self.adata.var["log_mean"].isnull() |
-                                              (self.adata.var["mean"] == 0) |
-                                              self.adata.var["log_variance"].isnull())
-
-        # model mean-variance relationship using generalized additive model with smooth components
-        df_model = self.adata.var[~self.adata.var["odscore_excluded"]]
-        bs = BSplines(df_model["mean"], df=odg_default_dof, degree=odg_default_spline_degree)
-        gam = GLMGam.from_formula("log_variance ~ log_mean", data=df_model, smoother=bs).fit()
-        self.adata.var["resid_log_variance"] = gam.resid_response
-        self.adata.var["odscore"] = np.sqrt(10 ** self.adata.var["resid_log_variance"])
-        self.adata.var["gam_fittedvalues"] = gam.fittedvalues
-
-
-        # model mean-variance relationship using cNMF's method based on v-score and minimum expression threshold
-        vscore_stats = pd.DataFrame(cnmf.get_highvar_genes(input_counts=data_normalized.values, minimal_mean=0)[0])
-        vscore_stats.index = data_normalized.columns
-        self.adata.var["vscore"] = vscore_stats["fano_ratio"]
-        self.adata.uns["odg"]["odg_default_spline_degree"] = odg_default_spline_degree
-        self.adata.uns["odg"]["odg_default_dof"] = odg_default_dof
-        self.append_to_history("Gene-level statistics and overdispersion modelling completed.")
-        
-    def select_overdispersed_genes_from_genelist(self, genes: Collection[str], min_mean=0):
-        """Select overdispersed genes/features using a custom list. Genes/features not present in the dataset are automatically filtered out.
-
-        :param genes: gene list
-        :type genes: Collection[str]
-        :param min_mean: minimum gene expression for genes to be counted as overdispersed, defaults to 0
-        :type min_mean: int, optional
-        """
-        self.adata.var["selected"] = self.adata.var.index.isin(genes) & (self.adata.var["mean_counts"] >= min_mean)
-        self.adata.uns["odg"]["overdispersion_metric"] = ""
-        self.adata.uns["odg"]["min_mean"] = min_mean
-        self.adata.uns["odg"]["min_score"] = ""
-        self.adata.uns["odg"]["top_n"] = ""
-        self.adata.uns["odg"]["quantile"] = ""
-        self.append_to_history("Overdispersed genes selected from custom gene list")
-        
-    def select_overdispersed_genes(self,
-                                   overdispersion_metric: str = "odscore",
-                                   min_mean: float = 0,
-                                   min_score: float = 1.0,
-                                   top_n: int = None,
-                                   quantile: float = None):
-        """Select overdispersed genes/features using an overdispersion metric. Optionally set a minimum gene expression level.
-        Set a threshold using the top N ('top_n'), minimum score ('min_score'), or proportion of features ('quantile') methods.
-        Overdispersed gene list is saved in the Dataset object.
-
-        :param overdispersion_metric: "odscore" or "vscore", defaults to "odscore"
-        :type overdispersion_metric: str, optional
-        :param min_mean: minimum gene expression for genes to be counted as overdispersed, defaults to 0
-        :type min_mean: int, optional
-        :param min_score: minimum score for overdispersion, defaults to 1.0
-        :type min_score: float, optional
-        :param top_n: Choose the top N most overdispersed genes, defaults to None
-        :type top_n: int, optional
-        :param quantile: Choose a quantile of overdispersion. For example, the top 10% of overdispersed genes would be 0.10. Defaults to None
-        :type quantile: float, optional
-        :raises ValueError: Error if invalid overdispersion metric is chosen.
+        :param max_cells_proportion: Exclude features with greater than this proportion of positive values, defaults to 1.0
+        :type max_cells_proportion: float, optional
+        :param min_cells_proportion: Exclude features with less than this proportion of positive values, defaults to 0.0
+        :type min_cells_proportion: float, optional
+        :param min_cells_proportion: Exclude features with less than mean, defaults to 0.0
+        :type min_cells_proportion: float, optional
+        :param min_features: Exclude samples/cells with fewer than this number of positive features, defaults to 0
+        :type min_features: int, optional
+        :param min_raw_sum: Exclude samples/cells with a summed signal less than this threshold, defaults to 0.0
+        :type min_raw_sum: float, optional
+        :param n_splines: Number of splines to use for fitting the Linear GAM, must be greater than spline_order, defaults to 5
+        :type n_splines: int, optional
+        :param spline_order: spline order (constant = 0, linear = 1, quadratic = 2, and cubic = 3), defaults to 3
+        :type spline_order: int, optional
+        :param score_type: Type of score for calculating overdispersion, defaults to "odscore"
+        :type score_type: Literal[&quot;vscore&quot;, &quot;odscore&quot;], optional
+        :param min_score: Minimum score threshold for feature selection, defaults to None
+        :type min_score: Optional[float], optional
+        :param top_n: Number of features to select after ranking features by score, defaults to None
+        :type top_n: Optional[int], optional
+        :param top_quantile: Proportion of top features to select after ranking the score, defaults to None
+        :type top_quantile: Optional[float], optional
+        :param alpha: Alpha (p-value) threshold for selection of HVFs, defaults to None
+        :type alpha: Optional[float], optional
+        :param adjust_pvals: Adjust p-values using the Benjamini-Hochberg procedure, defaults to True
+        :type adjust_pvals: bool, optional
+        :param feature_list: Select features using a custom list of features, defaults to None
+        :type feature_list: Collection[str], optional
+        :param multiple_threshold_mode: how to combine multiple thresholds, using either "union" or "intersection", defaults to "intersection"
+        :type multiple_threshold_mode: str
+        :raises ValueError: No HVF selection criteria have been selected.
+        :raises ValueError: The number of modelled features is less than twice the number of splines when computing the odscore
+        :return: 
+        :rtype:
         """
         
-        if overdispersion_metric not in self.adata.var.columns:
-            if overdispersion_metric in ("odscore", "vscore"):
-                raise ValueError(
-                    f"{overdispersion_metric} has not been calculated for this dataset. "
-                    "Ensure that you call the `Dataset.model_overdispersed_genes()` first."
-                    )
-            else:
-                raise ValueError(
-                    f"{overdispersion_metric} is not a valid overdispersion metric."
-                    )
-        
-        # warn if multiple methods are selected
+        # remove all previous HVF data
+        for key in self.adata.varm_keys():
+            if isinstance(key, str) and key.startswith("hvf"):
+                del self.adata.varm[key]
+
+        # warn if multiple thresholding methods are selected
         selected_methods = []
         if min_score is not None:
             selected_methods.append("min_score")
         if top_n is not None:
             selected_methods.append("top_n")
-        if quantile is not None:
-            selected_methods.append("quantile")
+        if top_quantile is not None:
+            selected_methods.append("top_quantile")
+        if alpha is not None:
+            selected_methods.append("alpha")
+        if feature_list is not None:
+            selected_methods.append("feature_list")
+        if len(selected_methods) == 0:
+            methodstr = ", ".join(selected_methods)
+            raise ValueError("No HVF selection criteria have been selected. Criteria can be specified using the following arguments: min_score, top_n, top_quantile, alpha, or feature_list.")
         if len(selected_methods) > 1:
-            methodwarnstr = ", ".join(selected_methods)
-            logging.warning(f"Multiple conflicting overdispersed gene selection criteria have been selected: {methodwarnstr}. "
-                            "Only the intersection of these methods will be selected.")
-                
-        # min_mean filter
-        selected_genes = self.adata.var["mean_counts"] >= min_mean
-        # min_score filter
-        if min_score is not None:
-            selected_genes = selected_genes & (self.adata.var[overdispersion_metric] >= min_score)
-        # top_n filter
-        if top_n is not None:
-            genes = self.adata.var[overdispersion_metric].sort_values(ascending=False).head(int(top_n)).index
-            selected_genes = selected_genes & self.adata.var.index.isin(genes)
-        # quantile filter
-        if quantile is not None:
-            n_total_genes = self.adata.var[overdispersion_metric].notnull().sum()
-            genes = self.adata.var[overdispersion_metric].sort_values(ascending=False).head(int(quantile * n_total_genes)).index
-            selected_genes = selected_genes & self.adata.var.index.isin(genes)
-
-        n_selected_genes = selected_genes.sum()
-        logging.info(f"{n_selected_genes} genes selected for factorization")
+            methodstr = ", ".join(selected_methods)
+            logging.info(f"Multiple HVF selection criteria have been selected: {methodstr}. "
+                         f"The {multiple_threshold_mode} of features from each of these thresholds will be selected.")
         
+        # get data matrices for HVF purposes (doesn't modify dataset)
+        data_raw = self.to_df(normalized=False)
+        data_normalized = self.to_df(normalized=True)
+
+        # Optional filters to remove cells/spots for sparse count data (eg. 10X Chromium, 10X Visium)
+        
+        pass_samples = (  # remove samples with few features or counts
+            ((data_raw.T > 0).sum() >= min_features) &
+            (data_raw.T.sum() >= min_raw_sum)
+        )
+        data_raw = data_raw[pass_samples]
+        data_normalized = data_normalized[pass_samples]
+
+        if stratify_by is None:
+            strata = [["", data_raw, data_normalized]]
+        else:
+            strata = []
+            sample_strata = self.get_metadata_df(include_numerical=False)[stratify_by]
+            n_samples_missing = sample_strata.isnull().sum()
+            if n_samples_missing:
+                logging.warning(f"{n_samples_missing} of {len(sample_strata)} cells/samples have no annotation for metadata field: {stratify_by}")
+            logging.info(f"Stratifying samples by {stratify_by}")
+            for category in sample_strata.cat.categories:
+                subset_raw = data_raw.loc[sample_strata == category].copy()
+                subset_normalized = data_normalized.loc[sample_strata == category].copy()
+                strata.append([category, subset_raw, subset_normalized])
+        
+        combined_stats = pd.DataFrame(index=self.adata.var_names)
+        union = pd.Series(False, index=self.adata.var_names)
+        intersection = pd.Series(True, index=self.adata.var_names)
+        for stratum_name, subset_raw, subset_normalized in strata:
+            # create dataframe of per-gene statistics
+            strat_stats = pd.DataFrame(index=self.adata.var_names)
+            strat_stats["cells_proportion"] = (subset_raw > 0).sum() / subset_raw.shape[0]
+            strat_stats["mean"] = subset_normalized.mean()
+            strat_stats["rank_mean"] = strat_stats["mean"].rank()
+            strat_stats["variance"] = subset_normalized.var()
+            strat_stats["sd"] = subset_normalized.std()
+            strat_stats[["log_mean", "log_variance"]] = np.log10(strat_stats.loc[strat_stats["mean"] > 0, ["mean", "variance"]])
+
+            strat_stats["excluded"] = (
+                ~strat_stats["cells_proportion"].between(min_cells_proportion, max_cells_proportion) |
+                (self.adata.var["missingness"] > max_missingness) |
+                strat_stats["log_mean"].isnull() |
+                (strat_stats["mean"] == 0) |
+                (strat_stats["mean"] < min_cells_mean) |
+                strat_stats["log_variance"].isnull() |
+                (strat_stats["variance"] == 0)
+                )
+            
+            df_model = strat_stats[~strat_stats["excluded"]]
+            n_modelled_features = df_model.shape[0]
+            if n_modelled_features < n_splines * 2:
+                raise ValueError("The number of modelled features is less than twice the number of splines. Please decrease the number of splines")
+
+            # odscore
+            model = pygam.LinearGAM(pygam.s(0, n_splines=n_splines, spline_order=spline_order)).fit(X=df_model["log_mean"], y=df_model["log_variance"])
+            strat_stats["gam_residual_log_variance"] = pd.Series(
+                model.deviance_residuals(df_model["log_mean"].values, df_model["log_variance"].values),
+                index=df_model.index)
+            strat_stats["odscore"] = np.sqrt(10 ** strat_stats["gam_residual_log_variance"])  # odscore = residual standard deviation = sqrt(residual variance)
+            strat_stats["log_odscore"] = np.log10(strat_stats["odscore"])
+            strat_stats["gam_fittedvalues"] = pd.Series(model.predict(X=df_model["log_mean"]), index=df_model.index)
+            strat_stats['unadj_pval'] = strat_stats["gam_residual_log_variance"].apply(
+                lambda resid: 1 - f.cdf(np.exp(resid), strat_stats.shape[0], strat_stats.shape[0]))
+            if alpha is not None:
+                unadj_pvals = strat_stats['unadj_pval'].dropna()
+                adj_pvals = pd.Series(multipletests(unadj_pvals.values, method='fdr_bh', alpha=alpha)[1], index=unadj_pvals.index)
+                strat_stats['adj_pval'] = adj_pvals
+            
+            # vscore
+            vscore_stats = pd.DataFrame(cnmf.get_highvar_genes(input_counts=subset_normalized.values, minimal_mean=0)[0])
+            vscore_stats.index = subset_normalized.columns
+            strat_stats["vscore"] = vscore_stats["fano_ratio"]
+
+            # apply filters in combination
+            filters = pd.DataFrame(index = strat_stats.index)
+            if min_score is not None:    # min_score filter
+                filters["min_score"] = strat_stats[score_type] >= min_score
+            if top_n is not None: # top_n filter
+                features = strat_stats[~strat_stats["excluded"]][score_type].sort_values(ascending=False).head(int(top_n)).index
+                filters["top_n"] = strat_stats.index.isin(features)
+            if top_quantile is not None:    # quantile filter
+                n_total_features = strat_stats[~strat_stats["excluded"]][score_type].notnull().sum()
+                features = strat_stats[~strat_stats["excluded"]][score_type].sort_values(ascending=False).head(int(top_quantile * n_total_features)).index
+                filters["top_quantile"] = strat_stats.index.isin(features)
+            if alpha is not None:    # alpha (p-value) filter
+                pval_type = "adj_pval" if adjust_pvals else "unadj_pval"
+                filters["alpha"] = strat_stats[pval_type] < alpha
+            if feature_list is not None:    # feature_list filter
+                filters["feature_list"] = strat_stats.index.isin(feature_list)
+                unmatched_features = set(feature_list) - set(strat_stats.index.to_list())
+                if unmatched_features:
+                    logging.warning("The following features were not matched in the data and were thus not selected as HVFs:\n    " + "\n    ".join(unmatched_features))
+            
+            if multiple_threshold_mode == "intersection":
+                selected_features = ~strat_stats["excluded"] & filters.all(axis=1)
+            elif multiple_threshold_mode == "union":
+                selected_features = ~strat_stats["excluded"] & filters.any(axis=1)
+
+            # select genes
+            strat_stats["selected"] = selected_features
+            strat_stats.columns = strat_stats.columns + "|" + stratum_name
+            union = union | selected_features
+            intersection = intersection & selected_features
+            # store HVF stats
+            combined_stats = combined_stats.join(strat_stats)
+            if stratify_by is not None:
+                n_selected_features = selected_features.sum()
+                logging.info(f"    {stratum_name}: {n_selected_features} features selected")
+
+        self.adata.varm["hvf"] = combined_stats
+
         # make changes to Dataset object
-        self.adata.var["selected"] = selected_genes
-        self.adata.obs["hvg_all_0"] = (self.to_df(normalized=True).loc[:, selected_genes].sum(axis=1) == 0).astype("str").astype("category")
-        self.adata.uns["odg"]["overdispersion_metric"] = overdispersion_metric
-        self.adata.uns["odg"]["min_mean"] = min_mean
-        self.adata.uns["odg"]["min_score"] = min_score if min_score is not None else ""
-        self.adata.uns["odg"]["top_n"] = top_n if top_n is not None else ""
-        self.adata.uns["odg"]["quantile"] = quantile if quantile is not None else ""
-        self.append_to_history("Overdispersed genes selected")
+        self.adata.uns["hvf"] = {
+            "stratify_by": stratify_by if stratify_by is not None else "",
+            "stratify_mode": stratify_mode,
+            "use_normalized": use_normalized,
+            "max_missingness": max_missingness,
+            "max_cells_proportion": max_cells_proportion,
+            "min_cells_proportion": max_cells_proportion,
+            "min_features": min_features,
+            "min_raw_sum": min_raw_sum,
+            "n_splines": n_splines,
+            "spline_order": spline_order,
+            "min_score": min_score if min_score is not None else "",
+            "score_type": score_type,
+            "top_n": top_n if top_n is not None else "",
+            "top_quantile": top_quantile if top_quantile is not None else "",
+            "alpha": alpha if alpha is not None else "",
+            "adjust_pvals": str(adjust_pvals),
+            "feature_list": feature_list,
+            "multiple_threshold_mode": multiple_threshold_mode
+        }
+
+        if stratify_mode == "union":
+            selected_features = union
+        elif stratify_mode == "intersection":
+            selected_features = intersection
+        
+        self.adata.var["selected"] = selected_features
+        self.adata.obs["hvf_all_0"] = (self.to_df(normalized=True).loc[:, selected_features].sum(axis=1) == 0).astype("str").astype("category")
+        n_selected_features = selected_features.sum()
+        if stratify_by is None:
+            self.append_to_history(f"HVFs: {n_selected_features} features selected")
+            logging.info(f"HVFs: {n_selected_features} features selected")
+        else:
+            self.append_to_history(f"{stratify_mode.capitalize()} of HVFs: {n_selected_features} features selected")
+            logging.info(f"{stratify_mode.capitalize()} of HVFs: {n_selected_features} features selected")
+        return None
+        
+    def select_hvf_stdeconvolve(self,
+                stratify_by: Optional[str] = None,
+                stratify_mode: Literal["intersection", "union"] = "union",
+                max_cells_proportion: float = 1.0,
+                min_cells_proportion: float = 0.05,
+                n_splines: int = 5,
+                top_n: Optional[int] = 1000,
+                alpha: Optional[float] = 0.05,
+                adjust_pvals: bool = True,
+                ):
+        self.select_hvf(stratify_by=stratify_by,
+                        stratify_mode=stratify_mode,
+                        use_normalized=False,
+                        max_cells_proportion=max_cells_proportion,
+                        min_cells_proportion=min_cells_proportion,
+                        n_splines=n_splines,
+                        top_n=top_n,
+                        alpha=alpha,
+                        adjust_pvals=adjust_pvals
+                        )
+
+    def select_hvf_cnmf(self,
+                stratify_by: Optional[str] = None,
+                stratify_mode: Literal["intersection", "union"] = "union",
+                min_cells_mean: float = 0.5,
+                top_n: Optional[int] = 2000
+                ):
+        self.select_hvf(stratify_by=stratify_by,
+                        stratify_mode=stratify_mode,
+                        score_type="vscore",
+                        min_cells_mean=min_cells_mean,
+                        top_n=top_n
+                        )
+
+    @property
+    def hvf_stats(self) -> pd.DataFrame:
+        """Outputs the highly variable genes dataframe in pandas-compatible format. 
+
+        :return: DataFrame with statistics, with MultiIndex level 0 identifying strata.
+        :rtype: :class:`pandas.DataFrame`
+        """
+        if "hvf" not in self.adata.varm:
+            raise ValueError("No highly variable genes (HVFs) have been selected for this dataset.")
+        df = self.adata.varm["hvf"].copy()
+        df.columns = pd.MultiIndex.from_tuples(
+            ((a,b) for a, b in df.columns.str.split("|")),
+            names=("statistic", "stratum"))
+        return df
+    
+    @hvf_stats.setter
+    def hvf_stats(self, dataframe: pd.DataFrame):
+        """
+        :param dataframe: HVF statistics
+        :type dataframe: :class:`pandas.DataFrame`
+        """
+        
+        df = dataframe.copy()
+        df.columns = df.columns.to_flat_index().str.join("|")
+        self.adata.varm["hvf"] = df
 
     def initialize_cnmf(self, cnmf_output_dir: str,
                         cnmf_name: str,
@@ -921,13 +1007,12 @@ class Dataset():
         gene_tpm_stddev = np.array(tpm.X.std(axis=0, ddof=0)).reshape(-1)
         input_tpm_stats = pd.DataFrame([gene_tpm_mean, gene_tpm_stddev], index = ['__mean', '__std']).T
         utils.save_df_to_npz(input_tpm_stats, cnmf_obj.paths['tpm_stats'])
-        overdispersed_genes = self.adata.var["selected"][self.adata.var["selected"]].index
 
         # Subset out high-variance genes
-        norm_counts = self.adata[:, overdispersed_genes].copy()  # copy to prevent overwrite
+        norm_counts = self.adata[:, self.hvf].copy()  # copy to prevent overwrite
         ## Scale genes to unit variance
         if sp.issparse(tpm.X):
-            raise NotImplementedError("AnnDatas with sparse matrices are not supported by mosaicMPI yet.")
+            raise NotImplementedError("AnnData with sparse matrices are not supported by mosaicMPI.")
             # sc.pp.scale(norm_counts, zero_center=False)
             # if np.isnan(norm_counts.X.data).sum() > 0:
             #     raise ValueError('NaNs in normalized counts matrix')                       
@@ -937,7 +1022,7 @@ class Dataset():
                 raise ValueError('NaNs in normalized counts matrix')                    
 
         ## Save a \n-delimited list of the high-variance genes used for factorization
-        open(cnmf_obj.paths['nmf_genes_list'], 'w').write('\n'.join(overdispersed_genes))
+        open(cnmf_obj.paths['nmf_genes_list'], 'w').write('\n'.join(self.hvf))
 
         if norm_counts.X.dtype != np.float64:
             norm_counts.X = norm_counts.X.astype(np.float64)
@@ -950,7 +1035,7 @@ class Dataset():
         # save parameters in AnnData object
         self.adata.uns["cnmf"] = cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss)[1]  # dict of cnmf parameters
         
-        # output dataset with new information on overdispersed genes and cNMF parameters
+        # output dataset with new information on HVF and cNMF parameters
         self.write_h5ad(os.path.join(cnmf_output_dir, cnmf_name, cnmf_name + ".h5ad"))
         self.append_to_history(f"cNMF parameters added. cNMF inputs initialized in {cnmf_output_dir}/{cnmf_name}")
         return cnmf_obj
@@ -1021,6 +1106,7 @@ class Dataset():
             self.adata.uns["gene_list"] = [line.strip() for line in f.readlines()]
 
         # Import K-selection stats
+        logging.info(f"Importing stability and error statistics")
         kvals = pd.DataFrame(**np.load(os.path.join(cnmf_output_dir, cnmf_name, f"{cnmf_name}.k_selection_stats.df.npz"), allow_pickle=True)).set_index("k")[["stability", "prediction_error"]]
         kvals.index = kvals.index.astype(int)
         self.adata.uns["kvals"] = kvals
@@ -1093,6 +1179,8 @@ class Dataset():
             df = df.rename_axis(columns=["program"]).sort_index(axis=1)
         elif isinstance(k, Iterable):
             df = df.loc[:, k]
+            df = df.rename_axis(columns=["k", "program"]).sort_index(axis=1)
+        elif k is None:
             df = df.rename_axis(columns=["k", "program"]).sort_index(axis=1)
         return df
     
@@ -1273,7 +1361,7 @@ class Dataset():
         observed = observed[observed.sum(axis=1) > 0]
         n_categories = observed.shape[0]
         if n_categories < 2:
-            if layer != "hvg_all_0":
+            if layer != "hvf_all_0":
                 logging.warning(f"Overrepresentation could not be calculated for layer '{layer}', as only {n_categories} categories were found in the data. "
                                 f"Note that empty values in the metadata are not considered a category. "
                                 f"Overrepresentation cannot be calculated with fewer than 2 categories for each layer. ")

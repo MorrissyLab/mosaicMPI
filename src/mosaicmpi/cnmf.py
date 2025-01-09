@@ -8,11 +8,8 @@ import datetime
 import logging
 import uuid
 import itertools
-import subprocess
 from functools import partial
 from multiprocessing.pool import Pool
-from collections.abc import Collection, Iterable
-from typing import Union, Optional
 
 import yaml
 import scipy.sparse as sp
@@ -26,7 +23,6 @@ from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import euclidean_distances
 from fastcluster import linkage
 from scipy.cluster.hierarchy import leaves_list
-import matplotlib.pyplot as plt
 
 
 
@@ -404,42 +400,34 @@ class cNMF():
         return(self.refit_usage(X.T, usage.T).T)
 
 
-    def consensus(self, k, density_threshold=0.5, local_neighborhood_size = 0.30,show_clustering = True,
-                  skip_density_and_return_after_stats = False, close_clustergram_fig=False,
+    def consensus(self, k, density_threshold=0.5, local_neighborhood_size = 0.30, show_clustering = True, close_clustergram_fig=False,
                   refit_usage=True):
         merged_spectra = utils.load_df_from_npz(self.paths['merged_spectra']%k)
         norm_counts = ad.read_h5ad(self.paths['normalized_counts'])
 
         density_threshold_str = str(density_threshold)
-        if skip_density_and_return_after_stats:
-            density_threshold_str = '2'
         density_threshold_repl = density_threshold_str.replace('.', '_')
         n_neighbors = int(local_neighborhood_size * merged_spectra.shape[0]/k)
 
         # Rescale topics such to length of 1.
         l2_spectra = (merged_spectra.T/np.sqrt((merged_spectra**2).sum(axis=1))).T
 
-        if not skip_density_and_return_after_stats:
-            # Compute the local density matrix (if not previously cached)
-            topics_dist = None
-            if os.path.isfile(self.paths['local_density_cache'] % k):
-                local_density = utils.load_df_from_npz(self.paths['local_density_cache'] % k)
-            else:
-                #   first find the full distance matrix
-                topics_dist = euclidean_distances(l2_spectra.values)
-                #   partition based on the first n neighbors
-                partitioning_order  = np.argpartition(topics_dist, n_neighbors+1)[:, :n_neighbors+1]
-                #   find the mean over those n_neighbors (excluding self, which has a distance of 0)
-                distance_to_nearest_neighbors = topics_dist[np.arange(topics_dist.shape[0])[:, None], partitioning_order]
-                local_density = pd.DataFrame(distance_to_nearest_neighbors.sum(1)/(n_neighbors),
-                                             columns=['local_density'],
-                                             index=l2_spectra.index)
-                utils.save_df_to_npz(local_density, self.paths['local_density_cache'] % k)
-                del(partitioning_order)
-                del(distance_to_nearest_neighbors)
-
-            density_filter = local_density.iloc[:, 0] < density_threshold
-            l2_spectra = l2_spectra.loc[density_filter, :]
+        # Compute the local density matrix (if not previously cached)
+        topics_dist = None
+        #   first find the full distance matrix
+        topics_dist = euclidean_distances(l2_spectra.values)
+        #   partition based on the first n neighbors
+        partitioning_order  = np.argpartition(topics_dist, n_neighbors+1)[:, :n_neighbors+1]
+        #   find the mean over those n_neighbors (excluding self, which has a distance of 0)
+        distance_to_nearest_neighbors = topics_dist[np.arange(topics_dist.shape[0])[:, None], partitioning_order]
+        local_density = pd.DataFrame(distance_to_nearest_neighbors.sum(1)/(n_neighbors),
+                                        columns=['local_density'],
+                                        index=l2_spectra.index)
+        utils.save_df_to_npz(local_density, self.paths['local_density_cache'] % k)
+        del(partitioning_order)
+        del(distance_to_nearest_neighbors)
+        density_filter = local_density.iloc[:, 0] < density_threshold
+        l2_spectra = l2_spectra.loc[density_filter, :]
 
         kmeans_model = KMeans(n_clusters=k, n_init=10, random_state=1)
         kmeans_model.fit(l2_spectra)
@@ -478,9 +466,6 @@ class cNMF():
         consensus_stats = pd.DataFrame([k, density_threshold, stability, prediction_error],
                     index = ['k', 'local_density_threshold', 'stability', 'prediction_error'],
                     columns = ['stats'])
-
-        if skip_density_and_return_after_stats:
-            return consensus_stats
         
         # Convert spectra to TPM units, and obtain results for all genes by running last step of NMF
         # with usages fixed and TPM as the input matrix
@@ -645,45 +630,6 @@ class cNMF():
             if not os.path.exists(filename):
                 raise ValueError(f"cNMF postprocessing could not find output file {filename}. This can arise in low memory conditions.")
 
-    def k_selection_plot(self, close_fig=False):
-        """
-        :param close_fig: close figure after saving, defaults to False
-        :type close_fig: bool, optional
-        """
-        run_params = utils.load_df_from_npz(self.paths['nmf_replicate_parameters'])
-        stats = []
-        for k in sorted(set(run_params.n_components)):
-
-            stats.append(self.consensus(k, skip_density_and_return_after_stats=True,
-                                        show_clustering=False, close_clustergram_fig=True).stats)
-
-        stats = pd.DataFrame(stats)
-        stats.reset_index(drop = True, inplace = True)
-
-        utils.save_df_to_npz(stats, self.paths['k_selection_stats'])
-
-        fig = plt.figure(figsize=(6, 4))
-        ax1 = fig.add_subplot(111)
-        ax2 = ax1.twinx()
-
-
-        ax1.plot(stats.k, stats.stability, 'o-', color='b')
-        ax1.set_ylabel('Stability', color='b', fontsize=15)
-        for tl in ax1.get_yticklabels():
-            tl.set_color('b')
-        #ax1.set_xlabel('K', fontsize=15)
-
-        ax2.plot(stats.k, stats.prediction_error, 'o-', color='r')
-        ax2.set_ylabel('Error', color='r', fontsize=15)
-        for tl in ax2.get_yticklabels():
-            tl.set_color('r')
-
-        ax1.set_xlabel('Number of Components', fontsize=15)
-        ax1.grid('on')
-        plt.tight_layout()
-        fig.savefig(self.paths['k_selection_plot'], dpi=250)
-        if close_fig:
-            plt.close(fig)
             
     def postprocess(self,
                     cpus: int = 1,
@@ -737,6 +683,8 @@ class cNMF():
         else:
             logging.error(f"{cpus} is an invalid number of cpus. Please specify a positive integer.")
 
-        # create k-selection plot
-        self.k_selection_plot(close_fig=True)
-    
+        # create k-selection stats
+        density_threshold_repl = str(local_density_threshold).replace(".", "_")
+        stats = [utils.load_df_from_npz(self.paths['consensus_stats']%(k, density_threshold_repl)) for k in sorted(set(run_params.n_components))]
+        stats = pd.concat(stats, axis=1).T
+        utils.save_df_to_npz(stats, self.paths['k_selection_stats'])

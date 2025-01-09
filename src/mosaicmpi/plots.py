@@ -52,109 +52,195 @@ def plot_feature_missingness(dataset: Dataset, ax: Optional[Axes] = None, propor
         return fig
 
 
-def plot_feature_dispersion(dataset: Dataset,
-                            show_selected: bool = False,
-                            show_model_curve: bool = True,
-                            y_unit: Literal["log_variance", "odscore", "log_odscore", "vscore", "log_vscore"] = "log_variance",
-                            modelled_features: bool = True,
-                            unmodelled_features: bool = False,
-                            ax: Optional[Axes] = None):
+def plot_feature_mean_variance(dataset: Dataset,
+                               hue: Literal["selected", "selection_overlap"] = "selected",
+                               plot_type: Literal["histplot", "scatterplot"] = "histplot",
+                               show_model_curve: bool = True,
+                               y_unit: Literal["log_variance", "odscore", "log_odscore", "vscore", "log_vscore"] = "log_variance",
+                               modelled_features: bool = True,
+                               unmodelled_features: bool = False,
+                               alpha: Optional[float] = None,
+                               ax: Optional[Union[Axes, Collection[Axes]]] = None):
 
+    df = dataset.hvf_stats
+    strata = df.columns.get_level_values(1).unique()
+    n_strata = len(strata)
     
-    df = dataset.adata.var
-    df = df.sort_values("mean")
-    model_curve_data = df.copy()
+    if n_strata == 1 and hue == "selection_overlap":
+        raise ValueError("HVFs have been selected based on the entire unstratified dataset. "
+                         "Since there are no strata, hue must be 'selected' or 'auto', not 'selection_overlap'.")
+
+    # if n_strata > 1 and ax is not None and not len(ax) == n_strata:
+    #     raise TypeError("HVF selection was done on stratified data. If you wish to provide axes objects for plotting,"
+    #                     "you must provide a list of axes objects with the same length as there are strata.")
+    if n_strata == 1:
+        excluded = df["excluded"]
+    else:
+        excluded = df["excluded"].any(axis=1)
 
     if not modelled_features and not unmodelled_features:
         raise ValueError("at least one of modelled_features and unmodelled_features must be True.")
     elif modelled_features and not unmodelled_features:
-        df = df[~df["odscore_excluded"]]
+        df = df[~excluded]
     elif not modelled_features and unmodelled_features:
-        df = df[df["odscore_excluded"]]
+        df = df[excluded]
     elif modelled_features and unmodelled_features:
         pass
 
-    if "log_odscore" not in df.columns:  # required for compatibility with older h5ad files which do not have this column
-        df["log_odscore"] = np.log10(df["odscore"])
-        df["log_vscore"] = np.log10(df["vscore"])
-
     if ax is None:
-        fig, ax_plot = plt.subplots(figsize=[4, 4], layout="tight")
-    else:
-        ax_plot = ax
+        fig, axes = plt.subplots(1, n_strata, figsize=[4 * n_strata, 4], layout="tight", sharex=True, sharey=True)
+        if n_strata == 1:  # if only one stratum, must be a list of length 1
+            axes = [axes]
+    elif isinstance(ax, Axes):  # single axes provided
+        axes = [ax]
+    else:  # multiple axes provided
+        axes = ax
 
+    for stratum, ax_plot in zip(strata, axes):
+        df_strat = df.xs(stratum, axis=1, level=1).sort_values("mean").copy()
+
+        if hue == "selected":
+            df_strat["selected"] = df_strat["selected"].map({True: "yes", False: "no"})
+            hue_order = ["yes", "no"]
+            palette = {"no": "#0044FF", "yes": "#FF0000"}
+        elif hue == "selection_overlap":
+            df_strat["intersection"] = df["selected"].all(axis=1)
+            df_strat["union"] = df["selected"].any(axis=1)
+            df_strat["selection_overlap"] = "no strata"
+            df_strat.loc[(df_strat["union"] & ~df_strat["selected"]), "selection_overlap"] = "other strata"
+            df_strat.loc[df_strat["selected"], "selection_overlap"] = "this and other strata"
+            df_strat.loc[(df["selected"].sum(axis=1) == 1) & df_strat["selected"], "selection_overlap"] = "only this stratum"
+            df_strat.loc[df_strat["intersection"], "selection_overlap"] = "all strata"
+            hue_order = ["no strata", "other strata", "all strata", "this and other strata", "only this stratum"]
+            palette = {"no strata": "#0044FF", "other strata": "#AADDFF", "all strata": "#FF0000", "this and other strata": "#FFAAAA", "only this stratum": "#FF22FF"}
+
+        if plot_type == "histplot":
+            if alpha is None:
+                alpha = 0.5
+            sns.histplot(df_strat, x="log_mean", y=y_unit, hue=hue, bins=[100,100], ax=ax_plot, alpha=alpha, palette=palette)
+        elif plot_type == "scatterplot":
+            if alpha is None:
+                alpha = 0.1
+            sns.scatterplot(df_strat, x="log_mean", y=y_unit, hue=hue, ax=ax_plot, alpha=alpha, linewidth = 0, palette=palette)
+        
+        plot_handles = []
+        for value in hue_order:
+            if plot_type == "histplot":
+                plot_handles.append(Patch(color=palette[value], alpha=0.5, label=str(value)))
+            elif plot_type == "scatterplot":
+                plot_handles.append(Line2D([0], [0], marker='o', color="white", linewidth=0, label=str(value), markerfacecolor=palette[value]))
+                
+
+        # Show the model curve from the GAM
+        if show_model_curve:
+            plot_handles.append(Line2D([0], [0], color='black', label="model"))
+
+            if y_unit == "log_variance":
+                ax_plot.plot(df_strat["log_mean"], df_strat["gam_fittedvalues"], color="black")
+            elif y_unit == "odscore":
+                ax_plot.axhline(1, color="black")
+            elif y_unit == "log_odscore":
+                ax_plot.axhline(0, color="black")
+            else:
+                raise ValueError('show_model_curve must be False if the y-unit is "vscore" or "log_vscore".')
     
-    if show_selected:
-        sns.histplot(df, x="log_mean", y=y_unit, hue="selected", bins=[100,100], ax=ax_plot, alpha=0.5, palette={True: "red", False: "blue"})
-        ax_plot.legend(handles=[
-            Patch(color="blue", alpha=0.5, label="False"),
-            Patch(color="red", alpha=0.5, label="True"),
-            Line2D([0], [0], color='green', label="model")
-        ], title="selected")
-    else:
-        sns.histplot(df, x="log_mean", y=y_unit, bins=[100,100], ax=ax_plot, color="blue")
-    
-    # Show the model curve from the GAM
-    if show_model_curve:
+        ax_plot.legend(handles=plot_handles, title=hue)
+        ax_plot.set_title(stratum)
+
+        ax_plot.set_xlabel("log10(mean)")
         if y_unit == "log_variance":
-            ax_plot.plot(model_curve_data["log_mean"], model_curve_data["gam_fittedvalues"], color="green")
+            ax_plot.set_ylabel("log10(variance)")
         elif y_unit == "odscore":
-            ax_plot.axhline(1)
+            ax_plot.set_ylabel("odscore")
         elif y_unit == "log_odscore":
-            ax_plot.axhline(0)
-        else:
-            raise ValueError('show_model_curve must be False if the y-unit is "vscore" or "log_vscore".')
-    
-    ax_plot.set_xlabel("log10(mean)")
-    if y_unit == "log_variance":
-        ax_plot.set_ylabel("log10(variance)")
-    elif y_unit == "odscore":
-        ax_plot.set_ylabel("odscore")
-    elif y_unit == "log_odscore":
-        ax_plot.set_ylabel("log10(odscore)")
-    elif y_unit == "vscore":
-        ax_plot.set_ylabel("vscore")
-    elif y_unit == "log_vscore":
-        ax_plot.set_ylabel("log10(vscore)")
-
+            ax_plot.set_ylabel("log10(odscore)")
+        elif y_unit == "vscore":
+            ax_plot.set_ylabel("vscore")
+        elif y_unit == "log_vscore":
+            ax_plot.set_ylabel("log10(vscore)")
 
     if ax is None:
         return fig
 
 
-def plot_feature_overdispersion_histogram(dataset: Dataset,
-                                          show_selected: bool = False,
-                                          y_unit: Literal["odscore", "log_odscore"] = "log_variance",
-                                          ax: Optional[Axes] = None):
-    df = dataset.adata.var.sort_values("mean")
-    if "log_odscore" not in df.columns:  # required for compatibility with older h5ad files which do not have this column
-        df["log_odscore"] = np.log10(df["odscore"])
+def plot_feature_statistic_histogram(dataset: Dataset,
+                                hue: Literal["selected", "selection_overlap"] = "selected",
+                                statistic: str = "odscore",
+                                log_scale: Optional[Collection[float, float]] = None,
+                                modelled_features: bool = True,
+                                unmodelled_features: bool = False,
+                                ax: Optional[Union[Axes, Collection[Axes]]] = None) -> Union[Figure, None]:
+
+    df = dataset.hvf_stats
+    strata = df.columns.get_level_values(1).unique()
+    n_strata = len(strata)
     
-    if ax is None:
-        fig, ax_plot = plt.subplots(figsize=[4, 4], layout="tight")
+    if n_strata == 1 and hue == "selection_overlap":
+        raise ValueError("HVFs have been selected based on the entire unstratified dataset. "
+                         "Since there are no strata, hue must be 'selected' or 'auto', not 'selection_overlap'.")
+        
+    if hue == "auto":
+        if n_strata == 1:
+            hue = "selected"
+        else:
+            hue = "selection_overlap"
+
+    if n_strata == 1:
+        excluded = df["excluded"]
     else:
-        ax_plot = ax
+        excluded = df["excluded"].any(axis=1)
 
+    if not modelled_features and not unmodelled_features:
+        raise ValueError("at least one of modelled_features and unmodelled_features must be True.")
+    elif modelled_features and not unmodelled_features:
+        df = df[~excluded]
+    elif not modelled_features and unmodelled_features:
+        df = df[excluded]
+    elif modelled_features and unmodelled_features:
+        pass
 
-    ax_plot.set_title("od-score Distribution")
-    if df["odscore"].notnull().any():
-        if show_selected:
-            sns.histplot(df, x="odscore", hue="selected", bins=100, linewidth=0, ax=ax_plot, palette={True: "red", False: "blue"})
-            ax_plot.legend(handles=[
-                Patch(color="blue", alpha=0.5, label="False"),
-                Patch(color="red", alpha=0.5, label="True")
-            ], title="selected")
-        else:
-            sns.histplot(df, x=y_unit, bins=100, linewidth=0, ax=ax_plot, color="blue")
-    
+    if ax is None:
+        fig, axes = plt.subplots(1, n_strata, figsize=[4 * n_strata, 4], layout="tight", sharex=True, sharey=True)
+        if n_strata == 1:  # if only one stratum, must be a list of length 1
+            axes = [axes]
+    elif isinstance(ax, Axes):  # single axes provided
+        axes = [ax]
+    else:  # multiple axes provided
+        axes = ax
+
+    for stratum, ax_plot in zip(strata, axes):
+        df_strat = df.xs(stratum, axis=1, level=1).sort_values("mean").copy()
+        if hue == "selected":
+            df_strat["selected"] = df_strat["selected"].map({True: "yes", False: "no"})
+            hue_order = ["no", "yes"]
+            palette = {"no": "#0044FF", "yes": "#FF0000"}
+        elif hue == "selection_overlap":
+            df_strat["intersection"] = df["selected"].all(axis=1)
+            df_strat["union"] = df["selected"].any(axis=1)
+            df_strat["selection_overlap"] = "no strata"
+            df_strat.loc[(df_strat["union"] & ~df_strat["selected"]), "selection_overlap"] = "other strata"
+            df_strat.loc[df_strat["selected"], "selection_overlap"] = "this and other strata"
+            df_strat.loc[(df["selected"].sum(axis=1) == 1) & df_strat["selected"], "selection_overlap"] = "only this stratum"
+            df_strat.loc[df_strat["intersection"], "selection_overlap"] = "all strata"
+            hue_order = ["no strata", "other strata", "all strata", "this and other strata", "only this stratum"]
+            palette = {"no strata": "#0044FF", "other strata": "#AADDFF", "all strata": "#FF0000", "this and other strata": "#FFAAAA", "only this stratum": "#FF22FF"}
+
+        sns.histplot(df_strat, x=statistic, bins=100, linewidth=0, ax=ax_plot, hue=hue, hue_order=hue_order, palette=palette, log_scale=log_scale, multiple="stack")
+        
+        plot_handles = []
+        for value in hue_order:
+            plot_handles.append(Patch(color=palette[value], label=str(value)))
+        ax_plot.legend(handles=plot_handles, title="selected")
+        ax_plot.set_title(stratum)
+        ax_plot.set_xlabel(statistic)
+
     if ax is None:
         return fig
 
 
-def plot_stability_error(dataset: Dataset, figsize=(6, 4)):
+def plot_stability_error(dataset: Dataset, figsize=(6, 4)) -> Figure:
     '''
-    Borrowed from Alexandrov Et Al. 2013 Deciphering Mutational Signatures
-    publication in Cell Reports
+    Adapted from (Alexandrov et. al., Cell Reports 2013)
     '''
     
     stats = dataset.adata.uns["kvals"]
@@ -496,8 +582,8 @@ def plot_pairwise_corr_overlaid(integration: Integration, subplot_size = [3, 3.5
 
     return fig
 
-def plot_overdispersed_features_upset(integration: Integration, figsize: Collection = (6, 4), show_counts: bool = False) -> Figure:
-    """Plot overlaps of overdispersed features between datasets
+def plot_integration_hvf_upset(integration: Integration, figsize: Collection = (6, 4), show_counts: bool = False) -> Figure:
+    """Plot overlaps of HVFs between datasets in an integration
 
     :param integration: integration object
     :type integration: :class:`~mosaicmpi.integration.Integration`
@@ -506,10 +592,35 @@ def plot_overdispersed_features_upset(integration: Integration, figsize: Collect
     :return: figure
     :rtype: Figure
     """
-    overdispersed_feature_lists = {dataset_name: dataset.overdispersed_genes for dataset_name, dataset in integration.datasets.items()}
+    hvf_lists = {dataset_name: dataset.hvf for dataset_name, dataset in integration.datasets.items()}
     fig = Figure(figsize=figsize)
-    upsetplot.UpSet(upsetplot.from_contents(overdispersed_feature_lists), show_counts=show_counts).plot(fig=fig)
-    fig.suptitle("Overdispersed features")
+    upsetplot.UpSet(upsetplot.from_contents(hvf_lists), show_counts=show_counts).plot(fig=fig)
+    fig.suptitle("HVF")
+    return fig
+
+def plot_stratified_hvf_upset(dataset: Dataset, figsize: Collection = (6, 4), show_counts: bool = False) -> Figure:
+    """Plot overlaps of HVF between strata of the same dataset
+
+    :param dataset: Dataset object
+    :type dataset: :class:`~mosaicmpi.dataset.Dataset`
+    :param figsize: width and height of figure, defaults to [6, 4]
+    :type figsize: Collection, optional
+    :return: figure
+    :rtype: Figure
+    """
+    if dataset.adata.uns["hvf"]["stratify_by"] == "":
+        raise ValueError("Stratified HVF Upset Plots cannot be generated when HVF selection is unstratified.")
+    if "hvf" not in dataset.adata.uns:
+        raise ValueError("HVFs have not been selected for this dataset.")
+    df = dataset.hvf_stats
+    strata = df.columns.get_level_values(1).unique()
+    stratified_lists = {}
+    for stratum in strata:
+        df_strat = df.xs(stratum, axis=1, level=1)
+        stratified_lists[stratum] = df_strat.index[df_strat["selected"]].to_list()
+    fig = Figure(figsize=figsize)
+    upsetplot.UpSet(upsetplot.from_contents(stratified_lists), show_counts=show_counts).plot(fig=fig)
+    fig.suptitle(f"HVF features stratified by: {dataset.adata.uns["hvf"]["stratify_by"]}")
     return fig
 
 def plot_features_upset(integration: Integration, figsize=[6, 4], show_counts: bool = False):
@@ -1618,12 +1729,68 @@ def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str,
 
 
     
-################
-# ssGSEA plots #
-################
+###########################
+# gene set analysis plots #
+###########################
+     
+def plot_geneset_heatmap(df: pd.DataFrame,
+                              ax: Optional[Axes] = None,
+                              axlegend: Optional[Axes] = None,
+                              cmap: str = "Blues",
+                              vmin: float = 0.,
+                              vmax: float = 10.,
+                              show_geneset_labels: bool = False,
+                              limit_geneset_label_length: int = 200) -> Optional[Figure]:
 
+    if ax is None:
 
-def plot_representative_program_nes(network: Network, rep_nes: pd.DataFrame):
+        if show_geneset_labels:
+            figsize = [10 + df.shape[1]/4,  0.15 * df.shape[0]]
+        else:
+            figsize = [0.5 + df.shape[1]/4, 8]
+
+        fig, ax_plot = plt.subplots(figsize=figsize, layout="constrained")
+    else:
+        ax_plot = ax
+        
+    if axlegend is None:
+        figlegend, axlegend_plot = plt.subplots(figsize=[1, 3], layout="constrained")
+    else:
+        axlegend_plot = axlegend
+    
+    if df.shape[0] > 0:
+        if show_geneset_labels and limit_geneset_label_length > 0:
+            yticklabels = df.index.str[0:limit_geneset_label_length]
+        else:
+            yticklabels=False
+        sns.heatmap(df, cmap=cmap, vmin=vmin, vmax=vmax, ax=ax_plot, cbar_ax = axlegend_plot, yticklabels=yticklabels)
+        ax_plot.tick_params(top=False,
+                            bottom=True,
+                            left=False,
+                            right=False,
+                            labelleft=False,
+                            labelright=show_geneset_labels,
+                            labeltop= False,
+                            labelbottom=True)
+        if show_geneset_labels:
+            ax_plot.tick_params(axis="y", labelsize=8, labelrotation=0)
+
+        ax_plot.set_xlabel("")
+        ax_plot.set_ylabel("")
+        for _, spine in ax_plot.spines.items():
+            spine.set_visible(True)
+            spine.set_color('#aaaaaa')
+    if ax is None and axlegend is None:
+        return fig, figlegend
+
+def plot_representative_program_nes(network: Network,
+                                    rep_nes: pd.DataFrame,
+                                    figsize: Optional[Collection[float]] = None,
+                                    cmap: str = "RdBu_r",
+                                    vmin: float = -0.5,
+                                    vmax: float = 0.5,
+                                    center: float = 0.,
+                                    limit_geneset_label_length: int = 200):
 
     rep_ids = network.get_representative_program_ids()
     height_ratios = rep_ids.value_counts()[network.ordered_community_names].values
@@ -1631,15 +1798,22 @@ def plot_representative_program_nes(network: Network, rep_nes: pd.DataFrame):
 
     df = rep_nes.T.copy()
     df = df.droplevel(axis=0, level=[2,3])
-    figsize = [df.shape[1] * 0.2, df.shape[0] * 0.2 + 4]
-
+    
+    if figsize is None:
+        figsize = [df.shape[1] * 0.25, df.shape[0] * 0.25 + 10]
+        
+    
     fig, axes = plt.subplots(nrows = len(height_ratios), figsize=figsize, sharex=True, gridspec_kw={"height_ratios": height_ratios}, layout="constrained")
     figlegend, axlegend = plt.subplots(figsize=[1,2], layout="tight")
     for community, ax in zip(network.ordered_community_names, axes):
         df_comm = df.loc[community].astype("float").sort_index(key = lambda x: x.map(ds_names.index))
-        sns.heatmap(df_comm, square=True, yticklabels=True, cmap="RdBu_r", vmin = -0.5, vmax=0.5, center = 0, xticklabels=True, cbar_ax=axlegend, ax=ax)
-        ax.set_yticklabels(ax.get_yticklabels(), rotation=0, )
-        ax.set_xlabel(None)
+        if limit_geneset_label_length > 0:
+            xticklabels = df_comm.columns.str[0:limit_geneset_label_length]
+        else:
+            xticklabels=False
+        sns.heatmap(df_comm, square=True, yticklabels=True, cmap=cmap, vmin=vmin, vmax=vmax, center=center, xticklabels=xticklabels, cbar_ax=axlegend, ax=ax)
+        ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
+        ax.set_xlabel("")
         ax.set_ylabel(community, rotation=0, fontweight = "bold", fontsize="large", va="center", ha="right")
         is_bottom_subplot = community == network.ordered_community_names[-1]
         ax.tick_params(top=False,
@@ -1650,6 +1824,7 @@ def plot_representative_program_nes(network: Network, rep_nes: pd.DataFrame):
                 labelright=True,
                 labelbottom=is_bottom_subplot)
     fig.supylabel(f"Community")
+    fig.supxlabel(f"Gene set")
     return fig, figlegend
 
 ####################
@@ -1744,53 +1919,3 @@ def plot_compare_integrations(name1: str, network1: Network, name2: str, network
     axes[0,0].legend(handles=legend_handles, loc = "center", ncols = 3)
     
     return fig
-     
-def plot_geneset_pval_heatmap(df: pd.DataFrame,
-                              ax: Optional[Axes] = None,
-                              axlegend: Optional[Axes] = None,
-                              cmap: str = "Blues",
-                              vmin: float = 0.,
-                              vmax: float = 10.,
-                              show_geneset_labels: bool = False,
-                              limit_geneset_label_length: int = 200) -> Optional[Figure]:
-
-    if ax is None:
-
-        if show_geneset_labels:
-            figsize = [10 + df.shape[1]/4,  0.15 * df.shape[0]]
-        else:
-            figsize = [0.5 + df.shape[1]/4, 8]
-
-        fig, ax_plot = plt.subplots(figsize=figsize, layout="constrained")
-    else:
-        ax_plot = ax
-        
-    if axlegend is None:
-        figlegend, axlegend_plot = plt.subplots(figsize=[1, 3], layout="constrained")
-    else:
-        axlegend_plot = axlegend
-    
-    if df.shape[0] > 0:
-        if show_geneset_labels and limit_geneset_label_length > 0:
-            yticklabels = df.index.str[0:limit_geneset_label_length]
-        else:
-            yticklabels=False
-        sns.heatmap(df, cmap=cmap, vmin=vmin, vmax=vmax, ax=ax_plot, cbar_ax = axlegend_plot, yticklabels=yticklabels)
-        ax_plot.tick_params(top=False,
-                            bottom=True,
-                            left=False,
-                            right=False,
-                            labelleft=False,
-                            labelright=show_geneset_labels,
-                            labeltop= False,
-                            labelbottom=True)
-        if show_geneset_labels:
-            ax_plot.tick_params(axis="y", labelsize=8, labelrotation=0)
-
-        ax_plot.set_xlabel("")
-        ax_plot.set_ylabel("")
-        for _, spine in ax_plot.spines.items():
-            spine.set_visible(True)
-            spine.set_color('#aaaaaa')
-    if ax is None and axlegend is None:
-        return fig, figlegend

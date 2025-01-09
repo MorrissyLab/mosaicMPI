@@ -714,8 +714,8 @@ class Network():
         """
         rep_programs_ids = self.get_representative_program_ids(correlation_axis=correlation_axis)
         rep_programs = self.integration.get_programs()[rep_programs_ids.index]
-        rep_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["Community", "dataset", "k", "Program"])
-        return rep_programs  # TODO: Check return types
+        rep_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["community", "dataset", "k", "program"])
+        return rep_programs
 
     def get_lowest_rank_programs(self,
                                 min_k: Optional[Union[int, Dict[str, int]]] = None,

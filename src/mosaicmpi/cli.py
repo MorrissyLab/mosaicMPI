@@ -24,9 +24,6 @@ import matplotlib
 # For CLI, use the Agg background which doesn't support plt.show() and is faster
 matplotlib.use('Agg')
 
-# adds both -h and --help as options
-CONTEXT_SETTINGS = {'help_option_names': ['-h', '--help']}
-
 # Orders the commands in the help menus to match the workflow
 class _OrderedGroup(click.Group):
     """
@@ -41,17 +38,31 @@ class _OrderedGroup(click.Group):
         return self.commands
 
 
-@click.group(cls=_OrderedGroup, context_settings=CONTEXT_SETTINGS)
+@click.group(cls=_OrderedGroup, context_settings={'help_option_names': ['-h', '--help'], 'max_content_width': 160})
 @click.version_option(version=__version__)
 def cli():
     """
     mosaicMPI is a tool for deconvolution and integration of multiple datasets based on consensus Non-Negative Matrix Factorization (cNMF).
     """
 
+
+    # start logging to stdout before any subcommands are run
+    utils.start_logging()
+
+    # log the original command
+    logging.info(" ".join(sys.argv))
+
+@cli.result_callback()
+def post_cli(result, **kwargs):
+    
+    # log command completion
+    logging.info("All tasks completed successfully.")
+
+
 @click.command(name="txt-to-h5ad")
 @click.option(
-    "-d", "--data_file", type=click.Path(dir_okay=False, exists=True), required=True,
-    help="Input counts or normalized matrix as delimited text file. Rows are samples/cells and columns are genes/features (unless --transpose is specified).")
+    "-d", "--data", type=click.Path(dir_okay=False, exists=True), required=True,
+    help="Input counts or normalized matrix as delimited text file. Rows are observations (eg. samples/cells) and columns are features (eg. genes) (unless --transpose is specified).")
 @click.option(
     "--is_normalized", is_flag=True, help="Specify if input data is normalized instead of count data.")
 @click.option(
@@ -61,12 +72,8 @@ def cli():
     "-f", "--feature_metadata", type=click.Path(dir_okay=False, exists=True), required=False,
     help="Optional delimited text file with metadata for features with one row each. Columns are annotation layers.")
 @click.option(
-    "--sparsify", is_flag=True,
-    help="Save resulting data in sparse format. Recommended to increase performance for sparse datasets such as scRNA-Seq, scATAC-Seq, and 10X Visium"
-         ", but not for bulk expression data. [Note that this feature is experimental]")
-@click.option(
     "--transpose", is_flag=True,
-    help="Transpose an input data matrix where rows are genes/features and columns are samples/cells into the correct orientation.")
+    help="Transpose an input data matrix where rows are features and columns are observations.")
 @click.option(
     "--data_delimiter", type=str, default="\t",
     help="Delimiter for data file, defaults to tab-delimited.")
@@ -76,12 +83,15 @@ def cli():
 @click.option(
     "-o", '--output', type=click.Path(dir_okay=False, exists=False), required=True,
     help="Path to output .h5ad file.")
-def cmd_txt_to_h5ad(data_file, is_normalized, metadata, feature_metadata, output, transpose, sparsify, data_delimiter, metadata_delimiter):
+@click.option(
+    "--sparsify", is_flag=True,
+    help="[Experimental feature] Save resulting data in sparse format. Recommended to increase performance for sparse datasets such as scRNA-Seq, scATAC-Seq, and 10X Visium"
+         ", but not for bulk expression data.")
+def cmd_txt_to_h5ad(data, is_normalized, metadata, feature_metadata, output, transpose, data_delimiter, metadata_delimiter, sparsify):
     """
     Create .h5ad file with data and metadata (`adata.obs`).
     """
-    utils.start_logging()
-    df = pd.read_table(data_file, index_col=0, sep=data_delimiter)
+    df = pd.read_table(data, index_col=0, sep=data_delimiter)
     if transpose:
         df = df.T
     if metadata:
@@ -95,7 +105,7 @@ def cmd_txt_to_h5ad(data_file, is_normalized, metadata, feature_metadata, output
     dataset = Dataset.from_df(data=df, obs=sample_metadata_df, var=feature_metadata_df, sparsify=sparsify, is_normalized=is_normalized)
     logging.info(dataset.get_printable_metadata_type_summary())
     dataset.write_h5ad(output)
-    logging.info("All tasks completed successfully.")
+
 
 @click.command(name="update-h5ad-metadata")
 @click.option(
@@ -108,13 +118,12 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
     """
     Update metadata in a .h5ad file at any point in the mosaicMPI workflow. New metadata will overwrite (`adata.obs`).
     """
-    utils.start_logging()
     dataset = Dataset.from_h5ad(input_h5ad)
     metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
     dataset.update_obs(metadata_df)
     logging.info(dataset.get_printable_metadata_type_summary())
     dataset.write_h5ad(input_h5ad)
-    logging.info("All tasks completed successfully.")
+
 
 @click.command(name="impute-zeros")
 @click.option(
@@ -126,18 +135,15 @@ def cmd_update_h5ad_metadata(input_h5ad, metadata):
 @click.option(
     "-n", "--n_folds", type=int, default=100,
     help="Number of folds for k-fold cross-validation. 0 disables cross-validation.")
-
 def cmd_impute_zeros(input, output, n_folds):
     """
     Impute missing values with zeros.
     """
-    utils.start_logging()
     dataset = Dataset.from_h5ad(input)
     dataset.impute_zeros(n_folds=n_folds)
     # Save output to new h5ad file
     dataset.write_h5ad(output)
-    
-    logging.info("All tasks completed successfully.")
+
 
 @click.command(name="impute-knn")
 @click.option(
@@ -170,13 +176,10 @@ def cmd_impute_knn(input, output, n_neighbors, weights, n_folds):
     """
     k-Nearest Neighbour (KNN) imputation of missing values.
     """
-    utils.start_logging()
     dataset = Dataset.from_h5ad(input)
     dataset.impute_knn(n_neighbors = n_neighbors, weights = weights, n_folds=n_folds)
     # Save output to new h5ad file
     dataset.write_h5ad(output)
-    
-    logging.info("All tasks completed successfully.")
 
 
 @click.command(name="check-h5ad")
@@ -194,7 +197,6 @@ def cmd_check_h5ad(input, output):
     values. Then, this command will remove only those features that have zero variance or were
     not able to be imputed for other reasons.
     """
-    utils.start_logging()
     dataset = Dataset.from_h5ad(input)
     dataset.remove_unfactorizable_observations()
     dataset.remove_unfactorizable_features()
@@ -203,21 +205,184 @@ def cmd_check_h5ad(input, output):
     if output is not None:
         dataset.write_h5ad(output)
 
-    logging.info("All tasks completed successfully.")
 
-@click.group(name="select-hvg", cls=_OrderedGroup)
-def select_hvg():
+@click.group(name="select-hvf", cls=_OrderedGroup)
+def select_hvf():
     """
-    Select highly variable genes for program identification.
+    Select highly variable features for factorization.
     """
+
 
 @click.command(name="stdeconvolve")
-def cmd_select_hvg_stdeconvolve():
-    print("stdeconvolve")
+@click.option(
+    "-n", "--name", type=str, required=True, 
+    help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
+@click.option(
+    "-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
+    help="Output directory. All output will be placed in [output_dir]/[name]/... ")
+@click.option(
+    "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=True,
+    help="h5ad file containing expression data as well as any cell/sample metadata (adata.obs).")
+@click.option(
+    "--stratify_by", type=str, default=None, show_default=True,
+    help="Model gene-variance relationship separately for each class of samples/cells based on the provided metadata field. For example, you "
+         "could stratify by Sample ID for single-cell datasets.")
+@click.option(
+    "--stratify_mode", type=click.Choice(["union", "intersection"]), default="union", show_default=True,
+    help="Select the union or intersection of gene lists identified from dataset strata.")
+@click.option(
+    "--max_cells_proportion", type=float, default=1.0, show_default=True,
+    help="Exclude features with greater than this proportion of positive values.")
+@click.option(
+    "--min_cells_proportion", type=float, default=0.05, show_default=True,
+    help="Exclude features with less than this proportion of positive values.")
+@click.option(
+    "--min_features", type=int, default=0, show_default=True,
+    help="Exclude samples/cells with fewer than this number of positive features.")
+@click.option(
+    "--min_raw_sum", type=float, default=0.0, show_default=True,
+    help="Exclude samples/cells with a summed signal less than this threshold.")
+@click.option(
+    "--n_splines", type=int, default=5, show_default=True,
+    help="Number of splines to use for fitting the Linear GAM, must be greater than spline_order.")
+@click.option(
+    "--spline_order", type=int, default=3, show_default=True,
+    help="spline order (constant = 0, linear = 1, quadratic = 2, and cubic = 3).")
+@click.option(
+    "--top_n", type=int, default=1000, show_default=True,
+    help="Number of features to select after ranking features by score.")
+@click.option(
+    "--alpha",
+    type=float, default=0.05, show_default=True, required=True,
+    help="Alpha (p-value) threshold for selection of HVFs.")
+@click.option(
+    "--use_unadjusted_pvals", is_flag=True, show_default=True,
+    help="Threshold based on unadjusted, rather than Benjamini-Hochberg adjusted p-values.")
+def cmd_select_hvf_stdeconvolve(name, output_dir, input, stratify_by, stratify_mode, max_cells_proportion, min_cells_proportion,
+                           min_features, min_raw_sum, n_splines, spline_order, top_n, alpha, use_unadjusted_pvals):
+    """
+    STdeconvolve method (Miller, et al. Nat. Comm. 2022) to select highly-variable features. 
+
+    First, the dataset is preprocessed. If --stratify_by is provided, the dataset is split into strata of samples/cells based on the provided metadata. --stratify_mode
+    allows either the union (the default) or intersection of HVFs identified separately for each stratum. Cells are filtered based on
+    --min_cells_proportion, and --max_cells_proportion parameters, to remove features which are present in too many or too few samples/cells. These parameters are identical
+    to the --removeAbove and --removeBelow parameters in STdeconvolve, and by default are disabled.
+
+    Second, an overdispersion score is calculated A Linear Generalized Additive Model (Linear GAM) models the relationship of log10(mean) to log10(variance), with the --n_splines
+    and --spline_degree parameters. This curve is used to identify the relative overdispersion of each gene relative to other features with similar expression levels. Once this
+    score is calculated, it can be quantile normalized and its significance can be assessed using p-values from the F-distribution.
+
+    Thirdly, one or more thresholding methods are applied. --alpha allows thresholding on the p-value, which is by default Benjamini-Hochberg adjusted, unless --use_unadjusted_pvals
+    is specified. If --top_n is specified, only the intersection of these two filters is selected. 
+
+    Example:
+        
+        \b
+        # use default parameters, suitable for most datasets
+        mosaicmpi select-hvf default -n test -i test.h5ad --alpha 0.05
+
+        \b
+        # specify a custom gene list in a whitespace-delimited text file
+        mosaicmpi select-hvf default -n test -i test.h5ad --feature_list genelist.txt
+
+        \b
+        # identify HVF features separately for single-cells from each patient, then get the union
+        mosaicmpi select-hvf default -n test -i test.h5ad --alpha 0.05 --stratify_by patientID --stratify_mode union
+
+    """
+
+    os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)  # creates output directory
+    utils.start_logging(os.path.join(output_dir, name, "logs", "logfile.txt"))
+    dataset = Dataset.from_h5ad(input)
+    
+    # get features from feature list file
+    if feature_list is not None:
+        feature_list = open(feature_list).read().split()
+
+    # Create gene stats table and save h5ad file
+    dataset.select_hvf_stdeconvolve(
+        stratify_by = stratify_by,
+        stratify_mode = stratify_mode,
+        max_cells_proportion = max_cells_proportion,
+        min_cells_proportion = min_cells_proportion,
+        min_features = min_features,
+        min_raw_sum = min_raw_sum,
+        n_splines = n_splines,
+        spline_order = spline_order,
+        top_n = top_n,
+        alpha = alpha,
+        adjust_pvals = not use_unadjusted_pvals)
+    
+    dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
+    
+    # output text file
+    dataset.hvf_stats.to_csv(os.path.join(output_dir, name, "hvf_stats.tsv"), sep="\t")
+
+    # create mean vs variance plots
+    fig = plot_feature_mean_variance(dataset)
+    utils.save_fig(fig, os.path.join(output_dir, name, "feature_mean_var"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+    
+    # create overdispersion histogram plot
+    fig = plot_feature_statistic_histogram(dataset, show_selected = True, y_unit="odscore")
+    utils.save_fig(fig, os.path.join(output_dir, name, "feature_mean_odscore"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+
+    if dataset.is_imputed:
+        logging.info("Creating plots for imputed data")
+
+        fig = plot_feature_missingness(dataset, proportion=True)
+        utils.save_fig(fig, os.path.join(output_dir, name, "missingness_histogram"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+
 
 @click.command(name="custom")
-def cmd_select_hvg_custom():
-    print("custom")
+@click.option(
+    "-n", "--name", type=str, required=True, 
+    help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
+@click.option(
+    "-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
+    help="Output directory. All output will be placed in [output_dir]/[name]/... ")
+@click.option(
+    "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=True,
+    help="h5ad file containing expression data as well as any cell/sample metadata (adata.obs).")
+@click.option(
+    "--feature_list", type=click.Path(exists=True, dir_okay=False), show_default=True, required=True,
+    help="Text file with feature names separated by newlines.")
+def cmd_select_hvf_custom(name, output_dir, input, feature_list):
+    """
+    Provide a text file of feature names to select highly variable features.
+
+    \b
+    Example:
+        # specify a custom gene list in a whitespace-delimited text file
+        mosaicmpi select-hvf custom -n test -i test.h5ad --feature_list genelist.txt
+
+    """
+    os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)  # creates output directory
+    utils.start_logging(os.path.join(output_dir, name, "logs", "logfile.txt"))
+    dataset = Dataset.from_h5ad(input)
+    # get features from feature list file
+    feature_list = open(feature_list).read().split()
+
+    # Create gene stats table and save h5ad file
+    dataset.select_hvf(feature_list = feature_list)
+    dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
+    
+    # output text file
+    dataset.hvf_stats.to_csv(os.path.join(output_dir, name, "hvf_stats.tsv"), sep="\t")
+
+    # create mean vs variance plots
+    fig = plot_feature_mean_variance(dataset)
+    utils.save_fig(fig, os.path.join(output_dir, name, "feature_meanvar"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+    
+    # create odscore histogram plot
+    fig = plot_feature_statistic_histogram(dataset, hue="selected", statistic="odscore", log_scale=[10, False])
+    utils.save_fig(fig, os.path.join(output_dir, name, "feature_odscore"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+
+    if dataset.is_imputed:
+        logging.info("Creating plots for imputed data")
+
+        fig = plot_feature_missingness(dataset, proportion=True)
+        utils.save_fig(fig, os.path.join(output_dir, name, "missingness_histogram"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+
 
 @click.command(name="default")
 @click.option(
@@ -228,103 +393,162 @@ def cmd_select_hvg_custom():
     help="Output directory. All output will be placed in [output_dir]/[name]/... ")
 @click.option(
     "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=True,
-    help="h5ad file containing expression data (adata.X=normalized and adata.raw.X = count) as well as any cell/sample metadata (adata.obs).")
+    help="h5ad file containing expression data as well as any cell/sample metadata (adata.obs).")
 @click.option(
-    "-s", "--stratify_by", type=str, default=None, show_default=True,
-    help="Model gene-variance relationship separately for each class of samples/cells based on the provided metadata field. For example, you could stratify by Sample ID for single-cell datasets."
-)
+    "--stratify_by", type=str, default=None, show_default=True,
+    help="Model gene-variance relationship separately for each class of samples/cells based on the provided metadata field. For example, you "
+         "could stratify by Sample ID for single-cell datasets.")
 @click.option(
-    "--gam_spline_degree", type=int, default=0, show_default=True,
-    help="Degree for BSplines for the Generalized Additive Model. For example, a constant spline would be 0, linear would be 1, and cubic would be 3.")
+    "--stratify_mode", type=click.Choice(["union", "intersection"]), default="union", show_default=True,
+    help="Select the union or intersection of gene lists identified from dataset strata.")
 @click.option(
-    "--gam_dof", type=int, default=20, show_default=True,
-    help="Degrees of Freedom (number of components) for the Generalized Additive Model.")
+    "--use_counts", is_flag=True, show_default=True,
+    help="model mean and variance of the count data (rather than normalized data), if it exists.")
 @click.option(
     "--max_missingness", type=float, default=0.0, show_default=True,
-    help="""Maximum proportion of missing values allowed for each feature prior to modelling the mean-variance relationship.
-            This parameter is helpful for reducing the tendency of kNN- and zero-imputed features to have higher variance 
-            relative to unimputed genes.""")
+    help="For datasets imputed using mosaicMPI, exclude features with greater than this proportion of imputed values.")
 @click.option(
-    "--min_odscore",
+    "--max_cells_proportion", type=float, default=1.0, show_default=True,
+    help="Exclude features with greater than this proportion of positive values.")
+@click.option(
+    "--min_cells_proportion", type=float, default=0.0, show_default=True,
+    help="Exclude features with less than this proportion of positive values.")
+@click.option(
+    "--min_cells_mean", type=float, default=0.0, show_default=True,
+    help="Exclude features with less than this mean.")
+@click.option(
+    "--min_features", type=int, default=0, show_default=True,
+    help="Exclude samples/cells with fewer than this number of positive features.")
+@click.option(
+    "--min_raw_sum", type=float, default=0.0, show_default=True,
+    help="Exclude samples/cells with a summed signal less than this threshold.")
+@click.option(
+    "--n_splines", type=int, default=5, show_default=True,
+    help="Number of splines to use for fitting the Linear GAM, must be greater than spline_order.")
+@click.option(
+    "--spline_order", type=int, default=3, show_default=True,
+    help="spline order (constant = 0, linear = 1, quadratic = 2, and cubic = 3).")
+@click.option(
+    "--score_type", type=click.Choice(["vscore", "odscore"]), default="odscore", show_default=True,
+    help="Type of score for calculating overdispersion.")
+@click.option(
+    "--min_score",
     type=float, default=None, show_default=True,
-    help="Specify a minimum OD-score for HVG selection.")
+    help="Minimum score threshold for feature selection.")
 @click.option(
     "--top_n",
     type=int, default=None, show_default=True,
-    help="Specify a number HVGs to identify after ranking by OD-score")
+    help="Number of features to select after ranking features by score.")
 @click.option(
-    "--quantile",
+    "--top_quantile",
     type=float, default=None, show_default=True,
-    help=r"Specify a threshold for quantile-transformed OD-scores for HVG selection. For example, to choose the top 10% of genes, use --quantile ")
+    help="Proportion of top features to select after ranking the score.")
 @click.option(
-    "--min_mean", default=0.0, show_default=True,
-    help="Exclude genes from overdispersed gene lists if mean of counts data (or normalized data, if no count data exists) is less than this threshold.")
-def cmd_select_hvg_default(name, output_dir, input, stratify_by, gam_spline_degree, gam_dof, max_missingness, min_odscore, top_n, quantile, min_mean):
+    "--alpha",
+    type=float, default=None, show_default=True,
+    help="Alpha (p-value) threshold for selection of HVFs.")
+@click.option(
+    "--use_unadjusted_pvals", is_flag=True, show_default=True,
+    help="Threshold based on unadjusted, rather than Benjamini-Hochberg adjusted p-values.")
+@click.option(
+    "--feature_list", type=click.Path(exists=True, dir_okay=False), show_default=True,
+    help="Text file with feature names separated by newlines.")
+@click.option(
+    "--multiple_threshold_mode", type=click.Choice(["union", "intersection"]), default="intersection", show_default=True,
+    help="Method to combine multiple thresholds.")
+def cmd_select_hvf_default(name, output_dir, input, stratify_by, stratify_mode, use_counts, max_missingness, max_cells_proportion, min_cells_proportion, min_cells_mean,
+                           min_features, min_raw_sum, n_splines, spline_order, score_type, min_score, top_n, top_quantile, alpha, use_unadjusted_pvals, feature_list, multiple_threshold_mode):
     """
-    Select overdispersed genes based on residual standard deviation after modeling mean-variance dependence. First, a GLM-GAM is used to
-    model the mean-variance relationship as a curve, and then this curve is used as a correction factor to calculate an ODscore metric used for thresholding.
-    Specify one of --min_odscore, --top_n, or --quantile to specify a thresholding method. If multiple methods are selected, the intersection will be used.
+    Flexible way to select highly-variable features. The process is controlled by several groups of parameters.
+
+    First, the dataset is preprocessed. If --stratify_by is provided, the dataset is split into strata of samples/cells based on the provided metadata. --stratify_mode
+    allows either the union (the default) or intersection of HVFs identified separately for each stratum. Either for the whole dataset, or separately in a stratified dataset,
+    normalized data is used by default, unless --use_counts is specified. If the .h5ad file was created from a single counts matrix, then this means that the TPM normalization
+    will be performed. Cells are then removed based on the --max_missingness, which only applies to datasets imputed by mosaicMPI. Cells are further filtered based on
+    --min_cells_proportion, and --max_cells_proportion parameters, to remove features which are present in too many or too few samples/cells. These parameters are identical
+    to the --removeAbove and --removeBelow parameters in STdeconvolve, and by default are disabled.
+
+    Second, an overdispersion score is calculated using one of two methods specified using --score_type. If vscore, the scoring system is the same as cNMF (Kotliar et. al., 2019). By default,
+    the score_type is odscore, which is the same as STdeconvolve (Miller, et al. Nat. Comm. 2022). To calculate the odscore, a Linear Generalized Additive Model (Linear GAM)
+    is used to model the relationship of log10(mean) to log10(variance), with the --n_splines and --spline_degree parameters. This curve is used to identify the relative
+    overdispersion of each gene relative to other features with similar expression levels. Once this score is calculated, it can be quantile normalized and its significance can be
+    assessed using p-values from the F-distribution.
+
+    Thirdly, one or more thresholding methods are applied. --alpha allows thresholding on the p-value, which is by default Benjamini-Hochberg adjusted, unless --use_unadjusted_pvals
+    is specified. --min_score thresholds on the score value, --top_n thresholds based on the number of features after ranking, and --top_quantile thresholds the features on the
+    provided quantile (eg. 0.10) of the scores. --feature_list allows the option to provide a file with whitespace-delimited feature names
+    to either restrict or expand the selected features to a provided list.
+
+    If multiple thresholding methods are selected, --multiple_threshold_mode controls whether to select the union or the intersection of these methods.
+
     Examples:
 
+        \b
         # use default parameters, suitable for most datasets
-        mosaicmpi select-hvg default -n test -i test.h5ad
+        mosaicmpi select-hvf default -n test -i test.h5ad --alpha 0.05
 
-        # Explicitly use a linear model instead of a BSpline Generalized Additive Model
-        mosaicmpi select-hvg default -n test -i test.h5ad --spline_degree 0 --gam_dof 1
+        \b
+        # specify a custom gene list in a whitespace-delimited text file
+        mosaicmpi select-hvf default -n test -i test.h5ad --feature_list genelist.txt
 
-        # Explicitly use a linear model instead of a BSpline Generalized Additive Model, and then use 
-        mosaicmpi select-hvg default -n test -i test.h5ad --spline_degree 0 --gam_dof 1
+        \b
+        # identify HVF features separately for single-cells from each patient, then get the union
+        mosaicmpi select-hvf default -n test -i test.h5ad --alpha 0.05 --stratify_by patientID --stratify_mode union
+
     """
 
-    # warn if multiple thresholding methods are selected
-    selected_methods = []
-    if min_odscore is not None:
-        selected_methods.append("min_odscore")
-    if top_n is not None:
-        selected_methods.append("top_n")
-    if quantile is not None:
-        selected_methods.append("quantile")
-    if len(selected_methods) > 1:
-        methodwarnstr = ", ".join(selected_methods)
-        logging.warning(f"Multiple conflicting overdispersed gene selection criteria have been selected: {methodwarnstr}. "
-                        "Only the intersection of these methods will be selected.")
-    
-    os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)  # creates directories for cNMF
+    os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)  # creates output directory
     utils.start_logging(os.path.join(output_dir, name, "logs", "logfile.txt"))
     dataset = Dataset.from_h5ad(input)
     
+    # get features from feature list file
+    if feature_list is not None:
+        feature_list = open(feature_list).read().split()
+
     # Create gene stats table and save h5ad file
-    dataset.select_hvg_default(stratify_by=stratify_by,
-                               gam_spline_degree=gam_spline_degree,
-                               gam_dof=gam_dof,
-                               max_missingness=max_missingness,
-                               min_odscore=min_odscore,
-                               top_n=top_n,
-                               quantile=quantile,
-                               min_mean=min_mean)
+    dataset.select_hvf(
+        stratify_by = stratify_by,
+        stratify_mode = stratify_mode,
+        use_normalized = not use_counts,
+        max_missingness = max_missingness,
+        max_cells_proportion = max_cells_proportion,
+        min_cells_proportion = min_cells_proportion,
+        min_cells_mean = min_cells_mean,
+        min_features = min_features,
+        min_raw_sum = min_raw_sum,
+        n_splines = n_splines,
+        spline_order = spline_order,
+        score_type = score_type,
+        min_score = min_score,
+        top_n = top_n,
+        top_quantile = top_quantile,
+        alpha = alpha,
+        adjust_pvals = not use_unadjusted_pvals,
+        feature_list = feature_list,
+        multiple_threshold_mode = multiple_threshold_mode)
+    
     dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     
     # output text file
-    dataset.adata.var.to_csv(os.path.join(output_dir, name, "feature_stats.tsv"), sep="\t")
+    dataset.hvf_stats.to_csv(os.path.join(output_dir, name, "hvf_stats.tsv"), sep="\t")
 
     # create mean vs variance plots
-    fig = plot_feature_dispersion(dataset, show_selected=False)
-    utils.save_fig(fig, os.path.join(output_dir, name, "feature_meanvar"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+    fig = plot_feature_mean_variance(dataset)
+    utils.save_fig(fig, os.path.join(output_dir, name, "feature_mean_var"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
     
+    # create overdispersion histogram plot
+    hue = "selection_overlap" if stratify_by is not None else "selected"
+    fig = plot_feature_statistic_histogram(dataset, hue=hue, statistic=score_type, log_scale=[10, False])
+    utils.save_fig(fig, os.path.join(output_dir, name, "feature_" + score_type), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+
     if dataset.is_imputed:
         logging.info("Creating plots for imputed data")
 
         fig = plot_feature_missingness(dataset, proportion=True)
         utils.save_fig(fig, os.path.join(output_dir, name, "missingness_histogram"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
 
-    logging.info("All tasks completed successfully.")
 
-    
 @click.command(name="cnmf")
-def cmd_select_hvg_cnmf():
-    print("cnmf")
-
-@click.command(name="model-odg")
 @click.option(
     "-n", "--name", type=str, required=True, 
     help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
@@ -333,65 +557,68 @@ def cmd_select_hvg_cnmf():
     help="Output directory. All output will be placed in [output_dir]/[name]/... ")
 @click.option(
     "-i", "--input", type=click.Path(dir_okay=False, exists=True), required=True,
-    help="h5ad file containing expression data (adata.X=normalized and adata.raw.X = count) as well as any cell/sample metadata (adata.obs).")
+    help="h5ad file containing expression data as well as any cell/sample metadata (adata.obs).")
 @click.option(
-    "--default_spline_degree", type=int, default=3, show_default=True,
-    help="Degree for BSplines for the Generalized Additive Model (default method). For example, a constant spline would be 0, linear would be 1, and cubic would be 3.")
+    "--stratify_by", type=str, default=None, show_default=True,
+    help="Model gene-variance relationship separately for each class of samples/cells based on the provided metadata field. For example, you "
+         "could stratify by Sample ID for single-cell datasets.")
 @click.option(
-    "--default_dof", type=int, default=20, show_default=True,
-    help="Degrees of Freedom (number of components) for the Generalized Additive Model (default method).")
+    "--stratify_mode", type=click.Choice(["union", "intersection"]), default="union", show_default=True,
+    help="Select the union or intersection of gene lists identified from dataset strata.")
 @click.option(
-    "--max_missingness", type=float, default=0.0, show_default=True,
-    help="""Maximum proportion of missing values allowed for each feature prior to modelling the mean-variance relationship.
-            This parameter is helpful for reducing the tendency of kNN- and zero-imputed features to have higher variance 
-            relative to unimputed genes.
-            """
-)
-def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, max_missingness):
+    "--min_cells_mean", type=float, default=0.5, show_default=True,
+    help="Exclude features with less than this mean.")
+@click.option(
+    "--top_n",
+    type=int, default=2000, show_default=True,
+    help="Number of features to select after ranking features by score.")
+def cmd_select_hvf_cnmf(name, output_dir, input, stratify_by, stratify_mode, min_cells_mean, top_n):
     """
-    [superseded by select-hvg]
+    cNMF method (Kotliar et. al., 2019) to select highly-variable features.
 
-    Model gene overdispersion and plot calibration plots for selection of overdispersed genes, using two methods:
-    
-    - `cnmf`: v-score and minimum expression threshold for count data (cNMF method: Kotliar, et al. eLife, 2019) 
-    - `default`: residual standard deviation after modeling mean-variance dependence. (STdeconvolve method: Miller, et al. Nat. Comm. 2022)
-    
-    Examples:
+    First, the dataset is preprocessed. If --stratify_by is provided, the dataset is split into strata of samples/cells based on the provided metadata. --stratify_mode
+    allows either the union (the default) or intersection of HVFs identified separately for each stratum. Second, the vscore is calculated from the normalized matrix to identify
+    feature overdispersion. Features with a mean less than the --min_cells_mean parameter are excluded. Then, the --top_n features are selected.
 
-        # use default parameters, suitable for most datasets
-        mosaicmpi model-odg -n test -i test.h5ad
+    Example:
+        \b
+        # use default parameters, same as cNMF's default parameters
+        mosaicmpi select-hvf cnmf -n test -i test.h5ad
 
-        # Explicitly use a linear model instead of a BSpline Generalized Additive Model
-        mosaicmpi model-odg -n test -i test.h5ad --default_spline_degree 0 --default_dof 1
     """
-    cNMF(output_dir=output_dir, name=name)  # creates directories for cNMF
-    os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)
+
+    os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)  # creates output directory
     utils.start_logging(os.path.join(output_dir, name, "logs", "logfile.txt"))
     dataset = Dataset.from_h5ad(input)
-    
     # Create gene stats table and save h5ad file
-    dataset.model_overdispersed_genes(odg_default_spline_degree=default_spline_degree,
-                               odg_default_dof=default_dof,
-                               max_missingness=max_missingness)
+    dataset.select_hvf_cnmf(
+        stratify_by = stratify_by,
+        stratify_mode = stratify_mode,
+        min_cells_mean = min_cells_mean,
+        top_n = top_n)
+    
     dataset.write_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     
     # output text file
-    dataset.adata.var.to_csv(os.path.join(output_dir, name, "feature_stats.tsv"), sep="\t")
+    dataset.hvf_stats.to_csv(os.path.join(output_dir, name, "hvf_stats.tsv"), sep="\t")
 
     # create mean vs variance plots
-    fig = plot_feature_dispersion(dataset, show_selected=False)
+    fig = plot_feature_mean_variance(dataset)
     utils.save_fig(fig, os.path.join(output_dir, name, "feature_meanvar"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
     
+    # create overdispersion histogram plot
+    hue = "selection_overlap" if stratify_by is not None else "selected"
+    fig = plot_feature_statistic_histogram(dataset, hue=hue, statistic="vscore", log_scale=[10, False])
+    utils.save_fig(fig, os.path.join(output_dir, name, "feature_vscore"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
+
     if dataset.is_imputed:
         logging.info("Creating plots for imputed data")
 
         fig = plot_feature_missingness(dataset, proportion=True)
         utils.save_fig(fig, os.path.join(output_dir, name, "missingness_histogram"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
 
-    logging.info("All tasks completed successfully.")
 
-
-@click.command(name="set-parameters")
+@click.command(name="initialize-cnmf")
 @click.option(
     "-n", "--name", type=str, required=True, 
     help="Name for cNMF analysis. All output will be placed in [output_dir]/[name]/...")
@@ -399,26 +626,9 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, m
     "-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
     help="Output directory. All output will be placed in [output_dir]/[name]/... ")
 @click.option(
-    "-m", "--odg_method",
-    type=click.Choice([
-        "default_topn",
-        "default_minscore",
-        "default_quantile",
-        "cnmf_topn",
-        "cnmf_minscore",
-        "cnmf_quantile",
-        "genes_file"
-        ]), default="default_minscore", show_default=True,
-    help="Select the model and method of overdispersed gene selection.")
-@click.option(
-    "-p", '--odg_param', default="1.0", show_default=True,
-    help="Parameter for odg_method.")
-@click.option(
-    "--min_mean", default=0.0, show_default=True,
-    help="Exclude genes from overdispersed gene lists if mean of counts data (or normalized data, if no count data exists) is less than this threshold.")
-@click.option(
-    '--k_range', type=int, nargs=3,
-    help="Specify a range of components for factorization, using three numbers: first, last, step_size. Eg. '4 23 4' means `k`=4,8,12,16,20")
+    '--k_range', type=int, nargs=3, multiple=True,
+    help="Specify a range of components for factorization, using three numbers: first, last, step_size. Eg. '4 23 4' means k=4,8,12,16,20. "
+    "Note that this argument can be supplied multiple times for multiple ranges")
 @click.option(
     "-k", type=int, multiple=True,
     help="Specify individual components for factorization. Multiple may be selected like this: -k 2 -k 3")
@@ -426,87 +636,38 @@ def cmd_model_odg(name, output_dir, input, default_spline_degree, default_dof, m
     '--n_iter', type=int, show_default=True, default=100,
     help="Number of iterations for factorization. If several `k` are specified, this many iterations will be run for each value of `k`")
 @click.option(
-    '--seed', type=int,
-    help="Seed for sklearn random state.")
+    '--seed', type=int, help="Seed for scikit-learn random state.")
 @click.option(
     '--beta_loss', type=click.Choice(["frobenius", "kullback-leibler"]), default="kullback-leibler", show_default=True,
-    help="Measure of Beta divergence to be minimized.")
-
-def cmd_set_parameters(name, output_dir, odg_method, odg_param, min_mean, k_range, k, n_iter, seed, beta_loss):
+    help="Measure of beta-divergence to be minimized.")
+def cmd_initialize_cnmf(name, output_dir, k_range, k, n_iter, seed, beta_loss):
     """
-    [superseded by select-hvg]
     
-    Set parameters for factorization, including selecting overdispersed genes.
-    
-    Overdispersed genes can be modelled using the `default` or `cnmf` models, and thresholds
-    can be specified based on the top N, score threshold, or quantile. Alternatively, a text file with one gene per line can be used to specify the genes manually.
-    
-    For `top_n` methods, select an integer number of genes. For `min_score`, specify a score threshold. For `quantile` methods, specify the quantile of 
-    genes to include (eg., the top 25% would be 0.75).
+    Initialize cNMF with inputs for factorization.
     
     Examples:
-
-        # default behaviour does this
-        mosaicmpi set_parameters -n test -m default_minscore -p 1.0
-
-        # to reproduce cNMF default behaviour (Kotliar et al., 2019, eLife)
-        mosaicmpi set_parameters -n test -m cnmf_topn -p 2000          
-
-        # select top 20% of genes when ranked by od-score
-        mosaicmpi set_parameters -n test -m default_quantile -p 0.8
-
-        # input a gene list from text file
-        mosaicmpi set_parameters -n test -m genes_file -p path/to/genesfile.txt
+        \b
+        # specify k with ranges: 10-100 (by 10s), and 100-500 (by 100s)
+        mosaicmpi initialize-cnmf --k_range 10 100 10 --k_range 100 500 100
     """
     os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)
     utils.start_logging(os.path.join(output_dir, name, "logs", "logfile.txt"))
-    dataset = Dataset.from_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
-
-    if odg_method == "genes_file":
-        odg_param = click.Path(exists=True, dir_okay=False)(odg_param)
-        genes = open(odg_param).read().rstrip().split(os.linesep)
-        dataset.select_overdispersed_genes_from_genelist(genes)
-    else:
-        overdispersion_metric = odg_method.split("_")[0]
-        if overdispersion_metric == "default":
-            metric_str = "odscore"
-        elif overdispersion_metric == "cnmf":
-            metric_str = "vscore"
-        else:
-            raise RuntimeError
-        
-        cli_method_str = odg_method.split("_")[1]
-        if cli_method_str == "top_n":
-            method_str = "top_n"
-            threshold = int(odg_param)
-        elif cli_method_str == "minscore":
-            method_str = "min_score"
-            threshold = float(odg_param)
-        else:
-            method_str = cli_method_str
-            threshold = float(odg_param)
-        method = {method_str: threshold}
-        dataset.select_overdispersed_genes(overdispersion_metric=metric_str, min_mean=min_mean,
-                                           **method)
-
-    # create mean vs variance plot, updated with selected genes
-    fig = plot_feature_dispersion(dataset, show_selected=True)
-    utils.save_fig(fig, os.path.join(output_dir, name, "feature_meanvar"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
-
-    # output table with gene overdispersion measures
-    dataset.adata.var.to_csv(os.path.join(output_dir, name, "feature_stats.tsv"), sep="\t")
     
     # process k-value selection inputs
     kvals = set(k)
-    if k_range is not None:
-        kvals |= set(range(k_range[0], k_range[1] + 1, k_range[2]))
+    for start, stop, step in k_range:
+        kvals |= set(range(start, stop + 1, step))
     kvals = sorted(list(kvals))
+
+    if not kvals:
+        logging.error("Please specify rank(s) for factorization using -k and/or --k_range parameters.")
+        sys.exit(1)
+    logging.info("Setting up factorization for the following ranks: " + ", ".join([str(k) for k in kvals]))
     
     # prepare cNMF directory for factorization
+    dataset = Dataset.from_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
     dataset.initialize_cnmf(cnmf_output_dir = output_dir, cnmf_name=name, kvals=kvals, n_iter=n_iter, beta_loss=beta_loss, seed=seed)
-    
-    logging.info("All tasks completed successfully.")
-    
+
 
 @click.command(name="factorize")
 @click.option(
@@ -610,9 +771,8 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
                                 local_neighborhood_size=local_neighborhood_size
                                 )
         dataset.write_h5ad(h5ad_path)
-        
-        logging.info("All tasks completed successfully.")
-
+        fig = plot_stability_error(dataset=dataset)
+        utils.save_fig(fig, os.path.join(output_dir, name, name + '.k_selection'))
     
 @click.command("annotated-heatmap")
 @click.option(
@@ -634,7 +794,6 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
     """
     Create heatmaps of usages with annotation tracks.
     """
-    utils.start_logging()
     os.makedirs(output_dir, exist_ok=True)
     dataset = Dataset.from_h5ad(input_h5ad)
     
@@ -672,8 +831,6 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
             cluster_samples=True, cluster_programs=False, show_sample_labels=(not hide_sample_labels))
         fig.savefig(filename, transparent=False, bbox_inches = "tight")
         plt.close(fig)
-    
-    logging.info("All tasks completed successfully.")
 
 
 @click.command(name="map-gene-ids")
@@ -693,7 +850,6 @@ def cmd_map_gene_ids(input_h5ad, output_h5ad, source_ids, dest_ids, source_speci
     """
     Map gene IDs for a dataset, keeping both mapped and unmapped IDs. By default, only one-to-one relationships are mapped.
     """
-    utils.start_logging()
     dataset = Dataset.from_h5ad(input_h5ad)
     dataset.map_gene_ids(source_species=source_species,
                          dest_species=dest_species,
@@ -707,7 +863,6 @@ def cmd_map_gene_ids(input_h5ad, output_h5ad, source_ids, dest_ids, source_speci
         message += f"\n\t{mapping_type}: {count}"
     logging.info(message)
     dataset.write_h5ad(output_h5ad)
-    logging.info("All tasks completed successfully.")
 
 @click.command(name="create-config")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), multiple=True, help=".h5ad file with cNMF results. Can be used multiple times to specify one or more datasets from which to create a config.toml file.")
@@ -716,7 +871,6 @@ def cmd_create_config(input_h5ad, output_toml):
     """
     Creates a TOML config file with default parameters to be used as input for `mosaicmpi integrate`.
     """
-    utils.start_logging()
     if output_toml is None:
         output_toml = "config.toml"
     elif not output_toml.lower().endswith(".toml"):
@@ -744,7 +898,6 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     Integrate one or more datasets across ranks using a TOML configuration file.
     """
     import networkx as nx
-    utils.start_logging()  # allows warning messages to be printed even though logfile hasn't been made yet
 
     # set CPU count for MP-enabled tasks
     global cpus_available
@@ -803,13 +956,20 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
         )
 
     logging.info("Analyzing feature overlaps")
-    # Features and overdispersed features tables and UpSet plots
-    df = integration.get_overdispersed_features_overlap_table()
-    df.to_csv(os.path.join(output_dir, "overdispersed_features.txt"), sep="\t")
+    # Features and HVF subsets: tables and UpSet plots #TODO: Upset plots
+    df = integration.get_hvf_overlap_table()
+    df.to_csv(os.path.join(output_dir, "hvfeatures.txt"), sep="\t")
 
     df = integration.get_features_overlap_table()
     df.to_csv(os.path.join(output_dir, "features.txt"), sep="\t")
     
+    if integration.n_datasets > 1:
+        fig = plot_integration_hvf_upset(integration)
+        utils.save_fig(fig, os.path.join(output_dir, "hvfeatures_upsetplot"), target_dpi=200, formats=config.plot_formats)
+        
+        fig = plot_features_upset(integration)
+        utils.save_fig(fig, os.path.join(output_dir, "features_upsetplot"), target_dpi=200, formats=config.plot_formats)
+
     # save correlation matrix
     corr_path = os.path.join(output_dir, config.corr_method + ".df.npz")
     utils.save_df_to_npz(integration.corr_matrix, corr_path)
@@ -830,14 +990,6 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     # plot mirrored distributions with thresholds (which are computed on max-k filtered data only)
     fig = plot_pairwise_corr_overlaid(integration)
     utils.save_fig(fig, os.path.join(output_dir, f"pairwise_corr_overlaid"), target_dpi=300, formats=config.plot_formats)
-
-    if integration.n_datasets > 1:
-        fig = plot_overdispersed_features_upset(integration)
-        utils.save_fig(fig, os.path.join(output_dir, "overdispersed_features_upsetplot"), target_dpi=200, formats=config.plot_formats)
-        
-        fig = plot_features_upset(integration)
-        utils.save_fig(fig, os.path.join(output_dir, "features_upsetplot"), target_dpi=200, formats=config.plot_formats)
-
 
     # creates Network object from Integration
     logging.info("Creating integration network")
@@ -1058,31 +1210,37 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
             layer_str = layer.replace("\\", "_").replace("/", "_")
             fig = plot_metadata_correlation_program_network(network, colors, layer=layer, subset_datasets=dataset_name)   
             utils.save_fig(fig, os.path.join(output_dir, "annotated_programs", "correlation_network", dataset_name, layer_str), target_dpi=600, formats=config.plot_formats)
-
-    logging.info("All tasks completed successfully.")
     
 @click.command(name="ssgsea")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, show_default=True,
     help="Output directory for ssgsea results")
-@click.option('-n', '--pkl_file', type=click.Path(exists=True, dir_okay=False),
+@click.option('-n', '--pkl_file', type=click.Path(exists=True, dir_okay=False), multiple=False,
     help="Path to network_integration.pkl.gz file from `mosaicmpi integrate` step")
-@click.option('-i', '--h5ad_file', type=click.Path(exists=True, dir_okay=False),
+@click.option('-i', '--h5ad_file', type=click.Path(exists=True, dir_okay=False), multiple=False,
     help="Path to .h5ad file from `mosaicmpi postprocess`")
-@click.option('-g', '--gene_sets', type=str, required=True, 
+@click.option('-g', '--gene_sets', type=str, required=True, default = "GO_Biological_Process_2023", show_default=True,
     help="Path to GMT file with gene sets or Enrichr Library name.")
 @click.option("--min_intersection", type=int, default=5, show_default=True, 
     help="Minimum intersection size for gene sets")
 @click.option("--max_intersection", type=int, default=500, show_default=True, 
     help="Minimum intersection size for gene sets")
+@click.option("--cmap", type=str, default="RdBu_r",
+              help="matplotlib colormap name for heatmap plots.")
+@click.option("--vmin", type=float, default=-0.5,
+              help="minimum NES for heatmap plots")
+@click.option("--vmax", type=float, default=0.5,
+              help="maximum NES for heatmap plots")
+
+@click.option("--no_plot", is_flag=True,
+              help="Skip plotting geneset significance heatmaps")
 @click.option('--cpus', type=int, default=cpus_available, show_default=True,
     help="Number of CPUs for MP-enabled tasks")
-def cmd_ssgsea(output_dir, pkl_file, h5ad_file, gene_sets, min_intersection, max_intersection, cpus):
+def cmd_ssgsea(output_dir, pkl_file, h5ad_file, gene_sets, min_intersection, max_intersection, cmap, vmin, vmax, no_plot, cpus):
     """
     Compute and plot ssGSEA Normalized Enrichment Scores (NES) for mosaicMPI programs. If a network_integration.pkl file
     is provided, ssGSEA is performed on reprepresentative programs from an integration. If a .h5ad file is provided, ssGSEA
     is performed on all programs.
     """
-    utils.start_logging()  # allows warning messages to be printed even though logfile hasn't been made yet
     try:
         import gseapy
     except ImportError:
@@ -1095,6 +1253,8 @@ def cmd_ssgsea(output_dir, pkl_file, h5ad_file, gene_sets, min_intersection, max
                       )
         sys.exit(1)
 
+    from .genesets import program_ssgsea, order_genesets
+
     # create directory structure, warn if not empty
     output_dir = os.path.normpath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
@@ -1104,36 +1264,75 @@ def cmd_ssgsea(output_dir, pkl_file, h5ad_file, gene_sets, min_intersection, max
     # write to log file
     utils.start_logging(os.path.join(output_dir, "logfile.txt"))
 
+    logging.info(f"Running ssGSEA...")
     if h5ad_file and not pkl_file:
         # run ssGSEA on all programs from a .h5ad file
+        output_filename = "program_nes.txt"
         dataset = Dataset.from_h5ad(h5ad_file)
         programs = dataset.get_programs()
-        result = gseapy.ssgsea(data=programs, gene_sets=gene_sets, min_size=min_intersection, max_size=max_intersection, threads=cpus)
-        prog_nes = result.res2d.pivot(index="Term", columns="Name", values="NES")
-        prog_nes.columns = pd.MultiIndex.from_tuples(prog_nes.columns, names=("k", "program"))
-        prog_nes.to_csv(os.path.join(output_dir, "program_nes.txt"), sep="\t")
+        
     elif pkl_file and not h5ad_file:
         # run ssGSEA on representative programs for each dataset in a network_integration.pkl file
+        output_filename = "representative_program_nes.txt"
         network = Network.from_pkl(pkl_file)
-        rep_programs = network.get_representative_programs()
-        result = gseapy.ssgsea(data=rep_programs, gene_sets=gene_sets, min_size=min_intersection, max_size=max_intersection, threads=cpus)
-        rep_nes = result.res2d.pivot(index="Term", columns="Name", values="NES")
-        rep_nes.columns = pd.MultiIndex.from_tuples(rep_nes.columns, names=("community", "dataset", "k", "program"))
-        sorter = rep_nes.astype(float).idxmax(axis=1)
-        sorter = sorter.str[0].sort_values()
-        rep_nes = rep_nes.loc[sorter.index]
-        rep_nes.to_csv(os.path.join(output_dir, "representative_program_nes.txt"), sep="\t")
-
-        # plot ssGSEA NES scores by community and dataset
-        fig, figlegend = plot_representative_program_nes(network=network, rep_nes=rep_nes)
-        utils.save_fig(fig, os.path.join(output_dir, "representative_program_nes"))
-        utils.save_fig(figlegend, os.path.join(output_dir, "representative_program_nes.legend"))
-        
+        programs = network.get_representative_programs()
     else:
-        logging.error("mosaicmpi ssgsea requires either a factorized dataset (.h5ad) file or a network_integration.pkl file to run ssGSEA on programs.")
-        sys.exit(1)
-    logging.info("All tasks completed successfully.")
-    
+        logging.error("mosaicmpi ssgsea requires either a factorized dataset (.h5ad) file or a network_integration.pkl.gz file to run ssGSEA on programs.")
+        sys.exit(1) 
+        
+    # run ssGSEA
+    result = program_ssgsea(program_df=programs, gene_sets=gene_sets, min_intersection=min_intersection, max_intersection=max_intersection, cpus=cpus)
+    result.prog_nes.to_csv(os.path.join(output_dir, output_filename), sep="\t")
+
+    if h5ad_file and not pkl_file:
+        # create ssGSEA NES heatmaps separately for each k
+        n_k = dataset.adata.uns["kvals"].index.size
+        for k in tqdm(dataset.adata.uns["kvals"].index, total=n_k, unit="k", desc="Plotting heatmaps"):
+            df = result.prog_nes[k].dropna(how="all")
+            df = df.sort_index(axis=1)
+            df = order_genesets(df)
+            df.to_csv(os.path.join(output_dir, f"ordered_genesets_k{k}.txt"), sep="\t")
+            if not no_plot:
+                fig, figlegend = plot_geneset_heatmap(df=df, cmap=cmap, vmin=vmin, vmax=vmax)
+                ax = fig.axes[0]
+                ax.set_title("ssGSEA NES\n" + gene_sets)
+                ax.set_xlabel("")
+                ax.set_ylabel("")
+                for _, spine in ax.spines.items():
+                    spine.set_visible(True)
+                    spine.set_color('#aaaaaa') 
+                ax.set_xlabel(f"Program (k={k})")
+                figlegend.savefig(os.path.join(output_dir, f"ordered_genesets_k{k}.legend.pdf"))
+                fig.savefig(os.path.join(output_dir, f"ordered_genesets_k{k}.pdf"))
+                plt.close(fig)
+                plt.close(figlegend)
+    elif pkl_file and not h5ad_file:
+        # create ssGSEA NES heatmaps for all representative programs
+        df = result.prog_nes.droplevel(axis=1, level=[2, 3]).dropna(how="all").loc[:, network.ordered_community_names]
+        df = order_genesets(df)
+        df.to_csv(os.path.join(output_dir, f"ordered_genesets.txt"), sep="\t")
+        if not no_plot:
+            logging.info("Plotting NES for representative programs...")
+            fig, figlegend = plot_geneset_heatmap(df=df, cmap=cmap, vmin=vmin, vmax=vmax)
+            ax = fig.axes[0]
+            ax.set_title("ssGSEA NES\n" + gene_sets)
+            ax.set_xlabel("")
+            ax.set_ylabel("")
+            for _, spine in ax.spines.items():
+                spine.set_visible(True)
+                spine.set_color('#aaaaaa') 
+            ax.set_xlabel(f"Community - Dataset\n(Representative Program)")
+            figlegend.savefig(os.path.join(output_dir, f"ordered_genesets.legend.pdf"))
+            fig.savefig(os.path.join(output_dir, f"ordered_genesets.pdf"))
+            plt.close(fig)
+            plt.close(figlegend)
+
+            # for smaller numbers of gene sets, create a better-formatted plot that emphasizes similarities and differences between datasets.
+            if result.prog_nes.index.size < 200:
+                fig, figlegend = plot_representative_program_nes(network=network, rep_nes=result.prog_nes, cmap=cmap, vmin=vmin, vmax=vmax, limit_geneset_label_length=100)
+                utils.save_fig(fig, os.path.join(output_dir, "representative_program_nes"))
+                utils.save_fig(figlegend, os.path.join(output_dir, "representative_program_nes.legend"))
+            
     
 @click.command(name="gprofiler")
 @click.option('-o', '--output_dir', type=click.Path(file_okay=False), required=True, show_default=True,
@@ -1170,15 +1369,16 @@ def cmd_gprofiler(output_dir, pkl_file, h5ad_file, gene_sets, species, min_inter
     is provided, gProfiler is performed on reprepresentative programs from an integration. If a .h5ad file is provided, gProfiler
     is performed on all programs.
     """
-    utils.start_logging()  # allows warning messages to be printed even though logfile hasn't been made yet
 
     try:
-        from .gprofiler import program_gprofiler, order_genesets
+        from gprofiler import GProfiler
     except ImportError:
         logging.error("gprofiler-official is not installed. Please install using:\n\n\t"
                       "conda install -c bioconda gprofiler-official"
                       )
         sys.exit(1)
+
+    from .genesets import program_gprofiler, order_genesets
 
     # create directory structure, warn if not empty
     output_dir = os.path.normpath(output_dir)
@@ -1214,15 +1414,16 @@ def cmd_gprofiler(output_dir, pkl_file, h5ad_file, gene_sets, species, min_inter
         result.summary.to_csv(os.path.join(output_dir, "result.txt"), sep="\t")
 
         # create p-value heatmaps separately for each k
-        max_k = dataset.adata.uns["kvals"].index.max()
-        for k in tqdm(dataset.adata.uns["kvals"].index, total=max_k, unit="k", desc="Creating heatmaps"):
+        n_k = dataset.adata.uns["kvals"].index.size
+        for k in tqdm(dataset.adata.uns["kvals"].index, total=n_k, unit="k", desc="Plotting heatmaps"):
             df = result.summary["-log10pval"][k].dropna(how="all").fillna(0)
+            df = df.sort_index(axis=1)
             df = order_genesets(df)
             df.to_csv(os.path.join(output_dir, f"ordered_genesets_k{k}.txt"), sep="\t")
             if not no_plot:
-                fig, figlegend = plot_geneset_pval_heatmap(df=df)
+                fig, figlegend = plot_geneset_heatmap(df=df, cmap=cmap, vmin=vmin, vmax=vmax)
                 ax = fig.axes[0]
-                ax.set_title("g:Profiler pathways\n" + ",".join(gene_sets))
+                ax.set_title("g:Profiler -log10(p)\n" + ",".join(gene_sets))
                 ax.set_xlabel("")
                 ax.set_ylabel("")
                 for _, spine in ax.spines.items():
@@ -1269,7 +1470,7 @@ def cmd_gprofiler(output_dir, pkl_file, h5ad_file, gene_sets, species, min_inter
             df.to_csv(os.path.join(output_dir, dataset_name, f"ordered_genesets.txt"), sep="\t")
 
             if not no_plot:
-                fig, figlegend = plot_geneset_pval_heatmap(df=df)
+                fig, figlegend = plot_geneset_heatmap(df=df)
                 ax = fig.axes[0]
                 ax.set_title("g:Profiler pathways\n" + ",".join(gene_sets))
                 ax.set_xlabel("")
@@ -1287,7 +1488,6 @@ def cmd_gprofiler(output_dir, pkl_file, h5ad_file, gene_sets, species, min_inter
         logging.error("mosaicmpi gprofiler requires either a factorized dataset (.h5ad) file or "
                       "a network_integration.pkl.gz file to run g:Profiler on programs.")
         sys.exit(1)
-    logging.info("All tasks completed successfully.")
 
 
 @click.command(name="compare-integrations")
@@ -1307,7 +1507,6 @@ def cmd_compare_integrations(output_dir, name1, pkl1, name2, pkl2, colors_toml):
     """Compare communities from two network_integration.pkl files generated using `mosaicmpi integrate`.
 
     """
-    utils.start_logging()  # allows warning messages to be printed even though logfile hasn't been made yet
     
     # create directory structure, warn if not empty
     output_dir = os.path.normpath(output_dir)
@@ -1337,7 +1536,6 @@ def cmd_compare_integrations(output_dir, name1, pkl1, name2, pkl2, colors_toml):
 
     fig = plot_compare_integrations(name1, network1, name2, network2, colors=colors)
     utils.save_fig(fig, os.path.join(output_dir, "jaccard_heatmap"))
-    logging.info("All tasks completed successfully.")
 
 @click.command(name="transfer-labels")
 @click.option("-o", '--output_dir', type=click.Path(file_okay=False, exists=False), default=os.getcwd(), show_default=True,
@@ -1399,16 +1597,13 @@ def cmd_transfer_labels(output_dir, pkl_file, source, dest, layer, annotate, met
         utils.save_fig(fig, os.path.join(output_dir, "legend"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
 
 
-    logging.info("All tasks completed successfully.")
-
 cli.add_command(cmd_txt_to_h5ad)
 cli.add_command(cmd_update_h5ad_metadata)
 cli.add_command(cmd_impute_knn)
 cli.add_command(cmd_impute_zeros)
 cli.add_command(cmd_check_h5ad)
-cli.add_command(select_hvg)
-cli.add_command(cmd_model_odg)
-cli.add_command(cmd_set_parameters)
+cli.add_command(select_hvf)
+cli.add_command(cmd_initialize_cnmf)
 cli.add_command(cmd_factorize)
 cli.add_command(cmd_postprocess)
 cli.add_command(cmd_annotated_heatmap)
@@ -1420,8 +1615,8 @@ cli.add_command(cmd_gprofiler)
 cli.add_command(cmd_compare_integrations)
 cli.add_command(cmd_transfer_labels)
 
-# select_hvg subcommands
-select_hvg.add_command(cmd_select_hvg_default)
-select_hvg.add_command(cmd_select_hvg_cnmf)
-select_hvg.add_command(cmd_select_hvg_stdeconvolve)
-select_hvg.add_command(cmd_select_hvg_custom)
+# select_hvf subcommands
+select_hvf.add_command(cmd_select_hvf_default)
+select_hvf.add_command(cmd_select_hvf_stdeconvolve)
+select_hvf.add_command(cmd_select_hvf_cnmf)
+select_hvf.add_command(cmd_select_hvf_custom)

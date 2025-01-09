@@ -378,14 +378,14 @@ class Integration():
             df.loc[ds.adata.var_names, dsname] = True
         return df
 
-    def get_overdispersed_features_overlap_table(self):
+    def get_hvf_overlap_table(self):
 
         all_features = set()
         for ds in self.datasets.values():
             all_features |= set(ds.adata.var_names)
         df = pd.DataFrame(False, index=sorted(list(all_features)), columns=self.datasets.keys())
         for dsname, ds in self.datasets.items():
-            df.loc[ds.overdispersed_genes, dsname] = True
+            df.loc[ds.hvf, dsname] = True
         return df
     
     def get_category_overrepresentation(self,
