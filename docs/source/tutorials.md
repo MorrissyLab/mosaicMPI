@@ -16,7 +16,8 @@ For advanced users, we recommend the using Python, which provides better control
 :maxdepth: 1
 tutorials/cli-factorization.md
 tutorials/cli-integration.md
+tutorials/cli-integration-configuration.md
 tutorials/cli-geneset-analysis.md
 tutorials/python-factorization.ipynb
 tutorials/python-integration.ipynb
-```
+```rm 
