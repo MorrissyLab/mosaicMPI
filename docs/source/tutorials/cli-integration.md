@@ -33,7 +33,7 @@ A [TOML](https://toml.io/en/) configuration file is the most flexible way to con
 ```bash
 mosaicmpi create-config -i dataset1.h5ad -i dataset2.h5ad -i dataset3.h5ad -o config.toml
 ```
-This will output a config.toml file in the current directory, which contains the datasets to be integrated as well as default parameters for the integration, which can be modified prior to running `mosaicmpi integrate`. For more information, see the [tutorial on editing config.toml files](configtoml.md).
+This will output a config.toml file in the current directory, which contains the datasets to be integrated as well as default parameters for the integration, which can be modified prior to running `mosaicmpi integrate`. For more information, see the [tutorial on editing config.toml files](cli-integration-configuration.md).
 
 ### 3. Integrating datasets
 
