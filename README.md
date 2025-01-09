@@ -2,7 +2,7 @@
 
 # mosaicMPI: Mosaic Multi-resolution Program Integration
 
-![version badge](https://img.shields.io/badge/version-2.7.2-blue)
+![version badge](https://img.shields.io/badge/version-2.7.3-blue)
 [![PyPI Latest Release](https://img.shields.io/pypi/v/mosaicmpi.svg)](https://pypi.org/project/mosaicmpi/)
 [![Conda Latest Release](https://img.shields.io/conda/vn/conda-forge/mosaicmpi)](https://anaconda.org/conda-forge/mosaicmpi/)
 [![Documentation status](https://readthedocs.org/projects/mosaicmpi/badge/?version=latest&style=flat)](https://mosaicmpi.readthedocs.io)

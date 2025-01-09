@@ -110,17 +110,20 @@ def cmd_txt_to_h5ad(data, is_normalized, metadata, feature_metadata, output, tra
 @click.command(name="update-h5ad-metadata")
 @click.option(
     "-m", "--metadata", type=click.Path(dir_okay=False, exists=True), required=True,
-    help="Tab-separated text file with metadata for samples/cells/spots with one row each. Columns are annotation layers.")
+    help="Optional delimited text file with metadata for samples/cells with one row each. Columns are annotation layers.")
+@click.option(
+    "--metadata_delimiter", type=str, default="\t",
+    help="Delimiter for metadata files, defaults to tab-delimited.")
 @click.option(
     "-i", '--input_h5ad', type=click.Path(dir_okay=False, exists=True), required=True,
     help="Path to input .h5ad file.")
-def cmd_update_h5ad_metadata(input_h5ad, metadata):
+def cmd_update_h5ad_metadata(input_h5ad, metadata, metadata_delimiter):
     """
     Update metadata in a .h5ad file at any point in the mosaicMPI workflow. New metadata will overwrite (`adata.obs`).
     """
     dataset = Dataset.from_h5ad(input_h5ad)
-    metadata_df = pd.read_table(metadata, index_col=0).dropna(axis=1, how="all")
-    dataset.update_obs(metadata_df)
+    sample_metadata_df = pd.read_table(metadata, index_col=0, sep=metadata_delimiter).dropna(axis=1, how="all")
+    dataset.update_obs(sample_metadata_df)
     logging.info(dataset.get_printable_metadata_type_summary())
     dataset.write_h5ad(input_h5ad)
 

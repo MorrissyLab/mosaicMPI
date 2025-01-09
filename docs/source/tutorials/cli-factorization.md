@@ -145,3 +145,12 @@ mosaicmpi annotated-heatmap -o results -i results/cptac_snrna/cptac_snrna.h5ad
 ```
 
 To provide custom colors for the metadata layers, you can specify a `metadata_colors.toml` file.
+
+### *8. [Optional] Update the metadata for a dataset's .h5ad file*
+
+Metadata can be updated for a dataset using the following command:
+
+```bash
+mosaicmpi update-h5ad-metadata -i results/cptac_snrna/cptac_snrna.h5ad -m cptac_snRNA_subsampled.metadata_updated.txt
+```
+
