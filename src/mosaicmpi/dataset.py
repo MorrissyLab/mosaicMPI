@@ -12,7 +12,7 @@ import shutil
 from io import StringIO
 from glob import glob
 
-import scipy.sparse as sp
+
 import anndata as ad
 import pandas as pd
 import numpy as np
@@ -20,6 +20,12 @@ from sklearn.impute import KNNImputer, SimpleImputer
 from statsmodels.stats.multitest import multipletests
 from scipy.stats import f
 from tqdm import tqdm
+import scipy.sparse as sp
+
+# monkey patch to fix pygam's use of outdated .A property of a sparse matrix instead of .to_array()
+def to_array(self):
+    return self.toarray()
+sp.spmatrix.A = property(to_array)
 import pygam
 
 class Dataset():
