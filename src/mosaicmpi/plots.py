@@ -620,7 +620,7 @@ def plot_stratified_hvf_upset(dataset: Dataset, figsize: Collection = (6, 4), sh
         stratified_lists[stratum] = df_strat.index[df_strat["selected"]].to_list()
     fig = Figure(figsize=figsize)
     upsetplot.UpSet(upsetplot.from_contents(stratified_lists), show_counts=show_counts).plot(fig=fig)
-    fig.suptitle(f"HVF features stratified by: {dataset.adata.uns["hvf"]["stratify_by"]}")
+    fig.suptitle(f"HVF features stratified by: {dataset.adata.uns['hvf']['stratify_by']}")
     return fig
 
 def plot_features_upset(integration: Integration, figsize=[6, 4], show_counts: bool = False):
