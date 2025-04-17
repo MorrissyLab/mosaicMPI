@@ -156,6 +156,6 @@ def save_fig(fig: Figure, filepath_no_ext: str, target_dpi: Optional[float] = 20
     
     os.makedirs(os.path.dirname(filepath_no_ext), exist_ok=True)
     for format in formats:
-        fig.savefig(fname = filepath_no_ext + "." + format, dpi=dpi, **kwargs)
+        fig.savefig(fname = filepath_no_ext + "." + format, dpi=dpi, bbox_inches="tight", **kwargs)
     plt.close(fig)
     

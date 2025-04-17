@@ -777,7 +777,7 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
         fig = plot_stability_error(dataset=dataset)
         utils.save_fig(fig, os.path.join(output_dir, name, name + '.k_selection'))
     
-@click.command("annotated-heatmap")
+@click.command("annotate-program-usage")
 @click.option(
     "-i", "--input_h5ad", type=click.Path(exists=True, dir_okay=False), required=True, help="Path to AnnData (.h5ad) file containing cNMF results.")
 @click.option(
@@ -790,12 +790,12 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
     '--max_categories_per_layer', type=int,
     help="Filter metadata layers by the number of categories. This parameter is useful to simplify heatmaps with too many annotations.")
 @click.option(
-    '--hide_sample_labels', is_flag=True,
+    '--show_sample_labels', is_flag=True,
     help="Hide sample labels on usage heatmap")
 
-def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_categories_per_layer, hide_sample_labels):
+def cmd_annotate_program_usage(input_h5ad, output_dir, metadata_colors_toml, max_categories_per_layer, show_sample_labels):
     """
-    Create heatmaps of usages with annotation tracks.
+    Annotate program usage with sample metadata
     """
     os.makedirs(output_dir, exist_ok=True)
     dataset = Dataset.from_h5ad(input_h5ad)
@@ -810,7 +810,7 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
     
     # plot legend
     fig = colors.plot_metadata_colors_legend()
-    utils.save_fig(fig, os.path.join(output_dir, "metadata_legend"),)
+    utils.save_fig(fig, os.path.join(output_dir, "metadata_legend"))
 
     # filter metadata layers with too many categories
     if max_categories_per_layer is not None:
@@ -820,7 +820,7 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
     else:
         subset_columns = None
     if not dataset.has_cnmf_results:
-        logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `mosaicmpi postprocess` before creating annotated usage heatmaps.")
+        logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `mosaicmpi postprocess` before annotating programs.")
         sys.exit(1)
 
     # create annotated plots for each k
@@ -828,11 +828,11 @@ def cmd_annotated_heatmap(input_h5ad, output_dir, metadata_colors_toml, max_cate
         logging.info(f"Creating annotated usage heatmap for k={k}")
         cnmf_name = dataset.adata.uns["cnmf_name"]
         title = f"{cnmf_name} k={k}"
-        filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{k:03}.pdf")
+        filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{k:03}")
         fig = plot_usage_heatmap(
             dataset=dataset, k=k, subset_metadata=subset_columns, colors=colors, title=title,
-            cluster_samples=True, cluster_programs=False, show_sample_labels=(not hide_sample_labels))
-        fig.savefig(filename, transparent=False, bbox_inches = "tight")
+            cluster_samples=True, cluster_programs=False, show_sample_labels=show_sample_labels)
+        utils.save_fig(fig, filename, target_dpi=200, formats="pdf")
         plt.close(fig)
 
 
@@ -1609,7 +1609,7 @@ cli.add_command(select_hvf)
 cli.add_command(cmd_initialize_cnmf)
 cli.add_command(cmd_factorize)
 cli.add_command(cmd_postprocess)
-cli.add_command(cmd_annotated_heatmap)
+cli.add_command(cmd_annotate_program_usage)
 cli.add_command(cmd_map_gene_ids)
 cli.add_command(cmd_create_config)
 cli.add_command(cmd_integrate)

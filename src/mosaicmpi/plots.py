@@ -5,10 +5,10 @@ from .colors import Colors
 from .network import Network, compare_community_jaccard_similarity
 from . import utils
 
-
 from collections.abc import Iterable, Collection, Mapping
 from typing import Union, Optional, Literal, Dict
 
+import logging
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -18,8 +18,6 @@ from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
 from matplotlib.patches import Polygon, Rectangle, Patch, Arc
 import matplotlib.pyplot as plt
-import upsetplot
-from scipy.cluster.hierarchy import linkage, dendrogram
 import networkx as nx
 
 
@@ -268,6 +266,10 @@ def plot_stability_error(dataset: Dataset, figsize=(6, 4)) -> Figure:
 def annotated_heatmap(
         data, title, metadata=None, metadata_colors=None, missing_data_color="#BBBBBB", heatmap_cmap='YlOrRd', 
         row_cluster=True, col_cluster=True, plot_col_dendrogram=True, show_sample_labels=True, ylabel=None, cbar_label=None):
+    
+    from fastcluster import linkage
+    from scipy import dendrogram
+    
     n_columns = data.shape[1]
     if metadata is None:
         n_metadata_columns = 0
@@ -293,6 +295,15 @@ def annotated_heatmap(
 
     # HAC clustering (compute linkage matrices)
     if col_cluster:
+        
+        # anticipate RecursionError when number of samples/cells is high.
+        import sys
+        if data.shape[0] > sys.getrecursionlimit() / 2:
+            new_recursion_limit = int(data.shape[0] * 2)
+            logging.info(f"number of columns is {data.shape[1]}, increasing recursion limit to {new_recursion_limit}")
+            sys.setrecursionlimit(new_recursion_limit)
+
+        
         col_links = linkage(data.dropna(axis=1), method='average', metric='euclidean')
         col_dendrogram = dendrogram(col_links, color_threshold=0, ax=ax_col_dendrogram, no_plot=not plot_col_dendrogram)
         xind = np.array(col_dendrogram['leaves'])
@@ -362,25 +373,38 @@ def annotated_heatmap(
     plt.colorbar(im_heatmap, ax=ax, location="top", label=cbar_label)
     return fig
 
-def plot_usage_heatmap(dataset: Dataset, k: Optional[int], colors: Colors, normalize_usage: bool = True, subset_metadata = None, subset_samples = None, title: str = None, cluster_programs = False, cluster_samples = True, show_sample_labels = True):
+def plot_usage_heatmap(dataset, k, colors, normalize_usage: bool = True, subset_metadata = None, subset_samples = None, title: str = None, cluster_programs = False, cluster_samples = True, show_sample_labels = False):
+    import PyComplexHeatmap as pch
+    
     assert dataset.has_cnmf_results
     df = dataset.get_usages(k=k, normalize=normalize_usage)
     if subset_samples is not None:
         df = df.loc[subset_samples]
+    df = df.dropna()  # drop samples/cells with NaN usages
     samples = df.index.to_series()
+
+    # anticipate RecursionError when number of samples/cells is high.
+    import sys
+    if len(samples) > sys.getrecursionlimit() / 2:
+        new_recursion_limit = int(len(samples) * 2)
+        logging.info(f"number of samples/cells is {len(samples)}, increasing recursion limit to {new_recursion_limit}")
+        sys.setrecursionlimit(new_recursion_limit)
+
     metadata = dataset.get_metadata_df().loc[samples]
     if subset_metadata is not None:
-        metadata = metadata.loc[:, subset_metadata]
-    metadata_colors = {col: colors.get_metadata_colors(col) for col in metadata.columns}
-    fig = annotated_heatmap(data=df, metadata=metadata,
-                            metadata_colors=metadata_colors, 
-                            missing_data_color=colors.missing_data_color, 
-                            title=title,
-                            row_cluster=cluster_programs,
-                            col_cluster=cluster_samples,
-                            show_sample_labels=show_sample_labels,
-                            plot_col_dendrogram=True,
-                            ylabel="Program")
+        metadata = metadata[metadata.columns.intersection(metadata)]
+    metadata = metadata[metadata.dtypes.astype(str).sort_values().index]
+    colannot = {}
+    for colname, col in metadata.items():
+        if col.dtype in ("category", "object"):
+            colannot[colname] = pch.anno_simple(col, colors=colors.get_metadata_colors(colname))
+        else:
+            colannot[colname] = pch.anno_simple(col, cmap = "Blues")
+    col_ha = pch.HeatmapAnnotation(**colannot)
+    fig = plt.figure(figsize=[20, 4 + 0.3 * df.columns.size + metadata.shape[1]])
+    pch.ClusterMapPlotter(data=df.T, top_annotation=col_ha,
+                          cmap="YlOrRd", vmin=0, vmax=1, ylabel = "Program", xlabel=None, show_colnames=show_sample_labels,
+                          row_cluster=cluster_programs, col_cluster=cluster_samples, verbose=False)
     return fig
 
 def plot_sample_numbers(dataset: Dataset, layer: str, figsize = None, ax = None):
@@ -592,6 +616,9 @@ def plot_integration_hvf_upset(integration: Integration, figsize: Collection = (
     :return: figure
     :rtype: Figure
     """
+    
+    import upsetplot
+
     hvf_lists = {dataset_name: dataset.hvf for dataset_name, dataset in integration.datasets.items()}
     fig = Figure(figsize=figsize)
     upsetplot.UpSet(upsetplot.from_contents(hvf_lists), show_counts=show_counts).plot(fig=fig)
@@ -608,6 +635,8 @@ def plot_stratified_hvf_upset(dataset: Dataset, figsize: Collection = (6, 4), sh
     :return: figure
     :rtype: Figure
     """
+    import upsetplot
+
     if dataset.adata.uns["hvf"]["stratify_by"] == "":
         raise ValueError("Stratified HVF Upset Plots cannot be generated when HVF selection is unstratified.")
     if "hvf" not in dataset.adata.uns:
@@ -634,6 +663,7 @@ def plot_features_upset(integration: Integration, figsize=[6, 4], show_counts: b
     :return: figure
     :rtype: Figure
     """
+    import upsetplot
     feature_lists = {dataset_name: list(dataset.adata.var.index) for dataset_name, dataset in integration.datasets.items()}
     fig = Figure(figsize=figsize)
     upsetplot.UpSet(upsetplot.from_contents(feature_lists), show_counts=show_counts).plot(fig=fig)
