@@ -8,3 +8,4 @@ dependencies:
   - sphinx-copybutton
   - nbsphinx
   - myst-parser
+  - pandoc

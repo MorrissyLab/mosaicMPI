@@ -797,6 +797,17 @@ def cmd_annotate_program_usage(input_h5ad, output_dir, metadata_colors_toml, max
     """
     Annotate program usage with sample metadata
     """
+
+    try:
+        import PyComplexHeatmap
+    except ImportError:
+        
+        logging.error("PyComplexHeatmap is not installed. Please install using:\n\n\t"
+                      "pip install PyComplexHeatmap\n"
+                      )
+        sys.exit(1)
+
+
     os.makedirs(output_dir, exist_ok=True)
     dataset = Dataset.from_h5ad(input_h5ad)
     
@@ -1252,7 +1263,7 @@ def cmd_ssgsea(output_dir, pkl_file, h5ad_file, gene_sets, min_intersection, max
                       "# if you have conda (MacOS_x86-64 and Linux only)\n\t"
                       "conda install -c bioconda gseapy\n\n\t"
                       "# Windows and MacOS_ARM64(M1/2-Chip)\n\t"
-                      "pip install gseapy\nl"
+                      "pip install gseapy\n"
                       )
         sys.exit(1)
 
