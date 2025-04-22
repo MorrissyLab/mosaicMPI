@@ -777,7 +777,7 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
         fig = plot_stability_error(dataset=dataset)
         utils.save_fig(fig, os.path.join(output_dir, name, name + '.k_selection'))
     
-@click.command("annotate-program-usage")
+@click.command("usage-heatmap")
 @click.option(
     "-i", "--input_h5ad", type=click.Path(exists=True, dir_okay=False), required=True, help="Path to AnnData (.h5ad) file containing cNMF results.")
 @click.option(
@@ -787,17 +787,22 @@ def cmd_postprocess(name, output_dir, cpus, local_density_threshold, local_neigh
     '-m', '--metadata_colors_toml', type=click.Path(dir_okay=False, exists=True),
     help="TOML file with metadata_colors specification. If not provided, visually distinct colors will be chosen automatically.")
 @click.option(
-    '--max_categories_per_layer', type=int,
-    help="Filter metadata layers by the number of categories. This parameter is useful to simplify heatmaps with too many annotations.")
-@click.option(
     '--show_sample_labels', is_flag=True,
-    help="Hide sample labels on usage heatmap")
-
-def cmd_annotate_program_usage(input_h5ad, output_dir, metadata_colors_toml, max_categories_per_layer, show_sample_labels):
+    help="Show sample labels on usage heatmap")
+@click.option(
+    '--subsample', type=int, default=None,
+    help="Randomly subsample this many samples/cells (without replacement) for usage heatmaps. Defaults to no subsetting.")
+@click.option(
+    "-k", type=int, multiple=True, default=[],
+    help="Specify individual ranks (k values) to analyze. Multiple may be selected like this: -k 2 -k 3. Defaults to all k.")
+@click.option(
+    "-s", "--subset_metadata", multiple=True,
+    help="Specify metadata fields to show as annotation tracks. Multiple may be selected like this: -s layer1 -s layer2. Defaults to all."
+)
+def cmd_usage_heatmap(input_h5ad, output_dir, metadata_colors_toml, show_sample_labels, subsample, k, subset_metadata):
     """
-    Annotate program usage with sample metadata
+    Create a heatmap of program usage with annotated samples
     """
-
     try:
         import PyComplexHeatmap
     except ImportError:
@@ -811,6 +816,45 @@ def cmd_annotate_program_usage(input_h5ad, output_dir, metadata_colors_toml, max
     os.makedirs(output_dir, exist_ok=True)
     dataset = Dataset.from_h5ad(input_h5ad)
     
+    # Subsample the data
+    if subsample is not None:
+        if subsample < dataset.adata.n_obs:
+            i = np.random.RandomState(seed=1).choice(dataset.adata.n_obs, subsample, replace=False)
+            dataset.adata = dataset.adata[i]
+        else:
+            logging.warning(f"The number of observations in the dataset is {dataset.adata.n_obs}, but subsample is set to {subsample}. Subsampling disabled.")
+
+    if not dataset.has_cnmf_results:
+        logging.error("cNMF results have not been imported into .h5ad file. Ensure that you have run `mosaicmpi postprocess` before annotating programs.")
+        sys.exit(1)
+
+    # get and check k values
+    kval_options = dataset.adata.uns["kvals"].index.to_list()
+    kval_option_str = ", ".join([str(k) for k in kval_options])
+    if k:
+        kvals = k
+        bad_kvals = [kval for kval in kvals if kval not in kval_options]
+        bad_kval_str = ", ".join([str(b) for b in bad_kvals])
+        if bad_kvals:
+            logging.error(f"The following k values were specified but not available as factorization solutions in the dataset: {bad_kval_str}. "
+                          f"Please choose from the following options: {kval_option_str}")
+            sys.exit(1)
+    else:
+        kvals = kval_options
+
+    # subset metadata
+    if subset_metadata:
+        metadata_columns = dataset.get_metadata_df().columns
+        bad_subset = [m for m in subset_metadata if m not in metadata_columns]
+        bad_subset_str = ", ".join(bad_subset)
+        metadata_columns_str = ", ".join(dataset.get_metadata_df().columns)
+        if bad_subset:
+            logging.error(f"The following metadata fields were selected using --subset_metadata but are not available in the dataset: {bad_subset_str}. "
+                          f"Please choose from the following options: {metadata_columns_str}")
+    else:
+        # change empty list [] to None
+        subset_metadata = None
+    
     # get metadata colors
     if metadata_colors_toml:
         colors = Colors.from_toml(metadata_colors_toml)
@@ -823,25 +867,16 @@ def cmd_annotate_program_usage(input_h5ad, output_dir, metadata_colors_toml, max
     fig = colors.plot_metadata_colors_legend()
     utils.save_fig(fig, os.path.join(output_dir, "metadata_legend"))
 
-    # filter metadata layers with too many categories
-    if max_categories_per_layer is not None:
-        subset_columns = dataset.get_metadata_df(include_numerical=False).apply(lambda x: len(x.cat.categories)) <= max_categories_per_layer
-        subset_columns = subset_columns[subset_columns].index.to_list()
-        subset_columns.extend(dataset.get_metadata_df(include_categorical=False).columns.to_list())
-    else:
-        subset_columns = None
-    if not dataset.has_cnmf_results:
-        logging.error("cNMF results have not been merged into .h5ad file. Ensure that you have run `mosaicmpi postprocess` before annotating programs.")
-        sys.exit(1)
-
     # create annotated plots for each k
-    for k in dataset.adata.uns["kvals"].index:
-        logging.info(f"Creating annotated usage heatmap for k={k}")
+    for kval in kvals:
+        logging.info(f"Creating annotated usage heatmap for k={kval}")
         cnmf_name = dataset.adata.uns["cnmf_name"]
-        title = f"{cnmf_name} k={k}"
-        filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{k:03}")
+        title = f"{cnmf_name} k={kval}"
+        if subsample:
+            title += f"\nsubsampled to {subsample} observations"
+        filename = os.path.join(output_dir, f"{cnmf_name}.usages.k{kval:03}")
         fig = plot_usage_heatmap(
-            dataset=dataset, k=k, subset_metadata=subset_columns, colors=colors, title=title,
+            dataset=dataset, k=kval, subset_metadata=subset_metadata, colors=colors, title=title,
             cluster_samples=True, cluster_programs=False, show_sample_labels=show_sample_labels)
         utils.save_fig(fig, filename, target_dpi=200, formats="pdf")
         plt.close(fig)
@@ -1560,13 +1595,13 @@ def cmd_compare_integrations(output_dir, name1, pkl1, name2, pkl2, colors_toml):
     help="Only calculate Name of source dataset for sample labels.")
 @click.option('-d', '--dest', type=str, multiple=True,
     help="Name of destination dataset")
-@click.option('-l', '--layer', type=str, multiple=True,
-    help="Name of categorical data layer to transfer")
+@click.option('-c', '--categories', type=str, multiple=True, default=[], show_default=True,
+    help="Name of categorical metadata field to transfer")
 @click.option('-a', '--annotate', type=str, required=False, multiple=True,
     help="Annotate transfer heatmap using categorical data layer(s) from destination dataset")
 @click.option('-m', '--metadata_colors_toml', type=click.Path(dir_okay=False, exists=True), required=False,
     help="TOML file with metadata_colors specification. If not provided, visually distinct colors will be chosen automatically.")
-def cmd_transfer_labels(output_dir, pkl_file, source, dest, layer, annotate, metadata_colors_toml):
+def cmd_transfer_labels(output_dir, pkl_file, source, dest, categories, annotate, metadata_colors_toml):
     """Transfer labels from a source to a destination dataset.
     """ 
     network = Network.from_pkl(pkl_file)
@@ -1574,7 +1609,7 @@ def cmd_transfer_labels(output_dir, pkl_file, source, dest, layer, annotate, met
 
     transfer_df = network.transfer_labels(source=(source if source else None),
                                           dest=(dest if dest else None),
-                                          layer=(layer if layer else None))
+                                          categories=(categories if categories else None))
     transfer_df.to_csv(os.path.join(output_dir, "transfer_score.txt"), sep="\t")
 
     if annotate:
@@ -1590,24 +1625,24 @@ def cmd_transfer_labels(output_dir, pkl_file, source, dest, layer, annotate, met
         source = list(network.integration.datasets.keys())
     if not dest:
         dest = list(network.integration.datasets.keys())
-    if not layer:
-        layer = network.integration.get_metadata_df(subset_datasets=source, include_numerical=False).columns
+    if not categories:
+        categories = network.integration.get_metadata_df(subset_datasets=source, include_numerical=False).columns
     
-    total = len(source) * len(dest) * len(layer)
+    total = len(source) * len(dest) * len(categories)
 
-    for s, d, l in tqdm(product(source, dest, layer), total=total, unit="plot", desc="Creating plots"):
-        if len(network.integration.datasets[s].get_metadata_df()[l].unique()) > 1:
-            cgrid = plot_metadata_transfer(network=network, source=s, dest=d, layer=l, annotate=annotate, colors=colors)
-            cgrid.fig.suptitle(f"source: {s}, dest: {d}, layer: {l}")
-            cgrid.savefig(os.path.join(output_dir, f"s.{s}_d.{d}_l.{l}.pdf"))
+    for s, d, c in tqdm(product(source, dest, categories), total=total, unit="plot", desc="Creating plots"):
+        if len(network.integration.datasets[s].get_metadata_df()[c].unique()) > 1:
+            cgrid = plot_metadata_transfer(network=network, source=s, dest=d, categories=c, annotate=annotate, colors=colors)
+            cgrid.fig.suptitle(f"source: {s}, dest: {d}, categories: {c}")
+            cgrid.savefig(os.path.join(output_dir, f"s.{s}_d.{d}_l.{c}.pdf"))
 
     if annotate:
         # create legends for annotation tracks
         width = 3 * len(annotate)
         height = max([1 + len(colors.get_metadata_colors(a)) / 4 for a in annotate])
         fig, axes = plt.subplots(1, len(annotate), figsize=[width, height], layout="constrained", squeeze=False)
-        for layer, ax in zip(annotate, axes[0]):
-            colors.plot_metadata_colors_legend(layer=layer, ax=ax)
+        for categories, ax in zip(annotate, axes[0]):
+            colors.plot_metadata_colors_legend(categories=categories, ax=ax)
         utils.save_fig(fig, os.path.join(output_dir, "legend"), formats=("pdf", "png"), target_dpi=400, facecolor='white')
 
 
@@ -1620,7 +1655,7 @@ cli.add_command(select_hvf)
 cli.add_command(cmd_initialize_cnmf)
 cli.add_command(cmd_factorize)
 cli.add_command(cmd_postprocess)
-cli.add_command(cmd_annotate_program_usage)
+cli.add_command(cmd_usage_heatmap)
 cli.add_command(cmd_map_gene_ids)
 cli.add_command(cmd_create_config)
 cli.add_command(cmd_integrate)

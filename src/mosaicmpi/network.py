@@ -852,7 +852,7 @@ class Network():
     def transfer_labels(self,
                           source: Optional[Union[str, Collection[str]]] = None,
                           dest: Optional[Union[str, Collection[str]]] = None,
-                          layer: Optional[Union[str, Collection[str]]] = None,
+                          categories: Optional[Union[str, Collection[str]]] = None,
                           subset_categories: Collection[str] = None,
                           simplify: bool = True
                           ) -> pd.DataFrame:
@@ -862,8 +862,8 @@ class Network():
         :type source: Union[str, Collection[str]], optional
         :param dest: Target dataset(s) for label transfer, defaults to None
         :type dest: Union[str, Collection[str]], optional
-        :param layer: name of categorical data layer(s) from source dataset, defaults to None
-        :type layer: Union[str, Collection[str]], optional
+        :param categories: name of categorical metadata field(s) from source dataset, defaults to None
+        :type categories: Union[str, Collection[str]], optional
         :param subset_categories: a subset of categories for calculating overrepresentation, defaults to None
         :type subset_categories: Collection[str], optional
         :param simplify: Simplify multi-index results when only one source, dest, or layer are specified, defaults to True
@@ -883,13 +883,13 @@ class Network():
         else:
             raise ValueError
         
-        if layer is None:
+        if categories is None:
             # get all layers for all selected source datasets
             layers = self.integration.get_metadata_df(include_numerical=False, subset_datasets=sources).columns
-        elif isinstance(layer, str):
-            layers = [layer]
-        elif isinstance(layer, Collection):
-            layers = layer
+        elif isinstance(categories, str):
+            layers = [categories]
+        elif isinstance(categories, Collection):
+            layers = categories
         else:
             raise ValueError
         
@@ -933,7 +933,7 @@ class Network():
         agg = pd.concat(agg)
 
         if simplify:
-            if isinstance(layer, str):
+            if isinstance(categories, str):
                 agg = agg.droplevel(axis=0, level="layer")
             if isinstance(source, str):
                 agg = agg.droplevel(axis=0, level="source_dataset")

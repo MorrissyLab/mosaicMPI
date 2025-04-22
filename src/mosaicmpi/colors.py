@@ -272,22 +272,22 @@ class Colors():
         return layer_colors
 
     def plot_metadata_colors_legend(self,
-                                    layer: str = None,
+                                    categories: str = None,
                                     ax: Axes = None,
                                     char_per_line: int = 20,
                                     subset = None,
                                     figsize: Iterable = None) -> Optional[Figure]:
         
-        if layer is not None and isinstance(ax, Axes):
-            color_def = self.metadata_colors[layer]
+        if categories is not None and isinstance(ax, Axes):
+            color_def = self.metadata_colors[categories]
             if subset is not None:
                 color_def = {k:v for k, v in color_def.items() if k in subset}
             legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
             ax.legend(handles=legend_elements, loc='upper center')
-            ax.set_title(layer)
+            ax.set_title(categories)
             ax.set_axis_off()
                 
-        elif layer is None and ax is None:
+        elif categories is None and ax is None:
         
             categorical_columns = [track for track, color_def in self.metadata_colors.items() if isinstance(color_def, dict)]
             categorical_groups = [group for group, group_attr in self.metadata_colors_group.items() if isinstance(group_attr["colors"], dict)]
@@ -299,11 +299,11 @@ class Colors():
             if figsize is None:
                 figsize = [2*n_columns, 0.3 * max(legend_lengths)]
             fig, axes = plt.subplots(1, n_columns, figsize=figsize, squeeze=False, layout="tight")
-            for ax_layer, layer in zip(axes[0], categorical_columns):
-                color_def = self.metadata_colors[layer]
+            for ax_layer, categories in zip(axes[0], categorical_columns):
+                color_def = self.metadata_colors[categories]
                 legend_elements = [Patch(label=utils.newline_wrap(cat, char_per_line), facecolor=color, edgecolor=None) for cat, color in color_def.items()]
                 ax_layer.legend(handles=legend_elements, loc='upper center')
-                ax_layer.set_title(layer)
+                ax_layer.set_title(categories)
                 ax_layer.set_axis_off()
             for ax_id, group in enumerate(categorical_groups, len(categorical_columns)):
                 ax_layer = axes[0][ax_id]
@@ -317,7 +317,7 @@ class Colors():
             axes[0][-1].legend(handles=[Patch(label="Missing Data", facecolor=self.missing_data_color, edgecolor=None)], loc='upper left')
             axes[0][-1].set_axis_off()
         else:
-            raise ValueError("Parameters `layer` and `ax` must both be specified")
+            raise ValueError("Parameters `categories` and `ax` must both be specified")
         
         if ax is None:
             return fig

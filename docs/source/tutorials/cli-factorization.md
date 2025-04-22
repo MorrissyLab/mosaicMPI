@@ -141,10 +141,10 @@ For downstream analyses, the input data and cNMF programs are all contained in `
 This step will create annotated heatmaps of program usages from mosaicMPI outputs:
 
 ```bash
-mosaicmpi annotated-heatmap -o results -i results/cptac_snrna/cptac_snrna.h5ad
+mosaicmpi usage-heatmap -o results -i results/cptac_snrna/cptac_snrna.h5ad
 ```
 
-To provide custom colors for the metadata layers, you can specify a `metadata_colors.toml` file.
+To provide custom colors for the metadata layers, you can specify a `metadata_colors.toml` file. You can also gain finer control over the plots including subsampling cells, showing only some metadata fields, and other parameters. To learn more, run `mosaicmpi usage-heatmap -h`.
 
 ### *8. [Optional] Update the metadata for a dataset's .h5ad file*
 

@@ -2,7 +2,7 @@
 
 # mosaicMPI: Mosaic Multi-resolution Program Integration
 
-![version badge](https://img.shields.io/badge/version-2.7.6-blue)
+![version badge](https://img.shields.io/badge/version-2.7.7-blue)
 [![PyPI Latest Release](https://img.shields.io/pypi/v/mosaicmpi.svg)](https://pypi.org/project/mosaicmpi/)
 [![Conda Latest Release](https://img.shields.io/conda/vn/conda-forge/mosaicmpi)](https://anaconda.org/conda-forge/mosaicmpi/)
 [![Documentation status](https://readthedocs.org/projects/mosaicmpi/badge/?version=latest&style=flat)](https://mosaicmpi.readthedocs.io)
@@ -45,8 +45,6 @@ Here are just a few of the things that `mosaicMPI` does well:
 ### ✨ Latest Release
 Install the package with `conda`:
 ```bash
-# if using a fresh conda install
-conda init
 
 # create an environment called 'mosaicenv' and install
 conda create -n mosaicenv -c conda-forge mosaicmpi
@@ -54,6 +52,12 @@ conda activate mosaicenv
 ```
 
 Some analyses require packages from other channels to be installed in the same environment:
+
+- [`PyComplexHeatmap`](https://github.com/DingWB/PyComplexHeatmap):
+
+```bash
+pip install PyComplexHeatmap
+```
 
 - [`g:Profiler`](https://biit.cs.ut.ee/gprofiler/page/apis)
 
@@ -69,6 +73,7 @@ conda install -c bioconda gseapy
 # Windows and macOS (Apple Silicon)
 pip install gseapy
 ```
+
 
 ## 📖 Documentation
 

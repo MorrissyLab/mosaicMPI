@@ -403,8 +403,9 @@ def plot_usage_heatmap(dataset, k, colors, normalize_usage: bool = True, subset_
     col_ha = pch.HeatmapAnnotation(**colannot)
     fig = plt.figure(figsize=[20, 4 + 0.3 * df.columns.size + metadata.shape[1]])
     pch.ClusterMapPlotter(data=df.T, top_annotation=col_ha,
-                          cmap="YlOrRd", vmin=0, vmax=1, ylabel = "Program", xlabel=None, show_colnames=show_sample_labels,
+                          cmap="YlOrRd", vmin=0, vmax=1, ylabel = "Program", xlabel=None, show_colnames=show_sample_labels, show_rownames=True,
                           row_cluster=cluster_programs, col_cluster=cluster_samples, verbose=False)
+    fig.axes[0].set_title(title)
     return fig
 
 def plot_sample_numbers(dataset: Dataset, layer: str, figsize = None, ax = None):
@@ -1602,7 +1603,7 @@ def plot_overrepresentation_community_bar(network: Network,
     ax_plot.set_xlabel("Community")
     
     # Legend
-    colors.plot_metadata_colors_legend(layer=layer, ax=ax_legend)
+    colors.plot_metadata_colors_legend(categories=layer, ax=ax_legend)
 
     if ax is None:
         return fig
@@ -1713,7 +1714,7 @@ def plot_sample_entropy(network: Network,
 ########################
 
 
-def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str, figsize: Collection[float, float] = None, annotate: Optional[Union[str, Collection[str]]] = None, colors: Colors = None, ax: Axes = None) -> Figure:
+def plot_metadata_transfer(network: Network, source: str, dest: str, categories: str, figsize: Collection[float, float] = None, annotate: Optional[Union[str, Collection[str]]] = None, colors: Colors = None, ax: Axes = None) -> Figure:
     """Plot heatmap of metadata transfer scores
 
     :param network: network through which to propagate labels
@@ -1724,9 +1725,9 @@ def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str,
     :type source: str
     :param dest: Target dataset for label transfer
     :type dest: str
-    :param layer: name of categorical data layer from source dataset
-    :type layer: str
-    :param annotate: categorical metadata layer, defaults to None
+    :param categories: name of categorical metadata field from source dataset
+    :type categories: str
+    :param annotate: categorical metadata field for annotating on heatmap, defaults to None
     :type annotate: Union[str, Collection[str]], optional
     :return: figure object
     :rtype: Figure
@@ -1738,7 +1739,7 @@ def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str,
     elif isinstance(annotate, Collection):
         annotations = annotate
 
-    transfer_df = network.transfer_labels(source=source, dest=dest, layer=layer)
+    transfer_df = network.transfer_labels(source=source, dest=dest, categories=categories)
     if annotate is not None:
         metadata = network.integration.datasets[dest].get_metadata_df().loc[:, annotations].copy()
         for annotation_layer in annotations:
@@ -1754,6 +1755,8 @@ def plot_metadata_transfer(network: Network, source: str, dest: str, layer: str,
     if figsize is None:
         figsize = [8, 1 + transfer_df.shape[0] * 0.2 + len(annotations) * 0.3]
 
+
+    #TODO: transition to PyComplexHeatmap
     fig = sns.clustermap(data = transfer_df, col_colors=col_colors, figsize=figsize, row_cluster=False, xticklabels=False, yticklabels=True, cmap="Blues", colors_ratio=0.08)
     
     return fig
