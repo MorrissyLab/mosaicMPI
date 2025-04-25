@@ -671,6 +671,42 @@ def plot_features_upset(integration: Integration, figsize=[6, 4], show_counts: b
     fig.suptitle("Features")
     return fig
 
+def plot_overrepresentation_heatmap(dataset: Dataset,
+                                    k: int,
+                                    colors: Colors,
+                                    figsize = None,
+                                    categories: Optional[Union[str, Collection[str]]] = None,
+                                    title = None,
+                                    cluster_programs = True,
+                                    cluster_categories = True,
+                                    ):
+    import PyComplexHeatmap as pch
+    
+    assert dataset.has_cnmf_results
+    if isinstance(categories, str):
+        categories = [categories]
+    df = dataset.get_category_overrepresentation(layer=categories)[k]
+
+    rowannot = {}
+    for colname, col in df.index.to_frame().items():
+        if col.dtype in ("category", "object"):
+            rowannot[colname] = pch.anno_simple(col, colors=colors.get_metadata_colors(colname))
+        else:
+            rowannot[colname] = pch.anno_simple(col, cmap = "Blues")
+    row_ha = pch.HeatmapAnnotation(**rowannot, axis=0)
+
+    if figsize is None:
+        fig = plt.figure(figsize=[2 + 0.3 *df.columns.size, 2 + 0.3 * df.index.size])
+    else:
+        fig = plt.figure(figsize=figsize)
+
+    pch.ClusterMapPlotter(data=df, left_annotation=row_ha,
+                          cmap="RdBu_r", center=0, xlabel = "Program", ylabel="Category", show_colnames=True, show_rownames=((df.shape[0] < 50) or len(categories) == 1),
+                          xticklabels_kws={"labelrotation": 0},
+                          row_cluster=cluster_categories, col_cluster=cluster_programs, verbose=False)
+    fig.axes[0].set_title(title)
+    return fig
+
 #####################
 # SNS-related plots #
 #####################

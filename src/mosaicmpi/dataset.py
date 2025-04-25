@@ -1343,27 +1343,33 @@ class Dataset():
         return df
     
     def get_category_overrepresentation(self,
-                                        layer: str,
-                                        truncate_negative: bool = True,
+                                        layer: Union[Collection[str], str],
+                                        truncate_negative: bool = False,
                                         subset_categories: Collection[str] = None
                                         ) -> pd.DataFrame:
-        """Calculate Pearson residual of chi-squared test, associating programs for each rank (k) to categories of samples/observations. By default, truncates negative values.
+        """Calculate Pearson residual of chi-squared test, associating programs for each rank (k) to categories of samples/observations.
 
-        :param layer: name of categorical data layer
-        :type layer: str
-        :param truncate_negative: Truncate negative residuals to 0, defaults to True
+        :param layer: name of categorical data layer or combination of them
+        :type layer: Union[Collection[str], str]
+        :param truncate_negative: Truncate negative residuals to 0, defaults to False
         :type truncate_negative: bool, optional
         :param subset_categories: Provide a subset of categories for calculating overrepresentation
         :type subset_categories: Collection[str]
         :return: category × program matrix of overrepresentation values
         :rtype: pd.DataFrame
         """
+        if isinstance(layer, str):
+             layer = [layer]
+        elif isinstance(layer, tuple):
+            layer = list(layer)
+        else:
+            raise ValueError(f"layer has an invalid type: {type(layer)}")
         usage = self.get_usages(normalize=True).copy()
         sample_to_class = self.get_metadata_df()[layer]
         if subset_categories is not None:
             sample_to_class[~sample_to_class.isin(subset_categories)] = np.nan
-        usage.index = usage.index.map(sample_to_class)
-        observed = usage.groupby(level=0, observed=True).sum()
+        usage.index = pd.MultiIndex.from_frame(sample_to_class.reindex(usage.index))
+        observed = usage.groupby(level=layer, observed=True).sum()
         observed = observed[observed.sum(axis=1) > 0]
         n_categories = observed.shape[0]
         if n_categories < 2:

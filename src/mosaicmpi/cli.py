@@ -882,6 +882,88 @@ def cmd_usage_heatmap(input_h5ad, output_dir, metadata_colors_toml, show_sample_
         plt.close(fig)
 
 
+@click.command("overrepresentation")
+@click.option(
+    "-i", "--input_h5ad", type=click.Path(exists=True, dir_okay=False), required=True, help="Path to AnnData (.h5ad) file containing cNMF results.")
+@click.option(
+    "-o", '--output_dir', type=click.Path(file_okay=False), default=os.getcwd(), show_default=True,
+    help="Output directory for overrepresentation matrices and figures.")
+@click.option(
+    '-m', '--metadata_colors_toml', type=click.Path(dir_okay=False, exists=True),
+    help="TOML file with metadata_colors specification. If not provided, visually distinct colors will be chosen automatically.")
+@click.option(
+    "-k", type=int, multiple=True, default=[],
+    help="Specify individual ranks (k values) to analyze. Multiple may be selected like this: -k 2 -k 3. Defaults to all k.")
+@click.option('-c', '--categories', type=str, required=True, multiple=True,
+    help="Name of categorical metadata fields. Multiple fields may be selected like this: -c layer1 -c layer2. At least 1 field is required")
+def cmd_overrepresentation(input_h5ad, output_dir, metadata_colors_toml, k, categories):
+    """
+    Create a heatmap of program usage with annotated samples
+    """
+    try:
+        import PyComplexHeatmap
+    except ImportError:
+        
+        logging.error("PyComplexHeatmap is not installed. Please install using:\n\n\t"
+                      "pip install PyComplexHeatmap\n"
+                      )
+        sys.exit(1)
+
+    os.makedirs(output_dir, exist_ok=True)
+    dataset = Dataset.from_h5ad(input_h5ad)
+
+    if not dataset.has_cnmf_results:
+        logging.error("cNMF results have not been imported into .h5ad file. Ensure that you have run `mosaicmpi postprocess` before annotating programs.")
+        sys.exit(1)
+
+    # get and check k values
+    kval_options = dataset.adata.uns["kvals"].index.to_list()
+    kval_option_str = ", ".join([str(k) for k in kval_options])
+    if k:
+        kvals = k
+        bad_kvals = [kval for kval in kvals if kval not in kval_options]
+        bad_kval_str = ", ".join([str(b) for b in bad_kvals])
+        if bad_kvals:
+            logging.error(f"The following k values were specified but not available as factorization solutions in the dataset: {bad_kval_str}. "
+                          f"Please choose from the following options: {kval_option_str}")
+            sys.exit(1)
+    else:
+        kvals = kval_options
+
+    # check categories
+    metadata_columns = dataset.get_metadata_df().columns
+    bad_categories = [m for m in categories if m not in metadata_columns]
+    bad_categories_str = ", ".join(bad_categories)
+    metadata_columns_str = ", ".join(dataset.get_metadata_df().columns)
+    if bad_categories:
+        logging.error(f"The following metadata fields were selected using --categories but are not available in the dataset: {bad_categories_str}. "
+                        f"Please choose from the following options: {metadata_columns_str}")
+    
+    # get metadata colors
+    if metadata_colors_toml:
+        colors = Colors.from_toml(metadata_colors_toml)
+    else:
+        colors = Colors()
+    colors.add_missing_metadata_colors(dataset)
+    colors.to_toml(os.path.join(output_dir, "metadata_colors.toml"))
+    
+    # plot legend
+    fig = colors.plot_metadata_colors_legend()
+    utils.save_fig(fig, os.path.join(output_dir, "metadata_legend"))
+
+    # create annotated plots for each k
+    for kval in kvals:
+
+        logging.info(f"Creating overrepresentation heatmap for k={kval}")
+        cnmf_name = dataset.adata.uns["cnmf_name"]
+        title = f"{cnmf_name} k={kval}\n" + ", ".join(categories)
+        filename = os.path.join(output_dir, f"{cnmf_name}.k{kval:03}.or_heatmap")
+        dataset.get_category_overrepresentation(layer=categories).to_csv(filename + ".tsv", sep="\t")
+        fig = plot_overrepresentation_heatmap(dataset=dataset, categories=categories, colors=colors, k=kval, title=title)
+        utils.save_fig(fig, filename, target_dpi=200, formats="pdf")
+        plt.close(fig)
+
+
 @click.command(name="map-gene-ids")
 @click.option('-i', '--input_h5ad', type=click.Path(exists=True, dir_okay=False), required=True, help="Input .h5ad file")
 @click.option('-o', '--output_h5ad', type=click.Path(exists=False, dir_okay=False), required=True, help="Output .h5ad file with mapped gene identifiers.")
@@ -1656,6 +1738,7 @@ cli.add_command(cmd_initialize_cnmf)
 cli.add_command(cmd_factorize)
 cli.add_command(cmd_postprocess)
 cli.add_command(cmd_usage_heatmap)
+cli.add_command(cmd_overrepresentation)
 cli.add_command(cmd_map_gene_ids)
 cli.add_command(cmd_create_config)
 cli.add_command(cmd_integrate)
