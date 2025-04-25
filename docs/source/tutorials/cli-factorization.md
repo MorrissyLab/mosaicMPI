@@ -152,10 +152,10 @@ To provide custom colors for the metadata layers, you can specify a `metadata_co
 This step will create overrepresentation heatmaps from mosaicMPI outputs:
 
 ```bash
-mosaicmpi overrepresentation -o results/overrepresentation -i results/cptac_snrna/cptac_snrna.h5ad -c celltype
+mosaicmpi overrepresentation -o results -i results/cptac_snrna/cptac_snrna.h5ad -m metadata_colors.toml
 ```
 
-To provide custom colors for the metadata layers, you can specify a `metadata_colors.toml` file. Learn about other parameters by running `mosaicmpi overrepresentation -h`.
+Learn about other parameters by running `mosaicmpi overrepresentation -h`.
 
 
 ### *9. [Optional] Update the metadata for a dataset's .h5ad file*

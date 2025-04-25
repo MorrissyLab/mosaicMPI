@@ -894,8 +894,8 @@ def cmd_usage_heatmap(input_h5ad, output_dir, metadata_colors_toml, show_sample_
 @click.option(
     "-k", type=int, multiple=True, default=[],
     help="Specify individual ranks (k values) to analyze. Multiple may be selected like this: -k 2 -k 3. Defaults to all k.")
-@click.option('-c', '--categories', type=str, required=True, multiple=True,
-    help="Name of categorical metadata fields. Multiple fields may be selected like this: -c layer1 -c layer2. At least 1 field is required")
+@click.option('-c', '--categories', type=str, required=False, multiple=True,
+    help="Name of categorical metadata fields. Multiple fields may be selected: -c layer1 -c layer2. If not specified, separate outputs are produced for all categorical metadata.")
 def cmd_overrepresentation(input_h5ad, output_dir, metadata_colors_toml, k, categories):
     """
     Create a heatmap of program usage with annotated samples
@@ -929,15 +929,6 @@ def cmd_overrepresentation(input_h5ad, output_dir, metadata_colors_toml, k, cate
             sys.exit(1)
     else:
         kvals = kval_options
-
-    # check categories
-    metadata_columns = dataset.get_metadata_df().columns
-    bad_categories = [m for m in categories if m not in metadata_columns]
-    bad_categories_str = ", ".join(bad_categories)
-    metadata_columns_str = ", ".join(dataset.get_metadata_df().columns)
-    if bad_categories:
-        logging.error(f"The following metadata fields were selected using --categories but are not available in the dataset: {bad_categories_str}. "
-                        f"Please choose from the following options: {metadata_columns_str}")
     
     # get metadata colors
     if metadata_colors_toml:
@@ -946,22 +937,39 @@ def cmd_overrepresentation(input_h5ad, output_dir, metadata_colors_toml, k, cate
         colors = Colors()
     colors.add_missing_metadata_colors(dataset)
     colors.to_toml(os.path.join(output_dir, "metadata_colors.toml"))
-    
     # plot legend
     fig = colors.plot_metadata_colors_legend()
     utils.save_fig(fig, os.path.join(output_dir, "metadata_legend"))
 
+    metadata_columns = dataset.get_metadata_df().columns
+    if categories:
+        # check categories
+        bad_categories = [m for m in categories if m not in metadata_columns]
+        bad_categories_str = ", ".join(bad_categories)
+        metadata_columns_str = ", ".join(dataset.get_metadata_df().columns)
+        if bad_categories:
+            logging.error(f"The following metadata fields were selected using --categories but are not available in the dataset: {bad_categories_str}. "
+                            f"Please choose from the following options: {metadata_columns_str}")
+    if categories:
+        cat_spec = [categories]
+    else:
+        cat_spec = [[cat] for cat in dataset.get_metadata_df(include_numerical=False).columns]
+
     # create annotated plots for each k
     for kval in kvals:
-
-        logging.info(f"Creating overrepresentation heatmap for k={kval}")
-        cnmf_name = dataset.adata.uns["cnmf_name"]
-        title = f"{cnmf_name} k={kval}\n" + ", ".join(categories)
-        filename = os.path.join(output_dir, f"{cnmf_name}.k{kval:03}.or_heatmap")
-        dataset.get_category_overrepresentation(layer=categories).to_csv(filename + ".tsv", sep="\t")
-        fig = plot_overrepresentation_heatmap(dataset=dataset, categories=categories, colors=colors, k=kval, title=title)
-        utils.save_fig(fig, filename, target_dpi=200, formats="pdf")
-        plt.close(fig)
+        for categories in cat_spec:
+            logging.info(f"Creating overrepresentation heatmap for k={kval}, categories " + ", ".join(categories))
+            cnmf_name = dataset.adata.uns["cnmf_name"]
+            title = f"{cnmf_name} k={kval}\n" + ", ".join(categories)
+            catstr = "_".join(categories)
+            filename = os.path.join(output_dir, f"{cnmf_name}.k{kval:03}.or_heatmap.{catstr}")
+            overrep = dataset.get_category_overrepresentation(layer=categories)
+            overrep.to_csv(f"{filename}.tsv", sep="\t")
+            if overrep.isnull().all().all():
+                continue
+            fig = plot_overrepresentation_heatmap(dataset=dataset, categories=categories, colors=colors, k=kval, title=title)
+            utils.save_fig(fig, filename, target_dpi=200, formats="pdf")
+            plt.close(fig)
 
 
 @click.command(name="map-gene-ids")

@@ -1362,6 +1362,8 @@ class Dataset():
              layer = [layer]
         elif isinstance(layer, tuple):
             layer = list(layer)
+        elif isinstance(layer, list):
+            pass
         else:
             raise ValueError(f"layer has an invalid type: {type(layer)}")
         usage = self.get_usages(normalize=True).copy()

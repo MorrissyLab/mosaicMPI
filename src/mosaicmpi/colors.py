@@ -5,6 +5,7 @@ from .config import Config
 from .network import Network
 from . import utils
 
+import os
 import logging
 from typing import Optional, Union
 from collections.abc import Iterable, Mapping
@@ -51,6 +52,8 @@ class Colors():
             return cls(**tomli.load(f))
 
     def to_toml(self, toml_file: str):
+        if os.path.exists(toml_file):
+            logging.warning(f"Overwriting {toml_file}")
         with open(toml_file, "wb") as f:
             tomli_w.dump(self.__dict__, f)
 
