@@ -56,7 +56,7 @@ def plot_feature_mean_variance(dataset: Dataset,
                                show_model_curve: bool = True,
                                y_unit: Literal["log_variance", "odscore", "log_odscore", "vscore", "log_vscore"] = "log_variance",
                                modelled_features: bool = True,
-                               unmodelled_features: bool = False,
+                               unmodelled_features: bool = True,
                                alpha: Optional[float] = None,
                                ax: Optional[Union[Axes, Collection[Axes]]] = None):
 
@@ -144,6 +144,7 @@ def plot_feature_mean_variance(dataset: Dataset,
     
         ax_plot.legend(handles=plot_handles, title=hue)
         ax_plot.set_title(stratum)
+
 
         ax_plot.set_xlabel("log10(mean)")
         if y_unit == "log_variance":

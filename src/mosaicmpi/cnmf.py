@@ -376,6 +376,7 @@ class cNMF():
         else:
             refit_nmf_kwargs.update(dict(n_components = spectra.shape[0], H = spectra, update_H = False))
             
+        
         _, rf_usages = self._nmf(X, nmf_kwargs=refit_nmf_kwargs)
         if (type(X) is pd.DataFrame) and (type(spectra) is pd.DataFrame):
             rf_usages = pd.DataFrame(rf_usages, index=X.index, columns=spectra.index)
@@ -396,7 +397,7 @@ class cNMF():
         :return: refit spectra
         :rtype: pd.DataFrame
         """
-
+        print(X.dtype, usage.values.dtype)
         return(self.refit_usage(X.T, usage.T).T)
 
 
@@ -471,7 +472,7 @@ class cNMF():
         # with usages fixed and TPM as the input matrix
         tpm = ad.read_h5ad(self.paths['tpm'])
         tpm_stats = utils.load_df_from_npz(self.paths['tpm_stats'])
-        norm_usages = norm_usages.fillna(0).astype(np.float32)  # replaces NaN usages for samples that have 0 HVG counts
+        norm_usages = norm_usages.fillna(0).astype(np.float64)  # replaces NaN usages for samples that have 0 HVG counts
         spectra_tpm = self.refit_spectra(tpm.X, norm_usages)
         spectra_tpm = pd.DataFrame(spectra_tpm, index=rf_usages.columns, columns=tpm.var.index)
         spectra_tpm = spectra_tpm.div(spectra_tpm.sum(axis=1), axis=0) * 1e6
