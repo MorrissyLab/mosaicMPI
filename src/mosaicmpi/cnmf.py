@@ -397,7 +397,6 @@ class cNMF():
         :return: refit spectra
         :rtype: pd.DataFrame
         """
-        print(X.dtype, usage.values.dtype)
         return(self.refit_usage(X.T, usage.T).T)
 
 
