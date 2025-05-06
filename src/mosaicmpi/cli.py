@@ -1236,12 +1236,12 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     
 
     # integrated community usage
-    ic_usage = network.get_community_usage()
-    ic_usage.to_csv(os.path.join(output_dir, "community_usage.txt"), sep="\t")
-    n_samples = ic_usage.shape[0]
+    median_community_usage = network.get_median_community_usage()
+    median_community_usage.to_csv(os.path.join(output_dir, "community_usage.txt"), sep="\t")
+    n_samples = median_community_usage.shape[0]
     if n_samples <= config.max_cells_per_heatmap_dimension:
         logging.info("Creating community usage heatmap...")
-        fig = plot_community_usage_heatmap(network, colors)
+        fig = plot_representative_community_usage_heatmap(network, colors)
         utils.save_fig(fig, os.path.join(output_dir, f"community_usage"), target_dpi=200, formats=config.plot_formats)
     else:
         logging.info(f"Skipped community usage heatmap. n_samples = {n_samples} is greater than the 'max_cells_per_heatmap_dimension' parameter.")

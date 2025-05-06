@@ -262,118 +262,6 @@ def plot_stability_error(dataset: Dataset, figsize=(6, 4)) -> Figure:
     ax1.grid('on')
     return fig
 
-
-
-def annotated_heatmap(
-        data, title, metadata=None, metadata_colors=None, missing_data_color="#BBBBBB", heatmap_cmap='YlOrRd', 
-        row_cluster=True, col_cluster=True, plot_col_dendrogram=True, show_sample_labels=True, ylabel=None, cbar_label=None):
-    
-    from fastcluster import linkage
-    from scipy import dendrogram
-    
-    n_columns = data.shape[1]
-    if metadata is None:
-        n_metadata_columns = 0
-    else:
-        n_metadata_columns = metadata.shape[1]
-
-    fig = plt.figure(figsize=[20, 2 + n_columns/3 + n_metadata_columns/4])
-    fig.suptitle(title, fontsize=14)
-    gs0 = mpl.gridspec.GridSpec(2,2, figure=fig,
-                                    height_ratios=[n_columns/3, 1 + n_metadata_columns/4], hspace=0.05,
-                                    width_ratios=[5,1], wspace=0.05)
-    
-    # subdivide heatmap and dendrogram
-    gs1 = mpl.gridspec.GridSpecFromSubplotSpec(2,1, subplot_spec=gs0[0],
-                                                    height_ratios=[1,n_columns],
-                                                    hspace=0)
-
-    # Heatmap
-    ax_heatmap = fig.add_subplot(gs1[1])
-    ax_col_dendrogram = fig.add_subplot(gs1[0], sharex=ax_heatmap)
-    ax_col_dendrogram.set_axis_off()
-    # ax_col_dendrogram.set_xlim(0, 10 * data.shape[1])
-
-    # HAC clustering (compute linkage matrices)
-    if col_cluster:
-        
-        # anticipate RecursionError when number of samples/cells is high.
-        import sys
-        if data.shape[0] > sys.getrecursionlimit() / 2:
-            new_recursion_limit = int(data.shape[0] * 2)
-            logging.info(f"number of columns is {data.shape[1]}, increasing recursion limit to {new_recursion_limit}")
-            sys.setrecursionlimit(new_recursion_limit)
-
-        
-        col_links = linkage(data.dropna(axis=1), method='average', metric='euclidean')
-        col_dendrogram = dendrogram(col_links, color_threshold=0, ax=ax_col_dendrogram, no_plot=not plot_col_dendrogram)
-        xind = np.array(col_dendrogram['leaves'])
-    else:
-        xind = np.arange(0, data.shape[0])
-    
-    ax_col_dendrogram.set_xticks(np.arange(5, xind.shape[0] * 10 + 5, 10))
-    ax_col_dendrogram.set_xticklabels(xind)
-
-    
-    if row_cluster:
-        row_links = linkage(data.T, method='average', metric='euclidean')
-        row_dendrogram = dendrogram(row_links, no_plot=True)
-        yind = row_dendrogram['leaves']
-    else:
-        yind = np.arange(0, data.shape[1])
-
-    xmin,xmax = ax_col_dendrogram.get_xlim()
-    im_heatmap = ax_heatmap.imshow(data.iloc[xind,yind].T, aspect='auto', extent=[xmin,xmax,0,1], cmap=heatmap_cmap, vmin=0, vmax=1, interpolation='none')
-    ax_heatmap.set_yticks((data.columns.astype("int").to_series() - 0.5).div(data.shape[1]))
-    ax_heatmap.set_yticklabels(data.columns[yind][::-1])
-    ax_heatmap.set_ylabel(ylabel, rotation=0, ha='right', va='center')
-    ax_heatmap.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-    
-
-    # Annotations
-    if metadata is not None:
-        # data and metadata must have the same index
-        metadata = metadata.loc[data.index]
-        gs2 = mpl.gridspec.GridSpecFromSubplotSpec(metadata.shape[1], 1, subplot_spec=gs0[2])
-        for i, (track, annot) in enumerate(metadata.items()):
-            ax = fig.add_subplot(gs2[i], sharex=ax_heatmap)
-            ax.set_facecolor(missing_data_color)
-            if pd.api.types.is_categorical_dtype(annot):
-                # convert categorical to object dtype to make mapping to colors easier
-                annot = annot.iloc[xind].astype("object")
-
-            if pd.api.types.is_object_dtype(annot):
-                ordered_rgb = annot.iloc[xind]
-                ordered_rgb[~ordered_rgb.isin(metadata_colors[track])] = np.nan  # omit samples for which no color exists
-                ordered_rgb = ordered_rgb.replace(metadata_colors[track])
-                if ordered_rgb.isnull().any():
-                    ordered_rgb = ordered_rgb.fillna(missing_data_color)
-                ordered_rgb = ordered_rgb.map(mpl.colors.to_rgb)
-                ordered_rgb = np.array([list(rgb) for rgb in ordered_rgb])
-                ax.imshow(np.stack([ordered_rgb, ordered_rgb]), aspect='auto', extent=[xmin,xmax,0,1], interpolation='none')
-            else:
-                ax.imshow(np.stack([annot.iloc[xind],annot.iloc[xind]]), aspect='auto', extent=[xmin,xmax,0,1], cmap='Blues', interpolation='none')
-            ax.set_yticks([])
-            ax.set_ylabel(track, rotation=0, ha='right', va='center')
-            if ax.get_subplotspec().is_last_row():
-                if show_sample_labels:
-                    # ax.set_xticks(np.linspace(0, 1, data.shape[0], endpoint=False) + 1/(2 * data.shape[0]))
-                    ax.set_xticklabels(data.index[xind], rotation=90)
-                else:
-                    ax.set_xticks([])
-            else:
-                ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['bottom'].set_visible(False)
-            ax.spines['left'].set_visible(False)
-    
-    # Colormap for heatmap
-    ax = fig.add_subplot(gs0[1])
-    ax.set_axis_off()
-    plt.colorbar(im_heatmap, ax=ax, location="top", label=cbar_label)
-    return fig
-
 def plot_usage_heatmap(dataset, k, colors, normalize_usage: bool = True, subset_metadata = None, subset_samples = None, title: str = None, cluster_programs = False, cluster_samples = True, show_sample_labels = False):
     import PyComplexHeatmap as pch
     
@@ -393,7 +281,7 @@ def plot_usage_heatmap(dataset, k, colors, normalize_usage: bool = True, subset_
 
     metadata = dataset.get_metadata_df().loc[samples]
     if subset_metadata is not None:
-        metadata = metadata[metadata.columns.intersection(metadata)]
+        metadata = metadata[metadata.columns.intersection(subset_metadata)]
     metadata = metadata[metadata.dtypes.astype(str).sort_values().index]
     colannot = {}
     for colname, col in metadata.items():
@@ -712,7 +600,7 @@ def plot_overrepresentation_heatmap(dataset: Dataset,
 # SNS-related plots #
 #####################
 
-def plot_community_usage_heatmap(network: Network,
+def plot_representative_community_usage_heatmap(network: Network,
                                  colors: Colors,
                                  subset_metadata = None,
                                  subset_datasets: Optional[Union[str, Collection[str]]] = None,
@@ -723,7 +611,7 @@ def plot_community_usage_heatmap(network: Network,
                                  show_sample_labels = True,
                                  prepend_dataset_colors = True):
     
-
+    import PyComplexHeatmap as pch
     
     if subset_datasets is None:
         subset_datasets = network.integration.datasets.keys()
@@ -734,35 +622,42 @@ def plot_community_usage_heatmap(network: Network,
     else:
         raise ValueError
     
-    df = network.get_community_usage()
-    
+    df = network.get_representative_program_usage()
     if subset_samples is not None:
-        df = df.loc[subset_samples]
-    
+        df = df.loc[subset_samples]    
     df = df.loc[subset_datasets]
             
-    metadata = network.integration.get_metadata_df()
+    metadata = network.integration.get_metadata_df(prepend_dataset_column=prepend_dataset_colors)
     metadata = metadata[metadata.index.get_level_values(0).isin(subset_datasets)]
     if subset_metadata is not None:
-        metadata = metadata.loc[:, subset_metadata]
-    metadata = metadata.dropna(axis=1, how="all")
+        metadata = metadata[metadata.columns.intersection(subset_metadata)]
+    metadata = metadata[metadata.dtypes.astype(str).sort_values().index]
+    # anticipate RecursionError when number of samples/cells is high.
+    samples = df.index.to_series()
+    import sys
+    if len(samples) > sys.getrecursionlimit() / 2:
+        new_recursion_limit = int(len(samples) * 2)
+        logging.info(f"number of samples/cells is {len(samples)}, increasing recursion limit to {new_recursion_limit}")
+        sys.setrecursionlimit(new_recursion_limit)
 
-    metadata_colors = {col: colors.get_metadata_colors(col) for col in metadata.columns}
-    if prepend_dataset_colors:
-        metadata.insert(0, "dataset", metadata.index.get_level_values(0))
-        metadata_colors["dataset"] = colors.dataset_colors
-    
-    
-    fig = annotated_heatmap(data=df, metadata=metadata,
-                            metadata_colors=metadata_colors, 
-                            missing_data_color=colors.missing_data_color, 
-                            title=title,
-                            row_cluster=cluster_programs,
-                            col_cluster=cluster_samples,
-                            show_sample_labels=show_sample_labels,
-                            plot_col_dendrogram=True,
-                            ylabel="Community",
-                            cbar_label="Normalized Program Usage")
+    colannot = {}
+    for colname, col in metadata.items():
+        if colname == "Dataset":
+            colannot[colname] = pch.anno_simple(col, colors=colors.dataset_colors)
+        elif col.dtype in ("category", "object"):
+            if len(colors.get_metadata_colors(colname)) < 256:  # limitation of PyComplexHeatmap https://github.com/DingWB/PyComplexHeatmap/issues/108
+                colannot[colname] = pch.anno_simple(col, colors=colors.get_metadata_colors(colname))
+        else:
+            colannot[colname] = pch.anno_simple(col, cmap = "Blues")
+    col_ha = pch.HeatmapAnnotation(**colannot)
+    row_ha = pch.HeatmapAnnotation(Community=pch.anno_simple(df.columns.to_frame()["community"], colors=colors.community_colors, add_text=True),
+                                   Dataset = pch.anno_simple(df.columns.to_frame()["dataset"], colors=colors.dataset_colors), axis=0)
+
+    fig = plt.figure(figsize=[20, 4 + 0.3 * df.columns.size + 0.25 * metadata.shape[1]])
+    pch.ClusterMapPlotter(data=df.T, top_annotation=col_ha, left_annotation=row_ha, 
+                          cmap="YlOrRd", vmin=0, vmax=1, ylabel = "Representative Program", xlabel=None, show_colnames=show_sample_labels, show_rownames=True,
+                          row_cluster=cluster_programs, col_cluster=cluster_samples, verbose=False)
+    fig.axes[0].set_title(title)
     return fig
 
 
@@ -771,7 +666,7 @@ def plot_community_usage_per_sample(network: Network,
                                     dataset_name: str,
                                     layer: str
                                     ) -> Figure:
-    df = network.get_community_usage().loc[dataset_name].copy()
+    df = network.get_median_community_usage().loc[dataset_name].copy()
     df.index = df.index.map(network.integration.datasets[dataset_name].get_metadata_df()[layer])
     df = df.dropna(axis=1, how="all")
 

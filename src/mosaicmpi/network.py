@@ -121,12 +121,12 @@ class Network():
         node_table[("network", "")] = pd.Series([node_to_program(node)[0] for node in self.program_graph.nodes]).value_counts()
         return node_table
 
-    def get_community_usage(self,
+    def get_median_community_usage(self,
                             subset_datasets: Optional[Union[str, Iterable[str]]] = None,
                             normalize: bool = True,
                             discretize: bool = False):
         """
-        Get median usage of each community of programs for each samples.  # TODO: migrate to representative programs
+        Get median usage of each community of programs for each sample.
 
         :param subset_datasets: dataset name or iterable of dataset names to subset the results, defaults to None
         :type subset_datasets: str or Iterable[str], optional
@@ -138,7 +138,7 @@ class Network():
         :rtype: pd.DataFrame
         """
         usage = self.integration.get_usages(normalize=normalize)
-        ic_usage = []
+        median_usage = []
         
         if subset_datasets is None:
             subset_datasets = self.integration.datasets
@@ -158,13 +158,13 @@ class Network():
                 data.append(program_comm.median(axis=1).rename((community, dataset_name)))
             data = pd.concat(data, axis=1).droplevel(axis=1, level=1).dropna(how="all")
             data.columns.rename("Community", inplace=True)
-            ic_usage.append(data.sort_index(axis=0))
-        ic_usage = pd.concat(ic_usage)
+            median_usage.append(data.sort_index(axis=0))
+        median_usage = pd.concat(median_usage)
         if normalize:
-            ic_usage = ic_usage.div(ic_usage.sum(axis=1), axis=0)
+            median_usage = median_usage.div(median_usage.sum(axis=1), axis=0)
         if discretize:
-            ic_usage = ic_usage.eq(ic_usage.max(axis=1), axis=0).astype(int)
-        return ic_usage
+            median_usage = median_usage.eq(median_usage.max(axis=1), axis=0).astype(int)
+        return median_usage
     
     def get_sample_entropy(self, subset_datasets: Optional[Union[str, Iterable]] = None):
         """Get shannon diversity of Community Usage for each sample.
@@ -174,7 +174,7 @@ class Network():
         :return: Shannon Entropy for each dataset and sample
         :rtype: pd.Series
         """
-        ic_usage = self.get_community_usage(subset_datasets = subset_datasets)
+        ic_usage = self.get_median_community_usage(subset_datasets = subset_datasets)
         diversity = ic_usage.apply(lambda x: entropy(x.dropna()), axis=1)
         return diversity
     
@@ -664,7 +664,7 @@ class Network():
             
 
         elif correlation_axis == "usage":
-            cu = self.get_community_usage()
+            cu = self.get_median_community_usage()
             usages = self.integration.get_usages(normalize=True)
             for community, nodes in self.communities.items():
                 for dataset_name in self.integration.datasets:
@@ -716,6 +716,23 @@ class Network():
         rep_programs = self.integration.get_programs()[rep_programs_ids.index]
         rep_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["community", "dataset", "k", "program"])
         return rep_programs
+
+
+    def get_representative_program_usage(self,
+                         correlation_axis: Literal["programs", "usage"] = "programs"
+                         ) -> pd.DataFrame:
+        """Select programs based on correlation with the median of all programs in each community
+        
+        :param correlation_axis: axis on which to compute correlations between programs whether correlating the programs or the usages, defaults to "programs"
+        :type correlation_axis: int or dict
+        :return: Features × programs matrix
+        :rtype: pd.DataFrame
+        """
+        rep_programs_ids = self.get_representative_program_ids(correlation_axis=correlation_axis)
+        rep_programs = self.integration.get_usages()[rep_programs_ids.index]
+        rep_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["community", "dataset", "k", "program"])
+        return rep_programs
+
 
     def get_lowest_rank_programs(self,
                                 min_k: Optional[Union[int, Dict[str, int]]] = None,

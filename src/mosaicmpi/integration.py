@@ -366,6 +366,7 @@ class Integration():
         
         if prepend_dataset_column:
             df.insert(0, "Dataset", df.index.get_level_values(0))
+            df["Dataset"] = df["Dataset"].astype("category")
         return df
     
     def get_features_overlap_table(self):
