@@ -420,6 +420,9 @@ def cmd_select_hvf_custom(name, output_dir, input, feature_list):
     "--min_cells_mean", type=float, default=0.0, show_default=True,
     help="Exclude features with less than this mean.")
 @click.option(
+    "--min_cells_mean_quantile", type=float, default=0.0, show_default=True,
+    help="Exclude features with less than this quantile of the mean.")
+@click.option(
     "--min_features", type=int, default=0, show_default=True,
     help="Exclude samples/cells with fewer than this number of positive features.")
 @click.option(
@@ -459,7 +462,7 @@ def cmd_select_hvf_custom(name, output_dir, input, feature_list):
 @click.option(
     "--multiple_threshold_mode", type=click.Choice(["union", "intersection"]), default="intersection", show_default=True,
     help="Method to combine multiple thresholds.")
-def cmd_select_hvf_default(name, output_dir, input, stratify_by, stratify_mode, use_counts, max_missingness, max_cells_proportion, min_cells_proportion, min_cells_mean,
+def cmd_select_hvf_default(name, output_dir, input, stratify_by, stratify_mode, use_counts, max_missingness, max_cells_proportion, min_cells_proportion, min_cells_mean, min_cells_mean_quantile,
                            min_features, min_raw_sum, n_splines, spline_order, score_type, min_score, top_n, top_quantile, alpha, use_unadjusted_pvals, feature_list, multiple_threshold_mode):
     """
     Flexible way to select highly-variable features. The process is controlled by several groups of parameters.
@@ -469,7 +472,8 @@ def cmd_select_hvf_default(name, output_dir, input, stratify_by, stratify_mode, 
     normalized data is used by default, unless --use_counts is specified. If the .h5ad file was created from a single counts matrix, then this means that the TPM normalization
     will be performed. Cells are then removed based on the --max_missingness, which only applies to datasets imputed by mosaicMPI. Cells are further filtered based on
     --min_cells_proportion, and --max_cells_proportion parameters, to remove features which are present in too many or too few samples/cells. These parameters are identical
-    to the --removeAbove and --removeBelow parameters in STdeconvolve, and by default are disabled.
+    to the --removeAbove and --removeBelow parameters in STdeconvolve, and by default are disabled. --min_cells_mean and --min_cells_mean_quantile remove cells with average
+    below a specific value or below the given quantile, respectively.
 
     Second, an overdispersion score is calculated using one of two methods specified using --score_type. If vscore, the scoring system is the same as cNMF (Kotliar et. al., 2019). By default,
     the score_type is odscore, which is the same as STdeconvolve (Miller, et al. Nat. Comm. 2022). To calculate the odscore, a Linear Generalized Additive Model (Linear GAM)
@@ -517,6 +521,7 @@ def cmd_select_hvf_default(name, output_dir, input, stratify_by, stratify_mode, 
         max_cells_proportion = max_cells_proportion,
         min_cells_proportion = min_cells_proportion,
         min_cells_mean = min_cells_mean,
+        min_cells_mean_quantile = min_cells_mean_quantile,
         min_features = min_features,
         min_raw_sum = min_raw_sum,
         n_splines = n_splines,

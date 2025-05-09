@@ -685,6 +685,7 @@ class Dataset():
                 max_cells_proportion: float = 1.0,
                 min_cells_proportion: float = 0.0,
                 min_cells_mean: float = 0.0,
+                min_cells_mean_quantile: float = 0.0,
                 min_features: int = 0,
                 min_raw_sum: float = 0.0,
                 n_splines: int = 5,
@@ -714,6 +715,8 @@ class Dataset():
         :type min_cells_proportion: float, optional
         :param min_cells_proportion: Exclude features with less than mean, defaults to 0.0
         :type min_cells_proportion: float, optional
+        :param min_cells_mean_quantile: Exclude features with less than quantile of mean, defaults to 0.0
+        :type min_cells_mean_quantile: float, optional
         :param min_features: Exclude samples/cells with fewer than this number of positive features, defaults to 0
         :type min_features: int, optional
         :param min_raw_sum: Exclude samples/cells with a summed signal less than this threshold, defaults to 0.0
@@ -804,7 +807,7 @@ class Dataset():
             strat_stats = pd.DataFrame(index=self.adata.var_names)
             strat_stats["cells_proportion"] = (subset_raw > 0).sum() / subset_raw.shape[0]
             strat_stats["mean"] = subset_normalized.mean()
-            strat_stats["rank_mean"] = strat_stats["mean"].rank()
+            strat_stats["mean_quantile"] = strat_stats["mean"].rank(pct=True)
             strat_stats["variance"] = subset_normalized.var()
             strat_stats["sd"] = subset_normalized.std()
             strat_stats[["log_mean", "log_variance"]] = np.log10(strat_stats.loc[strat_stats["mean"] > 0, ["mean", "variance"]])
@@ -815,6 +818,7 @@ class Dataset():
                 strat_stats["log_mean"].isnull() |
                 (strat_stats["mean"] == 0) |
                 (strat_stats["mean"] < min_cells_mean) |
+                (strat_stats["mean_quantile"] < min_cells_mean_quantile) |
                 strat_stats["log_variance"].isnull() |
                 (strat_stats["variance"] == 0)
                 )
@@ -890,6 +894,8 @@ class Dataset():
             "max_missingness": max_missingness,
             "max_cells_proportion": max_cells_proportion,
             "min_cells_proportion": max_cells_proportion,
+            "min_cells_mean": min_cells_mean,
+            "min_cells_mean_quantile": min_cells_mean_quantile,
             "min_features": min_features,
             "min_raw_sum": min_raw_sum,
             "n_splines": n_splines,
