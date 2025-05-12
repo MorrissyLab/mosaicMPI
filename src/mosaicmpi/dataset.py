@@ -508,7 +508,7 @@ class Dataset():
             logging.info(f"Move completed.")
         else:
             logging.info(f"Writing to {filename}")
-            self.append_to_history("Writing to {filename}")
+            self.append_to_history(f"Writing to {filename}")
             self.adata.write_h5ad(filename, compression="gzip")
             logging.info(f"Write completed.")
     
