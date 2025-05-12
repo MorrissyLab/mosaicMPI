@@ -499,7 +499,7 @@ class Dataset():
             msg = f"Writing to temporary file {temp_filename}"
             logging.info(msg)
             self.append_to_history(msg)
-            self.adata.write_h5ad(temp_filename)
+            self.adata.write_h5ad(temp_filename, compression="gzip")
 
             msg = f"Write completed. Moving to {filename}"
             logging.info(msg)
@@ -509,7 +509,7 @@ class Dataset():
         else:
             logging.info(f"Writing to {filename}")
             self.append_to_history("Writing to {filename}")
-            self.adata.write_h5ad(filename)
+            self.adata.write_h5ad(filename, compression="gzip")
             logging.info(f"Write completed.")
     
     def to_df(self,
