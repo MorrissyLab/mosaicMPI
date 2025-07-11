@@ -472,6 +472,9 @@ class cNMF():
         tpm = ad.read_h5ad(self.paths['tpm'])
         tpm_stats = utils.load_df_from_npz(self.paths['tpm_stats'])
         norm_usages = norm_usages.fillna(0).astype(np.float64)  # replaces NaN usages for samples that have 0 HVG counts
+        if tpm.X.dtype != norm_usages.values.dtype:
+            tpm.X = tpm.X.astype(np.float64)
+
         spectra_tpm = self.refit_spectra(tpm.X, norm_usages)
         spectra_tpm = pd.DataFrame(spectra_tpm, index=rf_usages.columns, columns=tpm.var.index)
         spectra_tpm = spectra_tpm.div(spectra_tpm.sum(axis=1), axis=0) * 1e6
@@ -490,7 +493,7 @@ class cNMF():
             ## Re-fitting usage a final time on std-scaled HVG TPM seems to
             ## increase accuracy on simulated data
             hvgs = open(self.paths['nmf_genes_list']).read().split('\n')
-            norm_tpm = tpm[:, hvgs]
+            norm_tpm = tpm[:, hvgs].copy()
             if sp.issparse(norm_tpm.X):
                 raise NotImplementedError("Sparse functions not implemented in mosaicMPI yet")
             else:
