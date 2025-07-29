@@ -37,6 +37,27 @@ class _OrderedGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> Mapping[str, click.Command]:
         return self.commands
 
+# Custom click type to allow for nullable integers
+# This allows the user to specify "None" as an option value, which will be converted
+class NullableInt(click.ParamType):
+    name = "int|None"
+
+    def convert(self, value, param, ctx):
+        # if user typed “None” (or “none”), return None
+        if isinstance(value, str) and value.lower() == "none":
+            return None
+
+        # otherwise try normal int conversion
+        try:
+            return int(value)
+        except Exception:
+            self.fail(f"{value!r} is not a valid integer or None", param, ctx)
+
+
+
+
+
+
 
 @click.group(cls=_OrderedGroup, context_settings={'help_option_names': ['-h', '--help'], 'max_content_width': 160})
 @click.version_option(version=__version__)
@@ -252,7 +273,7 @@ def select_hvf():
     "--spline_order", type=int, default=3, show_default=True,
     help="spline order (constant = 0, linear = 1, quadratic = 2, and cubic = 3).")
 @click.option(
-    "--top_n", type=int, default=1000, show_default=True,
+    "--top_n", type=NullableInt, default=1000, show_default=True,
     help="Number of features to select after ranking features by score.")
 @click.option(
     "--alpha",
@@ -646,7 +667,7 @@ def cmd_select_hvf_cnmf(name, output_dir, input, stratify_by, stratify_mode, min
 @click.option(
     '--seed', type=int, help="Seed for scikit-learn random state.")
 @click.option(
-    '--beta_loss', type=click.Choice(["frobenius", "kullback-leibler"]), default="kullback-leibler", show_default=True,
+    '--beta_loss', type=click.Choice(["frobenius", "kullback-leibler"]), default="frobenius", show_default=True,
     help="Measure of beta-divergence to be minimized.")
 def cmd_initialize_cnmf(name, output_dir, k_range, k, n_iter, seed, beta_loss):
     """
@@ -719,7 +740,7 @@ def cmd_factorize(name, output_dir, worker_index, total_workers, slurm_script):
     help="Output directory. All output will be placed in [output_dir]/[name]/... ")
 @click.option('--cpus', type=int, default=1, show_default=True, help="Number of CPUs to use. Note that multi-CPU runs can use large amounts of memory and stall silently.")
 @click.option(
-    '--local_density_threshold', type=float, default=2.0, show_default=True,
+    '--local_density_threshold', type=float, default=0.1, show_default=True,
     help="Threshold for the local density filtering prior to program consensus. Acceptable thresholds are > 0 and <= 2 (2.0 is no filtering).")
 @click.option(
     '--local_neighborhood_size', type=float, default=0.3, show_default=True,

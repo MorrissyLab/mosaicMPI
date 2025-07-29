@@ -777,7 +777,6 @@ class Dataset():
         data_normalized = self.to_df(normalized=True)
 
         # Optional filters to remove cells/spots for sparse count data (eg. 10X Chromium, 10X Visium)
-        
         pass_samples = (  # remove samples with few features or counts
             ((data_raw.T > 0).sum() >= min_features) &
             (data_raw.T.sum() >= min_raw_sum)
@@ -806,10 +805,17 @@ class Dataset():
             # create dataframe of per-gene statistics
             strat_stats = pd.DataFrame(index=self.adata.var_names)
             strat_stats["cells_proportion"] = (subset_raw > 0).sum() / subset_raw.shape[0]
-            strat_stats["mean"] = subset_normalized.mean()
-            strat_stats["mean_quantile"] = strat_stats["mean"].rank(pct=True)
-            strat_stats["variance"] = subset_normalized.var()
-            strat_stats["sd"] = subset_normalized.std()
+            strat_stats['use_normalized'] = use_normalized
+            if use_normalized:
+                strat_stats["mean"] = subset_normalized.mean()
+                strat_stats["mean_quantile"] = strat_stats["mean"].rank(pct=True)
+                strat_stats["variance"] = subset_normalized.var()
+                strat_stats["sd"] = subset_normalized.std()
+            else:
+                strat_stats["mean"] = subset_raw.mean()
+                strat_stats["mean_quantile"] = strat_stats["mean"].rank(pct=True)
+                strat_stats["variance"] = subset_raw.var()
+                strat_stats["sd"] = subset_raw.std()
             strat_stats[["log_mean", "log_variance"]] = np.log10(strat_stats.loc[strat_stats["mean"] > 0, ["mean", "variance"]])
 
             strat_stats["excluded"] = (
