@@ -44,7 +44,7 @@ class NullableInt(click.ParamType):
 
     def convert(self, value, param, ctx):
         # if user typed “None” (or “none”), return None
-        if isinstance(value, str) and value.lower() == "none":
+        if value is None or (isinstance(value, str) and value.lower() == "none"):
             return None
 
         # otherwise try normal int conversion
@@ -273,7 +273,7 @@ def select_hvf():
     "--spline_order", type=int, default=3, show_default=True,
     help="spline order (constant = 0, linear = 1, quadratic = 2, and cubic = 3).")
 @click.option(
-    "--top_n", type=NullableInt, default=1000, show_default=True,
+    "--top_n", type=NullableInt(), default=1000, show_default=True,
     help="Number of features to select after ranking features by score.")
 @click.option(
     "--alpha",
