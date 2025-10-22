@@ -11,6 +11,9 @@ import os
 import shutil
 from io import StringIO
 from glob import glob
+import hashlib
+import json
+import time
 
 
 import anndata as ad
@@ -27,6 +30,38 @@ def to_array(self):
     return self.toarray()
 sp.spmatrix.A = property(to_array)
 import pygam
+
+
+class _CacheFileLock:
+    """Simple file-based lock to coordinate cache writes across processes."""
+
+    def __init__(self, path: str, timeout: float = 120.0, poll_interval: float = 0.1):
+        self.path = path
+        self.timeout = timeout
+        self.poll_interval = poll_interval
+        self._fd: Optional[int] = None
+
+    def __enter__(self):
+        deadline = time.time() + self.timeout
+        while True:
+            try:
+                self._fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(self._fd, str(os.getpid()).encode("ascii", errors="ignore"))
+                return self
+            except FileExistsError:
+                if time.time() >= deadline:
+                    raise TimeoutError(f"Timed out while waiting for cache lock: {self.path}")
+                time.sleep(self.poll_interval)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._fd is not None:
+            os.close(self._fd)
+            self._fd = None
+        try:
+            os.remove(self.path)
+        except FileNotFoundError:
+            pass
+
 
 class Dataset():
     
@@ -301,24 +336,70 @@ class Dataset():
         :type biomart_url: str, optional
         :raises NotImplementedError: for features net yet implemented, including many-to-one and many-to-many gene mappings
         """
-        logging.info("Downloading gene ID table from Ensembl Biomart")
-        gene_dataset = biomart.BiomartServer(url=biomart_url).datasets[f"{source_species}_gene_ensembl"]
-        if source_species == dest_species:
-            result = gene_dataset.search(params={"attributes": ["external_gene_name",
-                                                                "ensembl_gene_id"]})
-            columns=['source_gene_name','source_ensembl_gene']
-            result = pd.read_csv(StringIO(result.text), sep="\t", header=None, names=columns)
-            result_dest = result.copy()
-            result_dest.columns = ["dest_gene_name", "dest_ensembl_gene"]
-            result = pd.concat([result, result_dest], axis=1)
+        cache_root = os.environ.get("MOSAICMPI_CACHE_DIR", os.path.join(os.path.expanduser("~"), ".cache", "mosaicmpi"))
+        os.makedirs(cache_root, exist_ok=True)
 
+        cache_key = {
+            "source_species": source_species,
+            "dest_species": dest_species,
+            "source_ids": source_ids,
+            "dest_ids": dest_ids,
+            "biomart_url": biomart_url,
+        }
+        cache_hash_input = json.dumps(cache_key, sort_keys=True).encode("utf-8")
+        cache_hash = hashlib.sha256(cache_hash_input).hexdigest()[:12]
+        cache_filename = f"biomart_{cache_hash}.tsv"
+        cache_path = os.path.join(cache_root, cache_filename)
+        lock_path = cache_path + ".lock"
+
+        def _load_cached_mapping(path: str) -> pd.DataFrame:
+            logging.info(f"Loading gene ID table from cache {path}")
+            return pd.read_csv(path, sep="\t", encoding="utf-8")
+
+        result: Optional[pd.DataFrame] = None
+
+        if os.path.exists(cache_path):
+            result = _load_cached_mapping(cache_path)
         else:
-            result = gene_dataset.search(params={"attributes": ["external_gene_name",
-                                                            "ensembl_gene_id",
-                                                            f"{dest_species}_homolog_associated_gene_name",
-                                                            f"{dest_species}_homolog_ensembl_gene"]})
-            columns=['source_gene_name','source_ensembl_gene', 'dest_gene_name', 'dest_ensembl_gene']
-            result = pd.read_csv(StringIO(result.text), sep="\t", header=None, names=columns)
+            logging.info("Downloading gene ID table from Ensembl Biomart")
+            with _CacheFileLock(lock_path):
+                if os.path.exists(cache_path):
+                    result = _load_cached_mapping(cache_path)
+                else:
+                    gene_dataset = biomart.BiomartServer(url=biomart_url).datasets[f"{source_species}_gene_ensembl"]
+                    if source_species == dest_species:
+                        response = gene_dataset.search(params={"attributes": [
+                            "external_gene_name",
+                            "ensembl_gene_id",
+                        ]})
+                        columns = ["source_gene_name", "source_ensembl_gene"]
+                        result = pd.read_csv(StringIO(response.text), sep="\t", header=None, names=columns)
+                        result_dest = result.copy()
+                        result_dest.columns = ["dest_gene_name", "dest_ensembl_gene"]
+                        result = pd.concat([result, result_dest], axis=1)
+                    else:
+                        response = gene_dataset.search(params={"attributes": [
+                            "external_gene_name",
+                            "ensembl_gene_id",
+                            f"{dest_species}_homolog_associated_gene_name",
+                            f"{dest_species}_homolog_ensembl_gene",
+                        ]})
+                        columns = ["source_gene_name", "source_ensembl_gene", "dest_gene_name", "dest_ensembl_gene"]
+                        result = pd.read_csv(StringIO(response.text), sep="\t", header=None, names=columns)
+
+                    tmp_path = f"{cache_path}.{os.getpid()}.tmp"
+                    try:
+                        result.to_csv(tmp_path, sep="\t", index=False, encoding="utf-8")
+                        os.replace(tmp_path, cache_path)
+                    finally:
+                        try:
+                            os.remove(tmp_path)
+                        except FileNotFoundError:
+                            pass
+
+        # Ensure result is available even if cache population failed
+        if result is None:
+            raise RuntimeError("Failed to obtain gene ID mapping from Biomart or cache.")
 
         logging.info("Mapping gene IDs")
 
