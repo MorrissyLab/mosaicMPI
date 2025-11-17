@@ -610,12 +610,7 @@ class cNMF():
             if close_clustergram_fig:
                 plt.close(fig)
 
-    def get_and_check_consensus(self, k, local_density_threshold, local_neighborhood_size):
-        logging.info(f"Creating consensus programs and usages for k={k}")
-        self.consensus(k, density_threshold=local_density_threshold,
-            local_neighborhood_size=local_neighborhood_size,
-            show_clustering=True,
-            close_clustergram_fig=True)
+    def get_and_check_consensus(self, k, local_density_threshold, local_neighborhood_size, skip_missing_iterations):
         density_threshold_repl = str(local_density_threshold).replace(".", "_")
         filenames = [
             self.paths['consensus_spectra']%(k, density_threshold_repl),
@@ -629,6 +624,12 @@ class cNMF():
             self.paths['gene_spectra_score']%(k, density_threshold_repl),
             self.paths['gene_spectra_score__txt']%(k, density_threshold_repl)
             ]
+        if not all([os.path.exists(f) and os.path.getsize(f) > 0 for f in filenames]):
+            logging.info(f"Creating consensus programs and usages for k={k}")
+            self.consensus(k, density_threshold=local_density_threshold, local_neighborhood_size=local_neighborhood_size,
+                show_clustering=True, close_clustergram_fig=True)
+        else:
+            logging.info(f"Consensus programs and usages for k={k} were already found.")
         for filename in filenames:
             if not os.path.exists(filename):
                 raise ValueError(f"cNMF postprocessing could not find output file {filename}. This can arise in low memory conditions.")
@@ -689,7 +690,8 @@ class cNMF():
                 self.get_and_check_consensus(
                     k,
                     local_density_threshold=local_density_threshold,
-                    local_neighborhood_size=local_neighborhood_size
+                    local_neighborhood_size=local_neighborhood_size,
+                    skip_missing_iterations=skip_missing_iterations
                     )
             except Exception as e:
                 if skip_missing_iterations:
