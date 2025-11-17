@@ -1202,7 +1202,7 @@ def cmd_integrate(output_dir, config_toml, communities_toml, colors_toml, cpus):
     rep_programs = network.integration.get_programs()[rep_programs_ids.index]
     rep_programs.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["Community", "dataset", "k", "Program"])
     rep_programs.to_csv(os.path.join(output_dir, "representative_programs.txt"), sep="\t") # outputs the programs to text file
-    rep_programs_usage = network.integration.get_usages()[rep_programs_ids.index]
+    rep_programs_usage = network.integration.get_usages(normalize=True)[rep_programs_ids.index]
     rep_programs_usage.columns = pd.MultiIndex.from_tuples([[community] + list(program_id) for community, program_id in zip(rep_programs_ids, rep_programs_ids.index)], names=["Community", "dataset", "k", "Program"])
     rep_programs_usage.to_csv(os.path.join(output_dir, "representative_program_usages.txt"), sep="\t") # outputs the program usages to text file
     
