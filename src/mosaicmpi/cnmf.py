@@ -641,13 +641,15 @@ class cNMF():
                     skip_missing_iterations: bool = False):
         
         run_params = utils.load_df_from_npz(self.paths['nmf_replicate_parameters'])
+        all_k = sorted(set(run_params.n_components))
         # first check for combined outputs:
-        missing_combined = []
-        for k in sorted(set(run_params.n_components)):
-            merged_result = self.paths['merged_spectra'] % k
-            if not os.path.exists(merged_result) or os.path.getsize(merged_result) == 0:
-                missing_combined.append(merged_result)
-        if missing_combined:
+        k_missing_combined = []
+        for k in all_k: 
+            merged_spectra_filename = self.paths['merged_spectra'] % k
+            if not os.path.exists(merged_spectra_filename) or os.path.getsize(merged_spectra_filename) == 0:
+                k_missing_combined.append(k)
+        k_not_missing_combined = [k for k in all_k if k not in k_missing_combined]
+        if k_missing_combined:
             failed = []
             # Check if all output files and iterations exist
             for _, row in run_params.iterrows():
@@ -657,7 +659,7 @@ class cNMF():
             if failed and not skip_missing_iterations:
                 raise ValueError(
                     f"Postprocessing could not proceed. To skip missing iterations, use --skip_missing_iterations." + 
-                    f"\n {(len(failed))} files from the factorization step are missing or empty:\n  - " + 
+                    f"\n {len(failed)} files from the factorization step are missing or empty:\n  - " + 
                     "\n  - ".join(failed)
                 )
             elif failed and skip_missing_iterations:
@@ -666,28 +668,46 @@ class cNMF():
                 logging.info(f"Factorization outputs (individual iterations) were found for all values of k. No missing files were detected.")
 
             # combine individual iterations
-            for k in sorted(set(run_params.n_components)):
+            for k in k_missing_combined:
                 logging.info(f"Merging iterations for k={k}")
                 self.combine_nmf(k, skip_missing_files=skip_missing_iterations)
         else:
             logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
+        
+        # check again for combined outputs
+        k_missing_combined = []
+        for k in all_k: 
+            merged_spectra_filename = self.paths['merged_spectra'] % k
+            if not os.path.exists(merged_spectra_filename) or os.path.getsize(merged_spectra_filename) == 0:
+                k_missing_combined.append(k)
+        k_not_missing_combined = [k for k in all_k if k not in k_missing_combined]
+
         # calculate consensus programs and usages
         logging.info(f"Creating consensus programs and usages using {cpus} CPUs")
-        call_consensus = partial(
-            self.get_and_check_consensus,
-            local_density_threshold=local_density_threshold,
-            local_neighborhood_size=local_neighborhood_size)
+        def call_consensus(k):
+            try:
+                self.get_and_check_consensus(
+                    k,
+                    local_density_threshold=local_density_threshold,
+                    local_neighborhood_size=local_neighborhood_size
+                    )
+            except Exception as e:
+                if skip_missing_iterations:
+                    logging.warning(f"Error processing consensus for k={k}, skipping due to --skip_missing_iterations: {e}")
+                else:
+                    raise e
         
+
         if cpus > 1:
-            Pool(processes=cpus).map(call_consensus, sorted(set(run_params.n_components)))
+            Pool(processes=cpus).map(call_consensus, k_not_missing_combined)
         elif cpus == 1:
-            for k in sorted(set(run_params.n_components)):
+            for k in k_not_missing_combined:
                 call_consensus(k)
         else:
             logging.error(f"{cpus} is an invalid number of cpus. Please specify a positive integer.")
 
         # create k-selection stats
         density_threshold_repl = str(local_density_threshold).replace(".", "_")
-        stats = [utils.load_df_from_npz(self.paths['consensus_stats']%(k, density_threshold_repl)) for k in sorted(set(run_params.n_components))]
+        stats = [utils.load_df_from_npz(self.paths['consensus_stats']%(k, density_threshold_repl)) for k in k_not_missing_combined]
         stats = pd.concat(stats, axis=1).T
         utils.save_df_to_npz(stats, self.paths['k_selection_stats'])
