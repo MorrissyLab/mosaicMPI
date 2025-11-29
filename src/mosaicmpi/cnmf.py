@@ -25,6 +25,22 @@ from fastcluster import linkage
 from scipy.cluster.hierarchy import leaves_list
 
 
+def _mp_call_consensus(args):
+    cnmf_obj, k, local_density_threshold, local_neighborhood_size, skip_missing_iterations = args
+    try:
+        cnmf_obj.get_and_check_consensus(
+            k,
+            local_density_threshold=local_density_threshold,
+            local_neighborhood_size=local_neighborhood_size,
+            skip_missing_iterations=skip_missing_iterations
+        )
+    except Exception as e:
+        if skip_missing_iterations:
+            logging.warning(f"Error processing consensus for k={k}, skipping due to --skip_missing_iterations: {e}")
+        else:
+            raise e
+
+
 
 def _worker_filter(iterable, worker_index, total_workers):
     return (p for i,p in enumerate(iterable) if (i-worker_index)%total_workers==0)
@@ -668,43 +684,16 @@ class cNMF():
             else:
                 logging.info(f"Factorization outputs (individual iterations) were found for all values of k. No missing files were detected.")
 
-            # combine individual iterations
-            for k in k_missing_combined:
-                logging.info(f"Merging iterations for k={k}")
-                self.combine_nmf(k, skip_missing_files=skip_missing_iterations)
-        else:
-            logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
-        
-        # check again for combined outputs
-        k_missing_combined = []
-        for k in all_k: 
-            merged_spectra_filename = self.paths['merged_spectra'] % k
-            if not os.path.exists(merged_spectra_filename) or os.path.getsize(merged_spectra_filename) == 0:
-                k_missing_combined.append(k)
-        k_not_missing_combined = [k for k in all_k if k not in k_missing_combined]
-
-        # calculate consensus programs and usages
         logging.info(f"Creating consensus programs and usages using {cpus} CPUs")
-        def call_consensus(k):
-            try:
-                self.get_and_check_consensus(
-                    k,
-                    local_density_threshold=local_density_threshold,
-                    local_neighborhood_size=local_neighborhood_size,
-                    skip_missing_iterations=skip_missing_iterations
-                    )
-            except Exception as e:
-                if skip_missing_iterations:
-                    logging.warning(f"Error processing consensus for k={k}, skipping due to --skip_missing_iterations: {e}")
-                else:
-                    raise e
-        
+
+        tasks = [(self, k, local_density_threshold, local_neighborhood_size, skip_missing_iterations)
+                 for k in k_not_missing_combined]
 
         if cpus > 1:
-            Pool(processes=cpus).map(call_consensus, k_not_missing_combined)
+            Pool(processes=cpus).map(_mp_call_consensus, tasks)
         elif cpus == 1:
-            for k in k_not_missing_combined:
-                call_consensus(k)
+            for task in tasks:
+                _mp_call_consensus(task)
         else:
             logging.error(f"{cpus} is an invalid number of cpus. Please specify a positive integer.")
 

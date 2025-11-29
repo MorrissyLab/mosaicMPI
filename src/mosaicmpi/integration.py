@@ -273,6 +273,7 @@ class Integration():
         :param negative_corr_quantile: Threshold for network-based integration, between 0 and 1, with 1 resulting in fewer edges in the network. Defaults to 0.95
         :type negative_corr_quantile: float, optional
         """
+        logging.info("Computing pairwise correlation thresholds")
         # Filter correlations using dataset-specific max_k thresholds
         tril = self.get_corr_matrix_lowertriangle(max_k_filter=True, selected_k_filter=False)
         pairwise_thresholds = []

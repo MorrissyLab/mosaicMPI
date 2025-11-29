@@ -238,6 +238,8 @@ class Network():
         """
         Creates a program graph based on pairwise correlation thresholds and selected ranks.
         """
+        
+        logging.info("Creating program network")
         # get matrix of edges after filtering
         subset = self.integration.get_corr_matrix_lowertriangle(selected_k_filter=True)
         subset_quantile = self.integration.get_corr_matrix_lowertriangle(selected_k_filter=True, quantile_transformation=True)
@@ -737,7 +739,7 @@ class Network():
     def get_lowest_rank_programs(self,
                                 min_k: Optional[Union[int, Dict[str, int]]] = None,
                             ) -> pd.Series:
-        """Identify the programS that are the lowest rank for each dataset. A minimum rank to be considered may be supplied,
+        """Identify the programs that are the lowest rank for each dataset. A minimum rank to be considered may be supplied,
         either for all datasets as an integer, or as a dict with separate thresholds for each dataset.
 
         :param min_k: a minimum rank to consider for the minimal-rank programs, defaults to None
