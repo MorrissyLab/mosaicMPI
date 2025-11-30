@@ -24,7 +24,6 @@ from sklearn.metrics.pairwise import euclidean_distances
 from fastcluster import linkage
 from scipy.cluster.hierarchy import leaves_list
 
-
 def _mp_call_consensus(args):
     cnmf_obj, k, local_density_threshold, local_neighborhood_size, skip_missing_iterations = args
     try:
@@ -40,8 +39,6 @@ def _mp_call_consensus(args):
         else:
             raise e
 
-
-
 def _worker_filter(iterable, worker_index, total_workers):
     return (p for i,p in enumerate(iterable) if (i-worker_index)%total_workers==0)
 
@@ -49,7 +46,6 @@ def fast_ols_all_cols(X, Y):
     pinv = np.linalg.pinv(X)
     beta = np.dot(pinv, Y)
     return(beta)
-
 
 def get_highvar_genes_sparse(expression, expected_fano_threshold=None,
                        minimal_mean=0.5, numgenes=None):
@@ -684,11 +680,16 @@ class cNMF():
             else:
                 logging.info(f"Factorization outputs (individual iterations) were found for all values of k. No missing files were detected.")
 
+            # combine individual iterations
+            for k in k_missing_combined:
+                logging.info(f"Merging iterations for k={k}")
+                self.combine_nmf(k, skip_missing_files=skip_missing_iterations)
+        else:
+            logging.info(f"Factorization outputs (merged iterations) were found for all values of k.")
+
         logging.info(f"Creating consensus programs and usages using {cpus} CPUs")
 
-        tasks = [(self, k, local_density_threshold, local_neighborhood_size, skip_missing_iterations)
-                 for k in k_not_missing_combined]
-
+        tasks = [(self, k, local_density_threshold, local_neighborhood_size, skip_missing_iterations) for k in all_k]
         if cpus > 1:
             Pool(processes=cpus).map(_mp_call_consensus, tasks)
         elif cpus == 1:
@@ -699,6 +700,6 @@ class cNMF():
 
         # create k-selection stats
         density_threshold_repl = str(local_density_threshold).replace(".", "_")
-        stats = [utils.load_df_from_npz(self.paths['consensus_stats']%(k, density_threshold_repl)) for k in k_not_missing_combined]
+        stats = [utils.load_df_from_npz(self.paths['consensus_stats']%(k, density_threshold_repl)) for k in all_k]
         stats = pd.concat(stats, axis=1).T
         utils.save_df_to_npz(stats, self.paths['k_selection_stats'])
