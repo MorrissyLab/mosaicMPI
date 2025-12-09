@@ -288,7 +288,7 @@ def plot_usage_heatmap(dataset, k, colors, normalize_usage: bool = True, subset_
         if col.dtype in ("category", "object"):
             colannot[colname] = pch.anno_simple(col, colors=colors.get_metadata_colors(colname))
         else:
-            colannot[colname] = pch.anno_simple(col, cmap = "Blues")
+            colannot[colname] = pch.anno_simple(col.dropna(), cmap = "Blues")
     col_ha = pch.HeatmapAnnotation(**colannot)
     fig = plt.figure(figsize=[20, 4 + 0.3 * df.columns.size + metadata.shape[1]])
     pch.ClusterMapPlotter(data=df.T, top_annotation=col_ha,
@@ -581,7 +581,7 @@ def plot_overrepresentation_heatmap(dataset: Dataset,
         if col.dtype in ("category", "object"):
             rowannot[colname] = pch.anno_simple(col, colors=colors.get_metadata_colors(colname))
         else:
-            rowannot[colname] = pch.anno_simple(col, cmap = "Blues")
+            rowannot[colname] = pch.anno_simple(col.dropna(), cmap = "Blues")
     row_ha = pch.HeatmapAnnotation(**rowannot, axis=0)
 
     if figsize is None:
@@ -610,9 +610,9 @@ def plot_representative_community_usage_heatmap(network: Network,
                                  cluster_samples = True,
                                  show_sample_labels = True,
                                  prepend_dataset_colors = True):
-    
+
     import PyComplexHeatmap as pch
-    
+
     if subset_datasets is None:
         subset_datasets = network.integration.datasets.keys()
     elif isinstance(subset_datasets, str):
@@ -621,17 +621,12 @@ def plot_representative_community_usage_heatmap(network: Network,
         pass
     else:
         raise ValueError
-    
+
     df = network.get_representative_program_usage()
     if subset_samples is not None:
         df = df.loc[subset_samples]    
     df = df.loc[subset_datasets]
             
-    metadata = network.integration.get_metadata_df(prepend_dataset_column=prepend_dataset_colors)
-    metadata = metadata[metadata.index.get_level_values(0).isin(subset_datasets)]
-    if subset_metadata is not None:
-        metadata = metadata[metadata.columns.intersection(subset_metadata)]
-    metadata = metadata[metadata.dtypes.astype(str).sort_values().index]
     # anticipate RecursionError when number of samples/cells is high.
     samples = df.index.to_series()
     import sys
@@ -641,22 +636,38 @@ def plot_representative_community_usage_heatmap(network: Network,
         sys.setrecursionlimit(new_recursion_limit)
 
     colannot = {}
-    for colname, col in metadata.items():
+    categoricals = network.integration.get_metadata_df(include_numerical=False, prepend_dataset_column=prepend_dataset_colors)
+    categoricals = categoricals[categoricals.index.get_level_values(0).isin(subset_datasets)]
+    if subset_metadata is not None:
+        categoricals = categoricals[categoricals.columns.intersection(subset_metadata)]
+
+    for colname, col in categoricals.items():
+        col = col.replace({pd.NA: np.nan})  # PyComplexHeatmap does not handle pd.NA
         if colname == "Dataset":
             colannot[colname] = pch.anno_simple(col, colors=colors.dataset_colors)
-        elif col.dtype in ("category", "object"):
-            if len(colors.get_metadata_colors(colname)) < 256:  # limitation of PyComplexHeatmap https://github.com/DingWB/PyComplexHeatmap/issues/108
-                colannot[colname] = pch.anno_simple(col, colors=colors.get_metadata_colors(colname))
+        elif len(colors.get_metadata_colors(colname)) > 256:
+            # limitation of PyComplexHeatmap https://github.com/DingWB/PyComplexHeatmap/issues/108
+            continue
         else:
-            colannot[colname] = pch.anno_simple(col, cmap = "Blues")
+            colors_to_use = {k: v for k, v in colors.get_metadata_colors(colname).items() if k in col.unique()}
+            colannot[colname] = pch.anno_simple(col.dropna(), colors=colors.get_metadata_colors(colname))
+
+    numericals = network.integration.get_metadata_df(include_categorical=False)
+    numericals = numericals[numericals.index.get_level_values(0).isin(subset_datasets)]
+    if subset_metadata is not None:
+        numericals = numericals[numericals.columns.intersection(subset_metadata)]
+
+    for colname, col in numericals.items():
+        if col.any() and col.dropna().max() > col.dropna().min():
+            colannot[colname] = pch.anno_simple(col.dropna(), cmap="Blues")
     col_ha = pch.HeatmapAnnotation(**colannot)
     row_ha = pch.HeatmapAnnotation(Community=pch.anno_simple(df.columns.to_frame()["community"], colors=colors.community_colors, add_text=True),
                                    Dataset = pch.anno_simple(df.columns.to_frame()["dataset"], colors=colors.dataset_colors), axis=0)
 
-    fig = plt.figure(figsize=[20, 4 + 0.3 * df.columns.size + 0.25 * metadata.shape[1]])
-    pch.ClusterMapPlotter(data=df.T, top_annotation=col_ha, left_annotation=row_ha, 
-                          cmap="YlOrRd", vmin=0, vmax=1, ylabel = "Representative Program", xlabel=None, show_colnames=show_sample_labels, show_rownames=True,
-                          row_cluster=cluster_programs, col_cluster=cluster_samples, verbose=False)
+    fig = plt.figure(figsize=[20, 4 + 0.3 * df.shape[1] + 0.25 * (numericals.shape[1] + categoricals.shape[1])])
+    pch.ClusterMapPlotter(data=df.T.dropna(how="all"), top_annotation=col_ha, left_annotation=row_ha, 
+                            cmap="YlOrRd", vmin=0, vmax=1, ylabel = "Representative Program", xlabel=None, show_colnames=show_sample_labels, show_rownames=True,
+                            row_cluster=cluster_programs, col_cluster=cluster_samples, verbose=False)
     fig.axes[0].set_title(title)
     return fig
 
