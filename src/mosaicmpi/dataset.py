@@ -560,6 +560,17 @@ class Dataset():
         for col in self.adata.var.columns:
             msg += "        " + col + ": " + self.adata.var[col].dtype.name + "\n"
         return msg
+
+    def _write_adata_h5ad_compat(self, output_file: str):
+        if hasattr(ad, "settings") and hasattr(ad.settings, "allow_write_nullable_strings"):
+            previous_setting = ad.settings.allow_write_nullable_strings
+            ad.settings.allow_write_nullable_strings = True
+            try:
+                self.adata.write_h5ad(output_file, compression="gzip")
+            finally:
+                ad.settings.allow_write_nullable_strings = previous_setting
+        else:
+            self.adata.write_h5ad(output_file, compression="gzip")
     
     def write_h5ad(self,
                    filename: str,
@@ -572,17 +583,6 @@ class Dataset():
             By doing this, errors during writing do not corrupt the existing h5ad file. Only after the file has successfully been written to the temporary file does the original file get overwritten.
         :type filename: bool, 
         """
-        def _write_with_nullable_string_support(output_file: str):
-            if hasattr(ad, "settings") and hasattr(ad.settings, "allow_write_nullable_strings"):
-                previous_setting = ad.settings.allow_write_nullable_strings
-                ad.settings.allow_write_nullable_strings = True
-                try:
-                    self.adata.write_h5ad(output_file, compression="gzip")
-                finally:
-                    ad.settings.allow_write_nullable_strings = previous_setting
-            else:
-                self.adata.write_h5ad(output_file, compression="gzip")
-
         filename = os.path.abspath(filename)
         if os.path.exists(filename) and safe_mode:
             head, tail = os.path.split(filename)
@@ -591,7 +591,7 @@ class Dataset():
             msg = f"Writing to temporary file {temp_filename}"
             logging.info(msg)
             self.append_to_history(msg)
-            _write_with_nullable_string_support(temp_filename)
+            self._write_adata_h5ad_compat(temp_filename)
 
             msg = f"Write completed. Moving to {filename}"
             logging.info(msg)
@@ -601,7 +601,7 @@ class Dataset():
         else:
             logging.info(f"Writing to {filename}")
             self.append_to_history(f"Writing to {filename}")
-            _write_with_nullable_string_support(filename)
+            self._write_adata_h5ad_compat(filename)
             logging.info(f"Write completed.")
     
     def to_df(self,
