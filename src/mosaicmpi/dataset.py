@@ -560,7 +560,7 @@ class Dataset():
         for col in self.adata.var.columns:
             msg += "        " + col + ": " + self.adata.var[col].dtype.name + "\n"
         return msg
-    
+
     def write_h5ad(self,
                    filename: str,
                    safe_mode: bool = True):
