@@ -561,24 +561,6 @@ class Dataset():
             msg += "        " + col + ": " + self.adata.var[col].dtype.name + "\n"
         return msg
 
-    def _write_adata_h5ad_compat(self, output_file: str):
-        """Write AnnData to ``output_file`` with gzip compression and nullable-string compatibility.
-
-        If ``anndata.settings.allow_write_nullable_strings`` is available, this method temporarily
-        enables it for the write operation and restores the original value afterward.
-        If that setting is unavailable (older anndata versions), it falls back to a standard write.
-        """
-        anndata_settings = getattr(ad, "settings", None)
-        if anndata_settings is not None and hasattr(anndata_settings, "allow_write_nullable_strings"):
-            previous_setting = anndata_settings.allow_write_nullable_strings
-            anndata_settings.allow_write_nullable_strings = True
-            try:
-                self.adata.write_h5ad(output_file, compression="gzip")
-            finally:
-                anndata_settings.allow_write_nullable_strings = previous_setting
-        else:
-            self.adata.write_h5ad(output_file, compression="gzip")
-    
     def write_h5ad(self,
                    filename: str,
                    safe_mode: bool = True):
@@ -598,7 +580,7 @@ class Dataset():
             msg = f"Writing to temporary file {temp_filename}"
             logging.info(msg)
             self.append_to_history(msg)
-            self._write_adata_h5ad_compat(temp_filename)
+            self.adata.write_h5ad(temp_filename, compression="gzip")
 
             msg = f"Write completed. Moving to {filename}"
             logging.info(msg)
@@ -608,7 +590,7 @@ class Dataset():
         else:
             logging.info(f"Writing to {filename}")
             self.append_to_history(f"Writing to {filename}")
-            self._write_adata_h5ad_compat(filename)
+            self.adata.write_h5ad(filename, compression="gzip")
             logging.info(f"Write completed.")
     
     def to_df(self,

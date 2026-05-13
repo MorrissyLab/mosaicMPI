@@ -3,6 +3,8 @@
 import importlib.metadata
 __version__ = importlib.metadata.version('mosaicmpi')
 
+import anndata as ad
+
 # get CPU affinity for MP-enabled tasks
 import os
 if hasattr(os, "sched_getaffinity"):
@@ -11,6 +13,9 @@ else:
     cpus_available = os.cpu_count()
 
 logging_started = False
+
+if hasattr(ad, "settings") and hasattr(ad.settings, "allow_write_nullable_strings"):
+    ad.settings.allow_write_nullable_strings = True
 
 from .dataset import Dataset
 from .config import Config
