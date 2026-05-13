@@ -562,7 +562,12 @@ class Dataset():
         return msg
 
     def _write_adata_h5ad_compat(self, output_file: str):
-        """Write h5ad while temporarily allowing pandas nullable string arrays."""
+        """Write AnnData to ``output_file`` with gzip compression and nullable-string compatibility.
+
+        If ``anndata.settings.allow_write_nullable_strings`` is available, this method temporarily
+        enables it for the write operation and restores the original value afterward.
+        If that setting is unavailable (older anndata versions), it falls back to a standard write.
+        """
         anndata_settings = getattr(ad, "settings", None)
         if anndata_settings is not None and hasattr(anndata_settings, "allow_write_nullable_strings"):
             previous_setting = anndata_settings.allow_write_nullable_strings
