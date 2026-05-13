@@ -562,13 +562,15 @@ class Dataset():
         return msg
 
     def _write_adata_h5ad_compat(self, output_file: str):
-        if hasattr(ad, "settings") and hasattr(ad.settings, "allow_write_nullable_strings"):
-            previous_setting = ad.settings.allow_write_nullable_strings
-            ad.settings.allow_write_nullable_strings = True
+        """Write h5ad while temporarily allowing pandas nullable string arrays."""
+        anndata_settings = getattr(ad, "settings", None)
+        if anndata_settings is not None and hasattr(anndata_settings, "allow_write_nullable_strings"):
+            previous_setting = anndata_settings.allow_write_nullable_strings
+            anndata_settings.allow_write_nullable_strings = True
             try:
                 self.adata.write_h5ad(output_file, compression="gzip")
             finally:
-                ad.settings.allow_write_nullable_strings = previous_setting
+                anndata_settings.allow_write_nullable_strings = previous_setting
         else:
             self.adata.write_h5ad(output_file, compression="gzip")
     
