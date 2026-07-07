@@ -1,5 +1,5 @@
 
-from . import utils, cnmf, biomart, __version__
+from . import utils, cnmf, biomart, factorization, __version__
 
 import numpy as np
 import pandas as pd
@@ -1106,6 +1106,11 @@ class Dataset():
         :return: cNMF object
         :rtype: :class:`mosaicmpi.cnmf.cNMF`
         """
+        # Fail fast: resolve the factorization backend now (before writing any
+        # inputs) so an unknown algorithm or a missing backend package raises here
+        # rather than later during the `factorize` step.
+        factorization.get_factorizer(algorithm)
+
         cnmf_obj = cnmf.cNMF(output_dir=cnmf_output_dir, name=cnmf_name,
                              algorithm=algorithm, factorizer_params=factorizer_params)
         
