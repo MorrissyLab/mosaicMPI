@@ -1,6 +1,7 @@
 ## Code adapted and improved from https://github.com/dylkot/cNMF/blob/master/src/cnmf/cnmf.py
 
 from . import utils
+from . import factorization
 
 import os
 import errno
@@ -160,13 +161,24 @@ class cNMF():
     """Legacy cNMF object based off of the cNMF package
     """
 
-    def __init__(self, output_dir=".", name=None):
+    def __init__(self, output_dir=".", name=None, algorithm="cnmf", factorizer_params=None):
         """
 
         :param output_dir: Place to put cNMF resutls, defaults to "."
         :type output_dir: str, optional
         :param name: A name for this analysis. Will be prefixed to all output files, defaults to automatically generated timestamp (and random string).
         :type name: str, optional
+        :param algorithm: Name of the per-iteration factorization backend to use.
+            ``"cnmf"`` (default) uses scikit-learn NMF; other names select a
+            pluggable backend registered via :mod:`mosaicmpi.factorization`
+            (e.g. ``"spotnmf"``). If a persisted factorization config is found on
+            disk, its algorithm takes precedence so that the ``factorize`` and
+            ``postprocess`` steps reconstruct the same backend chosen at
+            initialization time.
+        :type algorithm: str, optional
+        :param factorizer_params: Backend-specific keyword arguments passed to
+            the factorizer callable (ignored by the built-in ``"cnmf"`` backend).
+        :type factorizer_params: dict, optional
         """
 
 
@@ -176,8 +188,14 @@ class cNMF():
             rand_hash =  uuid.uuid4().hex[:6]
             name = '%s_%s' % (now.strftime("%Y_%m_%d"), rand_hash)
         self.name = name
+        self.algorithm = algorithm
+        self.factorizer_params = dict(factorizer_params) if factorizer_params else {}
         self.paths = None
         self._initialize_dirs()
+        # If a factorization backend was persisted at initialization time, adopt
+        # it (this lets `factorize`/`postprocess` reconstruct the right backend
+        # without re-passing the algorithm on the command line).
+        self._load_factorization_config()
 
 
     def _initialize_dirs(self):
@@ -189,6 +207,7 @@ class cNMF():
                 'normalized_counts' : os.path.join(self.output_dir, self.name, 'cnmf_tmp', self.name+'.norm_counts.h5ad'),
                 'nmf_replicate_parameters' :  os.path.join(self.output_dir, self.name, 'cnmf_tmp', self.name+'.nmf_params.df.npz'),
                 'nmf_run_parameters' :  os.path.join(self.output_dir, self.name, 'cnmf_tmp', self.name+'.nmf_idvrun_params.yaml'),
+                'factorization_config' :  os.path.join(self.output_dir, self.name, 'cnmf_tmp', self.name+'.factorization.yaml'),
                 'nmf_genes_list' :  os.path.join(self.output_dir, self.name, self.name+'.overdispersed_genes.txt'),
 
                 'tpm' :  os.path.join(self.output_dir, self.name, 'cnmf_tmp', self.name+'.tpm.h5ad'),
@@ -283,6 +302,27 @@ class cNMF():
             yaml.dump(run_params, F)
 
 
+    def save_factorization_config(self):
+        """Persist the selected factorization backend and its parameters so that
+        subsequent ``factorize``/``postprocess`` steps (which reconstruct a bare
+        ``cNMF(output_dir, name)`` object) use the same backend.
+        """
+        self._initialize_dirs()
+        config = {'algorithm': self.algorithm, 'factorizer_params': self.factorizer_params}
+        with open(self.paths['factorization_config'], 'w') as F:
+            yaml.dump(config, F)
+
+
+    def _load_factorization_config(self):
+        """Adopt a persisted factorization backend if one exists on disk."""
+        config_path = self.paths['factorization_config']
+        if os.path.exists(config_path) and os.path.getsize(config_path) > 0:
+            with open(config_path) as F:
+                config = yaml.load(F, Loader=yaml.FullLoader) or {}
+            self.algorithm = config.get('algorithm', self.algorithm)
+            self.factorizer_params = config.get('factorizer_params', self.factorizer_params) or {}
+
+
     def _nmf(self, X, nmf_kwargs):
         """
 
@@ -326,6 +366,13 @@ class cNMF():
         norm_counts = ad.read_h5ad(self.paths['normalized_counts'])
         _nmf_kwargs = yaml.load(open(self.paths['nmf_run_parameters']), Loader=yaml.FullLoader)
 
+        # Resolve the per-iteration factorization backend. `None` means use the
+        # built-in scikit-learn path (`self._nmf`); a callable is an alternative
+        # backend (e.g. spot-nmf) selected via `self.algorithm`.
+        factorizer = factorization.get_factorizer(self.algorithm)
+        if factorizer is not None:
+            logging.info(f"Factorizing with backend '{self.algorithm}'.")
+
         jobs_for_this_worker = _worker_filter(range(len(run_params)), worker_i, total_workers)
         for idx in jobs_for_this_worker:
             p = run_params.iloc[idx, :]
@@ -334,7 +381,16 @@ class cNMF():
             _nmf_kwargs['random_state'] = p['nmf_seed']
             _nmf_kwargs['n_components'] = p['n_components']
 
-            (spectra, usages) = self._nmf(norm_counts.X, _nmf_kwargs)
+            if factorizer is None:
+                (spectra, usages) = self._nmf(norm_counts.X, _nmf_kwargs)
+            else:
+                (spectra, usages) = factorizer(
+                    norm_counts.X,
+                    n_components=int(p['n_components']),
+                    random_state=int(p['nmf_seed']),
+                    var_names=norm_counts.var.index,
+                    params=self.factorizer_params,
+                )
             spectra = pd.DataFrame(spectra,
                                    index=np.arange(1, _nmf_kwargs['n_components']+1),
                                    columns=norm_counts.var.index)

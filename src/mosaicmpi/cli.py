@@ -16,6 +16,7 @@ import sys
 from itertools import product
 from typing import Optional, Mapping
 
+import yaml
 from tqdm import tqdm
 import click
 import pandas as pd
@@ -669,15 +670,29 @@ def cmd_select_hvf_cnmf(name, output_dir, input, stratify_by, stratify_mode, min
 @click.option(
     '--beta_loss', type=click.Choice(["frobenius", "kullback-leibler"]), default="frobenius", show_default=True,
     help="Measure of beta-divergence to be minimized.")
-def cmd_initialize_cnmf(name, output_dir, k_range, k, n_iter, seed, beta_loss):
+@click.option(
+    '--algorithm', type=str, default="cnmf", show_default=True,
+    help="Per-iteration factorization backend. 'cnmf' uses scikit-learn NMF; "
+    "alternative backends (e.g. 'spotnmf', which requires the spot-nmf package) "
+    "plug in via mosaicmpi.factorization. Consensus, k-selection and output "
+    "format are identical regardless of backend.")
+@click.option(
+    '--algorithm_param', type=(str, str), multiple=True, metavar="KEY VALUE",
+    help="Backend-specific parameter for the selected --algorithm, given as a "
+    "KEY VALUE pair (values are parsed as YAML scalars). May be supplied multiple "
+    "times. Ignored by the built-in 'cnmf' backend. E.g. --algorithm_param eps 0.05")
+def cmd_initialize_cnmf(name, output_dir, k_range, k, n_iter, seed, beta_loss, algorithm, algorithm_param):
     """
-    
+
     Initialize cNMF with inputs for factorization.
-    
+
     Examples:
         \b
         # specify k with ranges: 10-100 (by 10s), and 100-500 (by 100s)
         mosaicmpi initialize-cnmf --k_range 10 100 10 --k_range 100 500 100
+        \b
+        # use the spot-nmf (optimal transport) factorization backend
+        mosaicmpi initialize-cnmf -n mydata -k 10 --algorithm spotnmf --algorithm_param eps 0.05
     """
     os.makedirs(os.path.join(output_dir, name, "logs"), exist_ok=True)
     utils.start_logging(os.path.join(output_dir, name, "logs", "logfile.txt"))
@@ -693,9 +708,16 @@ def cmd_initialize_cnmf(name, output_dir, k_range, k, n_iter, seed, beta_loss):
         sys.exit(1)
     logging.info("Setting up factorization for the following ranks: " + ", ".join([str(k) for k in kvals]))
     
+    # parse backend-specific parameters (KEY VALUE pairs), interpreting values as YAML scalars
+    factorizer_params = {key: yaml.safe_load(value) for key, value in algorithm_param}
+    if algorithm != "cnmf":
+        logging.info(f"Using factorization backend: '{algorithm}'" +
+                     (f" with parameters {factorizer_params}" if factorizer_params else ""))
+
     # prepare cNMF directory for factorization
     dataset = Dataset.from_h5ad(os.path.join(output_dir, name, name + ".h5ad"))
-    dataset.initialize_cnmf(cnmf_output_dir = output_dir, cnmf_name=name, kvals=kvals, n_iter=n_iter, beta_loss=beta_loss, seed=seed)
+    dataset.initialize_cnmf(cnmf_output_dir = output_dir, cnmf_name=name, kvals=kvals, n_iter=n_iter,
+                            beta_loss=beta_loss, seed=seed, algorithm=algorithm, factorizer_params=factorizer_params)
 
 
 @click.command(name="factorize")

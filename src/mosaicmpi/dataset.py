@@ -1078,8 +1078,10 @@ class Dataset():
                         kvals: Collection = range(2, 61),
                         n_iter: int = 200,
                         beta_loss: str = "kullback-leibler",
-                        seed: Optional[int] = None) -> cnmf.cNMF:
-        """Initialize a cNMF run for subsequent factorization.
+                        seed: Optional[int] = None,
+                        algorithm: str = "cnmf",
+                        factorizer_params: Optional[dict] = None) -> cnmf.cNMF:
+        """Initialize a factorization run for subsequent factorization.
 
         :param cnmf_output_dir: Output directory for cNMF results
         :type cnmf_output_dir: str
@@ -1093,10 +1095,19 @@ class Dataset():
         :type beta_loss: str, optional
         :param seed: Random seed for reproducibility, defaults to None
         :type seed: Optional[int], optional
+        :param algorithm: Per-iteration factorization backend. ``"cnmf"`` (default)
+            uses scikit-learn NMF; alternatives (e.g. ``"spotnmf"``) are pluggable
+            backends registered via :mod:`mosaicmpi.factorization`. The consensus,
+            k-selection and output format are identical regardless of backend.
+        :type algorithm: str, optional
+        :param factorizer_params: Backend-specific keyword arguments forwarded to
+            the alternative factorizer (ignored by the built-in ``"cnmf"`` backend).
+        :type factorizer_params: Optional[dict], optional
         :return: cNMF object
         :rtype: :class:`mosaicmpi.cnmf.cNMF`
         """
-        cnmf_obj = cnmf.cNMF(output_dir=cnmf_output_dir, name=cnmf_name)
+        cnmf_obj = cnmf.cNMF(output_dir=cnmf_output_dir, name=cnmf_name,
+                             algorithm=algorithm, factorizer_params=factorizer_params)
         
         # write TPM (normalized) data
         tpm = ad.AnnData(self.to_df(normalized=True))
@@ -1131,12 +1142,16 @@ class Dataset():
         # save parameters for factorization step
         cnmf_obj.save_nmf_iter_params(*cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss))
 
+        # persist the chosen factorization backend so `factorize`/`postprocess` reuse it
+        cnmf_obj.save_factorization_config()
+
         # save parameters in AnnData object
         self.adata.uns["cnmf"] = cnmf_obj.get_nmf_iter_params(ks=kvals, n_iter=n_iter, random_state_seed=seed, beta_loss=beta_loss)[1]  # dict of cnmf parameters
-        
+        self.adata.uns["factorization_algorithm"] = algorithm
+
         # output dataset with new information on HVF and cNMF parameters
         self.write_h5ad(os.path.join(cnmf_output_dir, cnmf_name, cnmf_name + ".h5ad"))
-        self.append_to_history(f"cNMF parameters added. cNMF inputs initialized in {cnmf_output_dir}/{cnmf_name}")
+        self.append_to_history(f"Factorization parameters added (algorithm='{algorithm}'). Inputs initialized in {cnmf_output_dir}/{cnmf_name}")
         return cnmf_obj
     
     def add_cnmf_results(self, cnmf_output_dir, cnmf_name, local_density_threshold: float = None, local_neighborhood_size: float = None):

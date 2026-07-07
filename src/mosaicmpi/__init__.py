@@ -17,6 +17,8 @@ logging_started = False
 if hasattr(ad, "settings") and hasattr(ad.settings, "allow_write_nullable_strings"):
     ad.settings.allow_write_nullable_strings = True
 
+from . import factorization
+from .factorization import register_factorizer
 from .dataset import Dataset
 from .config import Config
 from .integration import Integration
